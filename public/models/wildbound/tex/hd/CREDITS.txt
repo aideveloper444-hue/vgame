@@ -1,0 +1,5 @@
+Textures from Poly Haven (https://polyhaven.com), CC0 public domain:
+mud = brown_mud_leaves_01, dirt = stony_dirt_path, sand = coast_sand_01,
+snow = snow_02, leaf = forest_leaves_02, plank = weathered_brown_planks (2K, converted to WebP)
+floor = forest_floor, meadow = leafy_grass, drygrass = withered_grass (Poly Haven, CC0)
+clouds.webp = upper half of kloofendal_48d_partly_cloudy_puresky (Poly Haven, CC0)

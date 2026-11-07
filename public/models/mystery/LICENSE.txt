@@ -1,0 +1,6 @@
+Mystery room furniture and props from Poly Haven (https://polyhaven.com) — CC0 1.0 Universal (public domain).
+Downloaded at 1k resolution and converted to compact GLB (meshes simplified where very dense,
+textures resized to WebP, meshopt compression). Each file is named after its Poly Haven asset id,
+e.g. ArmChair_01.glb -> https://polyhaven.com/a/ArmChair_01
+
+https://creativecommons.org/publicdomain/zero/1.0/

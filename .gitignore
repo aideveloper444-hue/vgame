@@ -1,0 +1,58 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+server/data/
+server/dist/
+
+# Build output
+dist-wildbound/
+android/app/build/
+android-wildbound/app/build/
+**/build/intermediates/
+*.apk
+*.aab
+
+# Secrets / environment (never commit; see .env.example)
+.env
+.env.*
+!.env.example
+server/.env
+*.jks
+*.keystore
+keystore.properties
+local.properties
+
+# Large source/raw assets kept locally only (2.7 GB of Unreal / 3D source files)
+unreal_assets/
+
+# Local scratch, backups and test artifacts
+D;/
+removed_backup/
+.dev-server.*
+test-*.png
+.claude/
+android/build/
+android-wildbound/build/
+android/.gradle/
+android-wildbound/.gradle/

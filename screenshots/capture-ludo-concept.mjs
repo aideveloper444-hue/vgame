@@ -1,0 +1,8 @@
+import http from 'node:http';
+import fs from 'node:fs';
+import { setTimeout as delay } from 'node:timers/promises';
+const req=(url,method='GET')=>new Promise((resolve,reject)=>{const r=http.request(url,{method},res=>{let data='';res.on('data',x=>data+=x);res.on('end',()=>resolve(JSON.parse(data)))});r.on('error',reject);r.end()});
+const tab=await req('http://127.0.0.1:9226/json/new?http://localhost:5191/previews/ludo-glass-redesign.html','PUT');
+const ws=new WebSocket(tab.webSocketDebuggerUrl); await new Promise((resolve,reject)=>{ws.onopen=resolve;ws.onerror=reject}); let id=0;const pending=new Map();ws.onmessage=e=>{const m=JSON.parse(e.data);if(m.id&&pending.has(m.id)){pending.get(m.id)(m);pending.delete(m.id)}};const cdp=(method,params={})=>new Promise(resolve=>{const n=++id;pending.set(n,resolve);ws.send(JSON.stringify({id:n,method,params}))});
+await cdp('Page.enable');await cdp('Emulation.setDeviceMetricsOverride',{width:430,height:932,deviceScaleFactor:1,mobile:true});await cdp('Page.navigate',{url:'http://localhost:5191/previews/ludo-glass-redesign.html'});await delay(3000);let shot=await cdp('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});fs.writeFileSync('D:/vgame/screenshots/ludo-glass-phone.png',Buffer.from(shot.result.data,'base64'));
+await cdp('Emulation.setDeviceMetricsOverride',{width:768,height:1024,deviceScaleFactor:1,mobile:true});await delay(1000);shot=await cdp('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});fs.writeFileSync('D:/vgame/screenshots/ludo-glass-tablet.png',Buffer.from(shot.result.data,'base64'));ws.close();console.log('Saved phone and tablet previews');

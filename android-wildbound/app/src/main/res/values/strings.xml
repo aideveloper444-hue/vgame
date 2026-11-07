@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Wildbound</string>
+    <string name="title_activity_main">Wildbound</string>
+    <string name="package_name">com.Vibo.myvibo</string>
+    <string name="custom_url_scheme">com.Vibo.wildbound</string>
+    <!-- Google test app ID; replace with the real AdMob app ID before release -->
+    <string name="admob_app_id">ca-app-pub-3940256099942544~3347511713</string>
+</resources>

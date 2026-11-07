@@ -1,0 +1,9 @@
+Ludo heroes by Quaternius — CC0 1.0 Universal (public domain).
+Converted to compact GLB (WebP textures, meshopt) from:
+
+base-female.glb / base-male.glb   Universal Base Characters (Standard)   https://quaternius.itch.io/universal-base-characters
+hair-long.glb                    Universal Base Characters hairstyles
+ranger-female.glb / ranger-male.glb   Modular Character Outfits - Fantasy (Standard)   https://quaternius.itch.io/modular-character-outfits-fantasy
+anims.glb                         Universal Animation Library (Standard), mesh removed, 9 clips kept   https://quaternius.itch.io/universal-animation-library
+
+https://quaternius.com — https://creativecommons.org/publicdomain/zero/1.0/

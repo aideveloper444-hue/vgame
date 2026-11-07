@@ -1,0 +1,3 @@
+Floor and wall textures from Poly Haven (https://polyhaven.com) — CC0 1.0 Universal (public domain).
+1k diffuse / normal (GL) / roughness maps converted to WebP. File names start with the Poly Haven asset id,
+e.g. herringbone_parquet_diff.webp -> https://polyhaven.com/a/herringbone_parquet

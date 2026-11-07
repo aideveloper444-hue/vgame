@@ -1,0 +1,202 @@
+
+.alpha-root {
+  font-family: 'Roboto Condensed', 'Arial Narrow', Inter, sans-serif;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* night-city backdrop: deep blue in the middle, purple at the edges, soft bokeh */
+.alpha-bg {
+  background:
+    radial-gradient(circle at 18% 12%, rgba(90, 140, 255, 0.35) 0, transparent 26%),
+    radial-gradient(circle at 82% 10%, rgba(255, 80, 210, 0.22) 0, transparent 24%),
+    radial-gradient(circle at 10% 88%, rgba(255, 60, 200, 0.16) 0, transparent 26%),
+    radial-gradient(circle at 92% 86%, rgba(255, 190, 40, 0.14) 0, transparent 24%),
+    radial-gradient(ellipse at 50% 40%, #2d3fd8 0%, #1a24a0 32%, #10146a 62%, #0a0838 100%);
+}
+
+.alpha-pill {
+  border-radius: 9999px;
+  background: linear-gradient(180deg, rgba(14, 22, 92, 0.92), rgba(8, 12, 56, 0.92));
+  border: 2px solid rgba(120, 150, 255, 0.55);
+  box-shadow: 0 0 14px rgba(70, 110, 255, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+
+.alpha-roundbtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  color: #fff;
+  background: radial-gradient(circle at 50% 35%, rgba(40, 60, 170, 0.95), rgba(10, 16, 70, 0.95));
+  border: 2px solid rgba(130, 160, 255, 0.6);
+  box-shadow: 0 0 14px rgba(70, 110, 255, 0.5);
+}
+
+.alpha-plus {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 9999px;
+  color: #fff;
+  background: radial-gradient(circle at 40% 30%, #6ff7c8, #12c48c 55%, #0a8a63);
+  box-shadow: 0 0 10px rgba(52, 211, 153, 0.8), inset 0 2px 0 rgba(255, 255, 255, 0.45);
+}
+
+.alpha-num {
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.01em;
+  text-shadow: 0 2px 3px rgba(0, 0, 0, 0.45);
+}
+
+.alpha-name {
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 2px 3px rgba(0, 0, 0, 0.5);
+}
+
+.alpha-cash {
+  font-weight: 500;
+  color: #e7ecff;
+  text-shadow: 0 2px 3px rgba(0, 0, 0, 0.5);
+}
+
+.alpha-die {
+  border-radius: 18%;
+  background: linear-gradient(145deg, #ffffff, #e7e9f2 60%, #c9ccd8);
+  box-shadow: 0 6px 0 #9aa0b5, 0 10px 18px rgba(0, 0, 0, 0.45), inset 0 2px 0 #fff;
+}
+
+.alpha-tapdie {
+  animation: alpha-bounce 1s ease-in-out infinite;
+  filter: drop-shadow(0 0 12px rgba(255, 255, 255, 0.85));
+}
+
+.alpha-tap {
+  color: #3b1a00;
+  background: linear-gradient(180deg, #ffe58a, #f5b52a);
+  box-shadow: 0 0 10px rgba(255, 200, 60, 0.9);
+}
+
+.alpha-endbtn {
+  border-radius: 18%;
+  color: #fff;
+  background: radial-gradient(circle at 40% 25%, #86efac, #16a34a 60%, #0f6b33);
+  border: 3px solid #fff;
+  box-shadow: 0 0 18px rgba(74, 222, 128, 0.9);
+  animation: alpha-bounce 1.2s ease-in-out infinite;
+}
+
+.alpha-action {
+  border-radius: 22px;
+  overflow: visible;
+}
+.alpha-action img {
+  border-radius: 22px;
+}
+.alpha-action-map { box-shadow: 0 0 22px rgba(37, 120, 255, 0.85); }
+.alpha-action-build { box-shadow: 0 0 22px rgba(34, 220, 90, 0.85); }
+.alpha-action-attack { box-shadow: 0 0 22px rgba(255, 40, 40, 0.85); }
+.alpha-action-defend { box-shadow: 0 0 22px rgba(170, 70, 255, 0.85); }
+.alpha-action-items { box-shadow: 0 0 22px rgba(255, 190, 20, 0.85); }
+
+.alpha-press {
+  transition: transform 0.12s ease;
+}
+.alpha-press:active {
+  transform: scale(0.94);
+}
+
+.alpha-chat {
+  border-radius: 9999px;
+  background: linear-gradient(180deg, rgba(16, 22, 84, 0.85), rgba(8, 10, 46, 0.9));
+  border: 2px solid rgba(130, 150, 255, 0.55);
+  box-shadow: 0 0 16px rgba(80, 110, 255, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+.alpha-input {
+  color: #fff;
+  font-weight: 500;
+}
+.alpha-input::placeholder {
+  color: #aab4ff;
+}
+
+.alpha-bubble {
+  color: #fff;
+  background: rgba(12, 18, 70, 0.88);
+  border: 2px solid rgba(130, 150, 255, 0.5);
+  animation: alpha-bubble-in 0.3s ease-out;
+}
+.alpha-quick {
+  background: rgba(10, 14, 60, 0.95);
+  border: 2px solid rgba(130, 150, 255, 0.6);
+  box-shadow: 0 0 24px rgba(80, 110, 255, 0.5);
+}
+.alpha-toast {
+  z-index: 5;
+  background: rgba(10, 14, 60, 0.95);
+  border: 2px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 0 24px rgba(80, 110, 255, 0.6);
+  white-space: nowrap;
+}
+
+.alpha-sheen {
+  background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, 0.35) 50%, transparent 65%);
+  background-size: 250% 100%;
+  animation: alpha-sheen 4.5s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes alpha-walk {
+  0%, 100% { transform: rotate(-4deg); }
+  50% { transform: rotate(4deg); }
+}
+@keyframes alpha-hop {
+  0%, 100% { transform: translateY(0); }
+  45% { transform: translateY(-16px); }
+}
+@keyframes alpha-idle {
+  0%, 100% { transform: translateY(0) scale(1, 1); }
+  50% { transform: translateY(-3px) scale(1.01, 0.99); }
+}
+@keyframes alpha-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+@keyframes alpha-cardpulse {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.35); }
+}
+@keyframes alpha-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+@keyframes alpha-roll {
+  0% { transform: rotate(0deg) scale(1); }
+  50% { transform: rotate(180deg) scale(0.9); }
+  100% { transform: rotate(360deg) scale(1); }
+}
+@keyframes alpha-delta {
+  0% { opacity: 0; transform: translateY(10px); }
+  15% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-40px); }
+}
+@keyframes alpha-twinkle {
+  0%, 100% { opacity: 0; transform: scale(0.4); }
+  50% { opacity: 0.9; transform: scale(1); }
+}
+@keyframes alpha-sweep {
+  0% { left: -45%; }
+  100% { left: 110%; }
+}
+@keyframes alpha-sheen {
+  0% { background-position: 150% 0; }
+  60%, 100% { background-position: -100% 0; }
+}
+@keyframes alpha-bubble-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
