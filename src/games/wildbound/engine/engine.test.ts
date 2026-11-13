@@ -171,7 +171,7 @@ function lone(kind: ObstacleKind, lane: Lane = 1, animalId: AnimalId = 'titan') 
   ;(sim as unknown as { nextSectionAt: number }).nextSectionAt = 1e9
   sim.sections = []
   sim.state.shieldUntil = 0
-  sim.items.push({ id: 1, d: 20, lane, kind, h: 0, len: { log: 0.45, roots: 0.45, trap: 0.5, rock: 0.75, ruin: 0.8, branch: 0.35, barrier: 0.3, gap: 1.2, boulder: 0.9, trolley: 1.1, stream: 1.3, rubble: 0.45, stalactite: 0.35, plane: 1.6, quicksand: 1.3, darts: 0.3, swinglog: 0.4, minecart: 1.0, buffer: 0.4, beam: 0.3, bough: 0.4, raft: 1.1, jeep: 1.3, strike: 0.6, fire: 0.9, ember: 0.35 }[kind], gone: false, passed: false, broken: false, frozen: false, moving: 0 })
+  sim.items.push({ id: 1, d: 20, lane, kind, h: 0, len: { log: 0.45, roots: 0.45, trap: 0.5, rock: 0.75, ruin: 0.8, branch: 0.35, barrier: 0.3, gap: 1.2, boulder: 0.9, trolley: 1.1, stream: 1.3, rubble: 0.45, stalactite: 0.35, plane: 1.6, quicksand: 1.3, darts: 0.3, swinglog: 0.4, minecart: 1.0, buffer: 0.4, beam: 0.3, bough: 0.4, raft: 1.1, jeep: 1.3, strike: 0.6, fire: 0.9, ember: 0.35, roller: 0.45, blade: 0.3, swarm: 0.5, web: 0.3, toxic: 1.2  }[kind], gone: false, passed: false, broken: false, frozen: false, moving: 0 })
   return sim
 }
 const until = (sim: RunSim, d: number) => runFor(sim, d - sim.state.d)
@@ -820,6 +820,48 @@ test('final jungle gauntlet: from Expert, three distinct legs back to back, then
       assert.ok(gap >= 7.5 && gap < 60, `seed ${seed}: leg breather ${gap.toFixed(1)} s`)
     }
   }
+})
+
+test('brief library batch: rollers and puddles are jumped, blades, swarms and webs are slid under', () => {
+  for (const [kind, move] of [['roller', 'jump'], ['toxic', 'jump'], ['blade', 'slide'], ['swarm', 'slide'], ['web', 'slide']] as const) {
+    const ok = lone(kind, 1)
+    ok.state.loyalUsed = true
+    until(ok, 17.6)
+    ok.input(move)
+    runFor(ok, 10)
+    assert.ok(ok.state.alive, `${kind}: ${move} should clear it`)
+    const bad = lone(kind, 1)
+    bad.state.loyalUsed = true
+    until(bad, 25)
+    assert.equal(bad.state.crashKind, kind, `${kind} without ${move}`)
+  }
+})
+
+test('brief library batch: every new section is fair and a careful runner gets through', () => {
+  for (const kind of ['spikeroll', 'pitfall', 'blades', 'swarm', 'webs', 'toxic', 'cointunnel', 'glider'] as const)
+    for (let seed = 1; seed <= 12; seed++) {
+      const { sim, sec } = withSection(kind, seed)
+      const rows = new Map<number, Item[]>()
+      for (const it of sim.items) if (isObstacle(it.kind) && it.kind !== 'plane') rows.set(it.d, [...(rows.get(it.d) ?? []), it])
+      for (const [d, row] of rows) {
+        const full = new Set(row.map((it) => it.lane)).size === 3
+        assert.ok(!full || row.every((it) => !ESCAPES[it.kind as ObstacleKind].includes('lane')), `${kind} seed ${seed}: row at ${d} is a wall`)
+      }
+      runFor(sim, sec.to + 10 - sim.state.d, () => autopilot(sim))
+      assert.ok(sim.state.alive, `${kind} seed ${seed}: crashed into ${sim.state.crashKind} at ${sim.state.d.toFixed(1)}`)
+    }
+  // hidden pits stay cracks until 30 m out
+  const { sim } = withSection('pitfall', 2)
+  const pits = sim.items.filter((it) => it.kind === 'gap')
+  assert.ok(pits.length && pits.every((it) => it.hidden), 'pits start hidden')
+  const first = Math.min(...pits.map((it) => it.d))
+  until(sim, first - 31)
+  assert.ok(pits.filter((it) => it.d === first).every((it) => it.hidden), 'still hidden 31 m out')
+  runFor(sim, 2)
+  assert.ok(pits.filter((it) => it.d === first).every((it) => !it.hidden), 'open by 29 m')
+  // the glider section flies a glider
+  const g = withSection('glider', 1).sim.items.find((it) => it.kind === 'plane')
+  assert.ok(g?.glider, 'glider craft')
 })
 
 test('zone 72 (Abandoned Railway Forest) has a railway', () => {

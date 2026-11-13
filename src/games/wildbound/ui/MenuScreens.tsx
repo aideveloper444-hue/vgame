@@ -426,6 +426,13 @@ export function SettingsScreen() {
               set={(q) => set({ quality: q })}
             />
             <Choice label="Text size" value={String(s.textScale ?? 1)} options={[{ v: '1', label: 'Normal' }, { v: '1.15', label: 'Large' }, { v: '1.3', label: 'Huge' }]} set={(v) => set({ textScale: Number(v) })} />
+            <Choice
+              label="Steering speed"
+              hint="How quickly a lane change moves you across (solo runs)"
+              value={String(s.steer ?? 1)}
+              options={[{ v: '0.8', label: 'Gentle' }, { v: '1', label: 'Normal' }, { v: '1.2', label: 'Quick' }]}
+              set={(v) => set({ steer: Number(v) })}
+            />
             <Toggle label="Assisted controls" hint="Jumps and slides are timed for you – you steer (solo runs)" on={!!s.assist} set={(v) => set({ assist: v })} />
             <Toggle label="Left-handed controls" hint="Ability button on the left, power-ups on the right" on={s.leftHanded} set={(v) => set({ leftHanded: v })} />
             <Toggle label="Reduced motion" hint="Fewer screen effects" on={s.reducedMotion} set={(v) => set({ reducedMotion: v })} />

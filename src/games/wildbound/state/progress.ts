@@ -41,6 +41,8 @@ export interface Settings {
   haptics: boolean
   /** swipe distance multiplier: lower = more sensitive */
   sensitivity: number
+  /** accessibility: how quickly a lane change moves (0.8 gentle, 1 normal, 1.2 quick); solo runs */
+  steer?: number
   leftHanded: boolean
   reducedMotion: boolean
   /** graphics profile: low (no shadows), medium, high (soft shadows), ultra (bloom, light shafts, anti-aliasing) */

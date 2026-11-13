@@ -87,10 +87,14 @@ export interface Item {
   topple?: 1 | -1
   /** falling tree: how many lanes the trunk covers */
   span?: number
+  /** hidden pitfall: shows as cracks until the runner is close, then opens into a gap */
+  hidden?: boolean
+  /** the flight craft is a hang-glider (the rider hangs under the wing) */
+  glider?: boolean
 }
 
 /** pits and pools: jumped, carried over by a shield hop, never broken */
-const PIT = (k: ObstacleKind) => k === 'gap' || k === 'stream' || k === 'quicksand'
+const PIT = (k: ObstacleKind) => k === 'gap' || k === 'stream' || k === 'quicksand' || k === 'toxic'
 
 /** A challenge section: railway, river crossing, broken bridge, rockslide or cave. */
 export interface Section {
@@ -181,6 +185,7 @@ export type SimEvent =
   | { type: 'chest'; coins: number; gems: number }
   | { type: 'crate'; kind: PowerUpKind }
   | { type: 'tier'; tier: number; name: string }
+  | { type: 'collapse'; d: number; lane: Lane }
 
 export interface RunStats {
   jumps: number
@@ -296,6 +301,8 @@ export interface RunOptions {
   debugSectionAt?: number
   /** development: plant a three-leg gauntlet 40 m into the run */
   debugGauntlet?: boolean
+  /** accessibility: how quickly lane changes move (0.75 gentle .. 1.25 quick); solo runs only */
+  steer?: number
 }
 
 /** A race's start zone, the same on every device (from the race's seed). */
@@ -324,7 +331,7 @@ export const GAUNTLET = {
   firstAt: 300,
   every: 180,
   gap: [8, 10] as const,
-  kinds: ['river', 'bridge', 'rockslide', 'cave', 'treefall', 'quicksand', 'temple', 'swinglog', 'vines'] as SectionKind[],
+  kinds: ['river', 'bridge', 'rockslide', 'cave', 'treefall', 'quicksand', 'temple', 'swinglog', 'vines', 'spikeroll', 'pitfall', 'blades', 'swarm', 'webs', 'toxic'] as SectionKind[],
 }
 
 /** Pacing (design brief section 4): quiet onboarding, a first hook, then a major challenge every so often. */
@@ -350,9 +357,9 @@ export function mulberry32(seed: number) {
   }
 }
 
-const HALF_LEN: Record<ObstacleKind, number> = { log: 0.45, roots: 0.45, trap: 0.5, rock: 0.75, ruin: 0.8, branch: 0.35, barrier: 0.3, gap: 1.2, boulder: 0.9, trolley: 1.1, stream: 1.3, rubble: 0.45, stalactite: 0.35, plane: 1.6, quicksand: 1.3, darts: 0.3, swinglog: 0.4, minecart: 1.0, buffer: 0.4, beam: 0.3, bough: 0.4, raft: 1.1, jeep: 1.3, strike: 0.6, fire: 0.9, ember: 0.35 }
+const HALF_LEN: Record<ObstacleKind, number> = { log: 0.45, roots: 0.45, trap: 0.5, rock: 0.75, ruin: 0.8, branch: 0.35, barrier: 0.3, gap: 1.2, boulder: 0.9, trolley: 1.1, stream: 1.3, rubble: 0.45, stalactite: 0.35, plane: 1.6, quicksand: 1.3, darts: 0.3, swinglog: 0.4, minecart: 1.0, buffer: 0.4, beam: 0.3, bough: 0.4, raft: 1.1, jeep: 1.3, strike: 0.6, fire: 0.9, ember: 0.35, roller: 0.45, blade: 0.3, swarm: 0.5, web: 0.3, toxic: 1.2  }
 /** height the runner must be above the trail to clear a jump obstacle */
-const CLEARANCE: Partial<Record<ObstacleKind, number>> = { log: 0.55, roots: 0.4, trap: 0.45, gap: 0.02, rock: 1.2, ruin: 1.5, boulder: 1.2, trolley: 1.2, stream: 0.02, rubble: 0.45, quicksand: 0.02 }
+const CLEARANCE: Partial<Record<ObstacleKind, number>> = { log: 0.55, roots: 0.4, trap: 0.45, gap: 0.02, rock: 1.2, ruin: 1.5, boulder: 1.2, trolley: 1.2, stream: 0.02, rubble: 0.45, quicksand: 0.02, roller: 0.55, toxic: 0.02 }
 
 export class RunSim {
   readonly animal: AnimalDef
@@ -465,7 +472,7 @@ export class RunSim {
     }
     if (opts.debugSection && !opts.tutorial) {
       const from = this.origin + (opts.debugSectionAt ?? 70)
-      this.sections.push({ kind: opts.debugSection, from, to: from + 90, lane: opts.debugSection === 'flight' ? 1 : 0, built: false, announced: false })
+      this.sections.push({ kind: opts.debugSection, from, to: from + 90, lane: (['flight', 'glider', 'minecart', 'zipline', 'raft', 'jeep'] as SectionKind[]).includes(opts.debugSection) ? 1 : 0, built: false, announced: false })
       this.nextSectionAt = from + 200
       this.nextForkAt = from + 300
     }
@@ -537,7 +544,7 @@ export class RunSim {
   private laneRate() {
     // m/s sideways; ice, snow and mud make turns slower (not on the trolley or a vine)
     const g = this.state.ride || this.state.swing ? 1 : GRIP[this.state.grip].lane
-    return (this.animal.id === 'shadow' || this.animal.id === 'jax' || this.animal.id === 'blaze' ? 15 : 12) * g
+    return (this.animal.id === 'shadow' || this.animal.id === 'jax' || this.animal.id === 'blaze' ? 15 : 12) * g * (this.opts.steer ?? 1)
   }
   speedFactor() {
     let f = 0.96 + this.animal.stats.speed * 0.012
@@ -733,6 +740,12 @@ export class RunSim {
     } else if (s.base > 0) s.base = Math.max(0, s.base - dt * (s.pose === 'jump' ? 1.2 : 5))
     s.y = s.base + (s.pose === 'jump' ? 4 * this.jumpH() * s.poseT * (1 - s.poseT) : 0)
     this.swingTick()
+
+    // hidden pitfalls: the cracked ground gives way once the runner is close
+    for (const it of this.items) if (it.hidden && it.d - s.d < 30) {
+      it.hidden = false
+      this.events.push({ type: 'collapse', d: it.d, lane: it.lane })
+    }
 
     // rockslide: a rock drops onto the trail ahead
     // (lightning strikes a little closer: its ring telegraphs the lane first)
@@ -1313,6 +1326,15 @@ export class RunSim {
       // white water in river country, a safari jeep in the open plains
       if (has(['river', 'swamp', 'mangrove', 'waterfall', 'lagoon', 'lakeside', 'jungle'])) W.push(['raft', 1.4])
       if (has(['savannah', 'desert', 'grassland', 'baobab', 'beach', 'coast'])) W.push(['jeep', 1.4])
+      // the rest of the brief's library that needs no animal models
+      if (has(['forest', 'jungle', 'ruins', 'temple', 'autumn', 'moonlit', 'bamboo'])) W.push(['spikeroll', 1])
+      if (has(['hills', 'canyon', 'ruins', 'temple', 'desert', 'forest', 'pine', 'deadwood', 'cliffside'])) W.push(['pitfall', 1])
+      if (has(['ruins', 'temple', 'mossy', 'glow'])) W.push(['blades', 1.6])
+      if (has(['jungle', 'forest', 'flower', 'blossom', 'fern', 'moonlit', 'glow', 'mangrove'])) W.push(['swarm', 1])
+      if (has(['jungle', 'mossy', 'glow', 'deadwood', 'moonlit', 'giantroot'])) W.push(['webs', 1])
+      if (has(['jungle', 'swamp', 'mangrove', 'fern', 'flower', 'lagoon'])) W.push(['toxic', 1])
+      if (has(['hills', 'canyon', 'cliffside', 'volcanic', 'ice', 'mossy', 'glow', 'ruins'])) W.push(['cointunnel', 0.8])
+      if (has(['cliffside', 'pine', 'redwood', 'cedar', 'giantroot', 'waterfall', 'hills'])) W.push(['glider', 1.1])
       if (has(['forest', 'jungle', 'redwood', 'giantroot', 'cliffside', 'cedar', 'pine', 'fern'])) W.push(['zipline', 1.2])
       // weather and disasters (brief §G): lightning in storms and rain, wildfire in dry country, flash floods along the
       // water and in the rain, earthquakes among the ruins; surprise events (brief §3) anywhere, a little rarer
@@ -1338,7 +1360,7 @@ export class RunSim {
         this.nextGauntletT = runTimeAt(this.runD(d0)) + GAUNTLET.every
       }
       const kind = this.gauntletQueue[0] ?? this.pickSection(W, this.runD(d0), (z.flavor === 'rail' || kit === 'railway' ? 'rail' : z.flavor === 'vines' ? 'vines' : null))
-      const rows = kind === 'minecart' || kind === 'raft' || kind === 'jeep' ? 8 : kind === 'flight' || kind === 'zipline' ? 6 : kind === 'cave' || kind === 'rail' || kind === 'temple' || kind === 'lightning' || kind === 'wildfire' || kind === 'flood' || kind === 'coinstorm' ? 4 : kind === 'camp' ? 2 : 3
+      const rows = kind === 'minecart' || kind === 'raft' || kind === 'jeep' ? 8 : kind === 'flight' || kind === 'zipline' || kind === 'glider' ? 6 : kind === 'spikeroll' || kind === 'pitfall' || kind === 'blades' || kind === 'webs' || kind === 'cointunnel' ? 5 : kind === 'cave' || kind === 'rail' || kind === 'temple' || kind === 'lightning' || kind === 'wildfire' || kind === 'flood' || kind === 'coinstorm' ? 4 : kind === 'camp' ? 2 : 3
       const len = (this.rowGap(d0 + 60) + 1) * rows + 40
       // keep inside the zone (clear of its 400 m boundaries) and clear of every junction
       let from = d0
@@ -1352,7 +1374,7 @@ export class RunSim {
       }
       const gauntlet = this.gauntletQueue.length ? ++this.gauntletStep : undefined
       if (gauntlet) this.gauntletQueue.shift()
-      this.sections.push({ kind, from, to: from + len, lane: kind === 'flight' || kind === 'minecart' || kind === 'zipline' || kind === 'raft' || kind === 'jeep' ? 1 : this.rng() < 0.5 ? 0 : 2, built: false, announced: false, gauntlet })
+      this.sections.push({ kind, from, to: from + len, lane: kind === 'flight' || kind === 'glider' || kind === 'minecart' || kind === 'zipline' || kind === 'raft' || kind === 'jeep' ? 1 : this.rng() < 0.5 ? 0 : 2, built: false, announced: false, gauntlet })
       this.sectionLog.push(kind)
       if (this.sectionLog.length > 8) this.sectionLog.shift()
       this.nextSectionAt = this.nextChallengeAt(from + len)
@@ -1419,12 +1441,14 @@ export class RunSim {
     const others = ([0, 1, 2] as Lane[]).filter((l) => l !== sec.lane)
     const gapAt = (d: number) => this.rowGap(d) + 1
     switch (sec.kind) {
+      case 'glider':
       case 'flight': {
         // a bush plane waits on the airstrip in the middle lane: run into it to take off. In the air the coins are
         // strung along the flight path, weaving across the lanes (steer to collect them). The ground lanes stay
         // runnable for anyone who skips the plane: one obstacle at a time, never both side lanes.
         const at = from + 6
-        this.add(at, sec.lane, 'plane', 0)
+        const craft = this.add(at, sec.lane, 'plane', 0)
+        if (sec.kind === 'glider') craft.glider = true
         this.lastRowD = at
         const end = to - 6
         for (let d = at + 8, i = 0; d < end - 6; d += 2.4, i++) {
@@ -1782,6 +1806,83 @@ export class RunSim {
         this.coinLine(d + 4, lane, 3)
         this.lastRowD = d
         sec.to = d + gapAt(d) + 8
+        break
+      }
+      case 'spikeroll': {
+        // spiked rollers trundle down the trail toward the runner (jump them): full rows and two-lane rows in turn,
+        // spaced wider because each roller closes the gap as it comes
+        let d = from + 6
+        for (let i = 0; i < 4; i++, d += gapAt(d) * 1.6) {
+          const lanes = i % 2 === 0 ? ([0, 1, 2] as Lane[]) : (([0, 1, 2] as Lane[]).sort(() => this.rng() - 0.5).slice(0, 2) as Lane[])
+          for (const l of lanes) this.add(d, l, 'roller', 0, 2.6)
+          const free = ([0, 1, 2] as Lane[]).find((l) => !lanes.includes(l))
+          if (free !== undefined) this.coinLine(d - 6, free, 4)
+          else this.coinArc(d - 3, 1)
+          this.lastRowD = d
+        }
+        sec.to = this.lastRowD + 10
+        break
+      }
+      case 'pitfall': {
+        // hidden pits: the ground shows hairline cracks, then gives way 30 m ahead of the runner (jump the hole)
+        let d = from + 6
+        for (let i = 0; i < 4; i++, d += gapAt(d)) {
+          const lanes = i % 2 === 1 ? ([0, 1, 2] as Lane[]) : (([0, 1, 2] as Lane[]).sort(() => this.rng() - 0.5).slice(0, 2) as Lane[])
+          for (const l of lanes) this.add(d, l, 'gap').hidden = true
+          const free = ([0, 1, 2] as Lane[]).find((l) => !lanes.includes(l))
+          if (free !== undefined) this.coinLine(d - 5, free, 4)
+          else this.coinArc(d, 1)
+          this.lastRowD = d
+        }
+        sec.to = this.lastRowD + 8
+        break
+      }
+      case 'blades':
+      case 'swarm':
+      case 'webs': {
+        // overhead hazards to slide under: swinging temple blades, insect swarms, thick spider webs. Full rows and
+        // two-lane rows (a clear lane with coins) in turn
+        const k: ObstacleKind = sec.kind === 'blades' ? 'blade' : sec.kind === 'swarm' ? 'swarm' : 'web'
+        const n = sec.kind === 'swarm' ? 3 : 4
+        let d = from + 5
+        for (let i = 0; i < n; i++, d += gapAt(d)) {
+          const lanes = i % 2 === 1 ? ([0, 1, 2] as Lane[]) : (([0, 1, 2] as Lane[]).sort(() => this.rng() - 0.5).slice(0, 2) as Lane[])
+          for (const l of lanes) this.add(d, l, k)
+          const free = ([0, 1, 2] as Lane[]).find((l) => !lanes.includes(l))
+          if (free !== undefined) this.coinLine(d - 5, free, 4)
+          this.lastRowD = d
+        }
+        sec.to = this.lastRowD + 8
+        break
+      }
+      case 'toxic': {
+        // poison dart frog puddles, brightly coloured: two lanes fouled, the clean ground wanders; jump them if needed
+        let clean = Math.floor(this.rng() * 3) as Lane
+        let d = from + 4
+        for (let i = 0; i < 4; i++, d += gapAt(d)) {
+          for (const l of [0, 1, 2] as Lane[]) if (l !== clean) this.add(d, l, 'toxic')
+          this.coinLine(d - 4, clean, 4)
+          this.lastRowD = d
+          clean = Math.max(0, Math.min(2, clean + (this.rng() < 0.5 ? -1 : 1))) as Lane
+        }
+        sec.to = this.lastRowD + 8
+        break
+      }
+      case 'cointunnel': {
+        // a coin tunnel: one long line of coins weaving across the lanes; rocks stand only where the line is not
+        let d = from + 4
+        let lane = 1 as Lane
+        const end = from + 4 + gapAt(from) * 5
+        for (let i = 0; d < end; i++, d += 2.2) {
+          if (i % 6 === 0 && i) lane = Math.max(0, Math.min(2, lane + (this.rng() < 0.5 ? -1 : 1))) as Lane
+          this.add(d, lane, i % 23 === 11 ? 'gem' : 'coin', 0.7)
+        }
+        for (let r = from + 4 + gapAt(from); r < end - 4; r += gapAt(r)) {
+          const on = this.items.find((it) => (it.kind === 'coin' || it.kind === 'gem') && Math.abs(it.d - r) < 1.2)?.lane ?? 1
+          for (const l of [0, 1, 2] as Lane[]) if (l !== on && this.rng() < 0.75) this.add(r, l, 'rock')
+          this.lastRowD = r
+        }
+        sec.to = end + 6
         break
       }
       case 'zipline': {

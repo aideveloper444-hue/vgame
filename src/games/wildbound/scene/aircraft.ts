@@ -220,3 +220,59 @@ export function makeBushPlane(castShadow = true): BushPlane {
   group.traverse((o) => ((o as THREE.Mesh).frustumCulled = false))
   return { group, prop, disc }
 }
+
+/**
+ * A hang-glider for the canopy launches: a swept fabric wing in two tones over an aluminium keel and leading edges,
+ * a control A-frame below and a hang strap. The rider hangs under it, so the wing sits above the origin (the engine
+ * puts the rider at the craft's height plus PLANE_DECK; the wing is drawn that much higher).
+ */
+export function makeHangGlider(castShadow = true): THREE.Group {
+  const group = new THREE.Group()
+  const sail = new THREE.MeshStandardMaterial({ color: '#2f3a3c', roughness: 0.7, side: THREE.DoubleSide })
+  const sailHi = new THREE.MeshStandardMaterial({ color: '#c9b37c', roughness: 0.65, side: THREE.DoubleSide })
+  const tube = new THREE.MeshStandardMaterial({ color: '#b8bcc0', metalness: 0.85, roughness: 0.3 })
+  const strap = new THREE.MeshStandardMaterial({ color: '#1a1a1a', roughness: 0.9 })
+  // the sail: nose at +Z, wingtips swept back, a gentle anhedral
+  const half = (side: number, mat: THREE.Material) => {
+    const g = new THREE.BufferGeometry()
+    const p = [0, 0, 1.6, side * 4.2, -0.15, -0.9, 0, 0.05, -1.4]
+    g.setAttribute('position', new THREE.Float32BufferAttribute(p, 3))
+    g.computeVertexNormals()
+    return new THREE.Mesh(g, mat)
+  }
+  const add = (m: THREE.Mesh) => {
+    m.castShadow = castShadow
+    group.add(m)
+    return m
+  }
+  add(half(1, sail))
+  add(half(-1, sail))
+  // a lighter stripe along each leading edge
+  const stripe = (side: number) => {
+    const g = new THREE.BufferGeometry()
+    const p = [0, 0.004, 1.6, side * 4.2, -0.146, -0.9, side * 3.5, -0.11, -0.55, 0, 0.004, 1.15]
+    g.setAttribute('position', new THREE.Float32BufferAttribute(p, 3))
+    g.setIndex(side > 0 ? [0, 1, 2, 0, 2, 3] : [0, 2, 1, 0, 3, 2])
+    g.computeVertexNormals()
+    return new THREE.Mesh(g, sailHi)
+  }
+  add(stripe(1))
+  add(stripe(-1))
+  const rod = (a: THREE.Vector3, b: THREE.Vector3, r: number, m: THREE.Material) => {
+    const g = new THREE.CylinderGeometry(r, r, a.distanceTo(b), 8)
+    g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize()))
+    g.translate((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2)
+    return add(new THREE.Mesh(g, m))
+  }
+  const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z)
+  rod(V(0, -0.02, 1.6), V(0, 0.03, -1.4), 0.035, tube)
+  rod(V(0, -0.02, 1.6), V(4.2, -0.17, -0.9), 0.03, tube)
+  rod(V(0, -0.02, 1.6), V(-4.2, -0.17, -0.9), 0.03, tube)
+  // control frame and hang strap down to the rider
+  rod(V(0, -0.02, 0.3), V(0.75, -1.6, 0.55), 0.022, tube)
+  rod(V(0, -0.02, 0.3), V(-0.75, -1.6, 0.55), 0.022, tube)
+  rod(V(-0.75, -1.6, 0.55), V(0.75, -1.6, 0.55), 0.022, tube)
+  rod(V(0, -0.02, 0.1), V(0, -1.75, 0.1), 0.02, strap)
+  group.traverse((o) => ((o as THREE.Mesh).frustumCulled = false))
+  return group
+}

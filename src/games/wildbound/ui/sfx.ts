@@ -178,6 +178,46 @@ export const sfx = {
         tone(660, 0.18, 'triangle', 0.06)
         tone(880, 0.3, 'triangle', 0.06, undefined, 0.16)
         break
+      case 'spikeroll':
+        // iron rumbling over stone
+        noise(1.0, 0.14, 'lowpass', 220, 2, 140)
+        tone(1500, 0.06, 'square', 0.03, undefined, 0.3)
+        tone(1700, 0.06, 'square', 0.03, undefined, 0.55)
+        break
+      case 'pitfall':
+        // the ground creaking under strain
+        noise(0.7, 0.1, 'bandpass', 160, 4, 90)
+        noise(0.08, 0.14, 'highpass', 1800, 1, undefined, 0.6)
+        break
+      case 'blades':
+        // a blade whistling through the air, twice
+        noise(0.35, 0.1, 'bandpass', 2600, 6, 900)
+        noise(0.35, 0.1, 'bandpass', 2600, 6, 900, 0.5)
+        break
+      case 'swarm':
+        // a rising drone of wings
+        tone(220, 1.1, 'sawtooth', 0.025, 260)
+        tone(233, 1.1, 'sawtooth', 0.025, 275)
+        noise(1.0, 0.04, 'bandpass', 900, 3, 1200)
+        break
+      case 'webs':
+        // a taut thread plucked
+        tone(660, 0.5, 'triangle', 0.05, 640)
+        tone(990, 0.3, 'triangle', 0.03, undefined, 0.12)
+        break
+      case 'toxic':
+        // frogs calling over still water
+        for (let i = 0; i < 4; i++) tone(1200 + (i % 2) * 300, 0.06, 'square', 0.035, 900, i * 0.13)
+        break
+      case 'cointunnel':
+        // a bright echo in the rock
+        tone(1568, 0.12, 'triangle', 0.05)
+        tone(2093, 0.4, 'triangle', 0.04, undefined, 0.1)
+        break
+      case 'glider':
+        // wind over a wing
+        noise(1.2, 0.1, 'bandpass', 500, 0.7, 1400)
+        break
       case 'raft':
         // the roar of rapids building
         noise(1.4, 0.16, 'bandpass', 700, 0.5, 1600)

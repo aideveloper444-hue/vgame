@@ -157,6 +157,7 @@ export default function RunScreen() {
         rampMs: 1500,
         // every run starts in a new place on the 40 km world
         startZone: dailyRun.current ? daySeed % 100 : (import.meta.env.DEV ? ((window as unknown as { __wbZone?: number }).__wbZone ?? (new URLSearchParams(location.search).has('wbzone') ? Number(new URLSearchParams(location.search).get('wbzone')) : undefined)) : undefined) ?? randomStartZone(),
+        steer: s.settings.steer ?? 1,
         debugGauntlet: import.meta.env.DEV && location.search.includes('wbgauntlet'),
         debugSectionAt: import.meta.env.DEV && new URLSearchParams(location.search).has('wbsectionat') ? Number(new URLSearchParams(location.search).get('wbsectionat')) : undefined,
         // dev only: window.__wbSection = 'temple' (or ?wbsection=temple) plants that challenge 70 m in
@@ -335,6 +336,12 @@ export default function RunScreen() {
               setBanner({ id: Date.now(), big: 'Touchdown', small: '+250' })
               haptic(40)
             }
+            break
+          case 'collapse':
+            // a hidden pit gives way: a crack and a short shake
+            run.shake = Math.max(run.shake, 0.45)
+            sfx.timber()
+            haptic(25)
             break
           case 'rockfall':
             // a falling tree lands with a crack and a thud (rocks keep the shake and dust)

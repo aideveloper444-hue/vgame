@@ -113,6 +113,10 @@ export type ProcProp =
   | 'caveRoof'
   | 'stalactite'
   | 'sandPool'
+  | 'mote'
+  | 'silk'
+  | 'toxicPool'
+  | 'crack'
   | 'flame'
   | 'glowRing'
   | 'bolt'
@@ -1095,6 +1099,12 @@ export function useProcKits(): Record<ProcProp, PropKit> {
       stalactite: kit(mergeGeometries(spikes2)!, caveRock),
       // a flat rounded pool (an ellipse once scaled to the lane), so the sinking patch has soft natural edges
       sandPool: kit(new THREE.CylinderGeometry(0.5, 0.5, 0.02, 40), sandPoolMat),
+      // insect swarms: tiny dark bodies; spider webs: pale silk threads; poison frog puddles: a vivid, faintly glowing
+      // pool; hidden pits: dark hairline cracks in the trail
+      mote: kit(new THREE.IcosahedronGeometry(0.5, 0), new THREE.MeshStandardMaterial({ color: '#16130e', roughness: 0.6 })),
+      silk: kit(box(1, 1, 1), new THREE.MeshStandardMaterial({ color: '#e8e4d8', roughness: 0.4, transparent: true, opacity: 0.8, emissive: '#3a3830', emissiveIntensity: 0.4 })),
+      toxicPool: kit(new THREE.CylinderGeometry(0.5, 0.5, 0.02, 40), new THREE.MeshStandardMaterial({ color: '#0a6e58', roughness: 0.55, emissive: '#06a07a', emissiveIntensity: 0.45, envMapIntensity: 0.15 })),
+      crack: kit(box(1, 1, 1), new THREE.MeshBasicMaterial({ color: '#100c08' })),
       // a tongue of flame: an open outer cone and a brighter inner core
       flame: multi([
         [new THREE.ConeGeometry(0.5, 1, 14, 3, true).translate(0, 0.5, 0), flameOuter],

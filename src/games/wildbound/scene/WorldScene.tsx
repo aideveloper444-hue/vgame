@@ -10,14 +10,14 @@ import { useSave, type Quality } from '../state/progress'
 import type { Racer } from '../engine/race'
 import * as THREE from 'three'
 import { BIOMES, KIT_BASE, POWER_KINDS, ZONE_LEN, biomeAt, isObstacle, isPowerUp, type AnimalId, type BiomeId, type Flavor, type PowerUpKind, type Variant } from '../engine/content'
-import { LANE_W, RIDE_H, ROUTE_BONUS_TEXT, ROUTE_RISK_TEXT, ZIP_DROP, ZIP_TOP, laneX, zipAlt, routeForLane, type Fork, type Item, type RunSim } from '../engine/run'
+import { LANE_W, PLANE_DECK, RIDE_H, ROUTE_BONUS_TEXT, ROUTE_RISK_TEXT, ZIP_DROP, ZIP_TOP, laneX, zipAlt, routeForLane, type Fork, type Item, type RunSim } from '../engine/run'
 import WildAnimal, { MODELS, type WildPoseState } from './WildAnimal'
 import { GlbSet, PropSet, hash01, preloadProps, useProcKits, worldUv, type Placement, type PropId } from './props'
 import { onSimEvent, run, showcase, tickRun } from './runController'
 import { CORNER_LEN, CORNER_R, TrackPath } from './trackPath'
 import { BRANCH_Y, Z_MAX, bendObject, bendPoint, branchGap, patchChunks, updateBend } from './bend'
 import { BIOME_NAME } from '../engine/content'
-import { makeBushPlane, type BushPlane } from './aircraft'
+import { makeBushPlane, makeHangGlider, type BushPlane } from './aircraft'
 import { pickupTextures } from './iconTextures'
 
 /*
@@ -598,6 +598,14 @@ function itemPlacements(it: Item, z: number, now: number, out: Placement[]) {
       out.push({ prop: 'boulder', x: X, y: lift, z, rotY: 0, rotX: -it.d / 0.95, rotZ: tumble, scale: s([1.95, 1.9, 1.95]) })
       break
     case 'gap':
+      if (it.hidden) {
+        // a hidden pit: only hairline cracks zigzag across the lane until the ground gives way
+        for (let k = 0; k < 5; k++) {
+          const u = (k - 2) * 0.42
+          out.push({ prop: 'crack', x: x + u, y: 0.012, z: z + Math.sin(k * 2.3 + r * 6) * 0.35, rotY: Math.sin(k * 1.7 + r * 9) * 0.9, scale: [0.5, 0.01, 0.035] })
+        }
+        break
+      }
       // a gully on the jeep track: a timber ramp leads up to its near lip
       if (run.sim?.sectionAt(it.d)?.kind === 'jeep') out.push({ prop: 'sleeper', x, y: 0.12, z: z - it.len - 1.4, rotY: 0, rotX: -0.2, scale: [1.8, 0.1, 2.3] })
       for (const e of [-1, 1]) out.push({ prop: 'stub', x, y: -0.05, z: z + e * (it.len + 0.8), rotY: e > 0 ? Math.PI : 0, rotX: e * 0.08, scale: [2.0, 0.12, 0.6] })
@@ -627,6 +635,58 @@ function itemPlacements(it: Item, z: number, now: number, out: Placement[]) {
       // a burning branch across the trail at head height
       out.push({ prop: 'trunk', x: X, y: 1.12 + lift, z, rotY: (r - 0.5) * 0.15, rotZ: tumble, scale: s([2.9, 0.42, 0.45]) })
       if (!it.broken) for (let k = 0; k < 3; k++) out.push({ prop: 'flame', x: x + (k - 1) * 0.8, y: 1.45, z, rotY: 0, scale: [0.35, 0.6 + 0.25 * Math.sin(now / 75 + k * 2.3 + r * 7), 0.35] })
+      break
+    case 'roller': {
+      // a spiked roller trundling down the trail: a heavy log turning end over end with iron spikes round it
+      const roll = -it.d / 0.32
+      out.push({ prop: 'trunk', x: X, y: lift + 0.05, z, rotY: 0, rotX: roll, rotZ: tumble, scale: s([2.15, 0.55, 0.55]) })
+      for (let k = 0; k < 6; k++) {
+        const a = roll + (k * Math.PI) / 3
+        out.push({ prop: 'stalactite', x: X, y: lift + 0.3 + Math.sin(a) * 0.36 - 0.18, z: z + Math.cos(a) * 0.36, rotY: 0, rotX: a + Math.PI / 2, rotZ: tumble, scale: s([1.9, 0.22, 0.12]) })
+      }
+      break
+    }
+    case 'blade': {
+      // a temple blade: a steel crescent on an iron arm, swinging along the trail, at the bottom as the runner arrives
+      const PIV = 5.2
+      const ARM = 4.0
+      const th = 0.9 * Math.sin(z * 0.38) * Math.min(1, Math.max(0, z) / 6 + 0.15)
+      const by = PIV - ARM * Math.cos(th) + lift
+      const bz = z + ARM * Math.sin(th)
+      out.push({ prop: 'rail', x: X, y: by, z: bz, rotY: 0, rotX: th, rotZ: tumble, scale: s([1.9, 0.5, 0.04]) })
+      out.push({ prop: 'rail', x: X, y: by + 0.25, z: bz, rotY: 0, rotX: -th, scale: [0.07, ARM - 0.25, 0.07] })
+      break
+    }
+    case 'swarm': {
+      // an insect swarm at head height: a churning cloud of small dark bodies
+      if (it.broken) break
+      for (let k = 0; k < 34; k++) {
+        const a = now / (300 + (k % 5) * 60) + k * 2.39
+        const rr = 0.2 + ((k * 37) % 10) / 11
+        out.push({ prop: 'mote', x: x + Math.cos(a) * rr * 0.95, y: 1.4 + Math.sin(a * 1.3 + k) * 0.42, z: z + Math.sin(a) * rr * 0.7, rotY: a, scale: 0.15 + (k % 3) * 0.05 })
+      }
+      break
+    }
+    case 'web': {
+      // a thick spider web across the lane at head height: silk spokes and two rings
+      const cx = X
+      const cy = 1.32 + lift
+      const R = 1.05
+      for (let k = 0; k < 8; k++) {
+        const a = (k * Math.PI) / 4
+        out.push({ prop: 'silk', x: cx + Math.cos(a) * R * 0.5, y: cy + Math.sin(a) * R * 0.5, z, rotY: 0, rotZ: a, scale: s([R, 0.018, 0.018]) })
+      }
+      for (const rr of [0.45, 0.85])
+        for (let k = 0; k < 8; k++) {
+          const a = ((k + 0.5) * Math.PI) / 4
+          out.push({ prop: 'silk', x: cx + Math.cos(a) * rr * 0.92, y: cy + Math.sin(a) * rr * 0.92, z, rotY: 0, rotZ: a + Math.PI / 2, scale: s([rr * 0.78, 0.014, 0.014]) })
+        }
+      break
+    }
+    case 'toxic':
+      // a poison dart frog puddle: a vivid, faintly glowing pool with a couple of tiny frogs at its rim
+      out.push({ prop: 'toxicPool', x: x + (r - 0.5) * 0.2, y: 0.015, z, rotY: (r - 0.5) * 0.3, scale: [LANE_W * 1.05, 0.02, it.len * 2.2] })
+      for (const e of [-1, 1]) out.push({ prop: 'mote', x: x + e * 0.7, y: 0.05, z: z + e * (it.len - 0.2), rotY: r * 6, scale: [0.12, 0.06, 0.1] })
       break
     case 'quicksand':
       // a dark wet pool of sinking sand with soft rounded edges
@@ -884,7 +944,7 @@ function makeSource() {
     }
     // trail: rows of tiles, holes where gaps are
     const sim = view.showcase ? null : run.sim
-    const gaps = sim ? sim.items.filter((it) => (it.kind === 'gap' || it.kind === 'stream') && !it.gone && !(it.fall && it.h === 0)) : []
+    const gaps = sim ? sim.items.filter((it) => (it.kind === 'gap' || it.kind === 'stream') && !it.gone && !it.hidden && !(it.fall && it.h === 0)) : []
     // challenge sections in view: railway track, bridge (no banks: open water below), cave vault
     if (sim) for (const sec of sim.sections) {
       if (sec.to < d - view.behind || sec.from > d + view.ahead) continue
@@ -965,7 +1025,7 @@ function makeSource() {
           if (k % 2 === 0) push({ prop: 'block', x: 0, y: 4.2, z, rotY: 0, scale: [PATH_HALF * 2 + 2.9, 0.6, 1.0] })
         }
       }
-      if (sec.kind === 'cave') {
+      if (sec.kind === 'cave' || sec.kind === 'cointunnel') {
         for (let k = Math.floor(sec.from / SEG); k * SEG < sec.to; k++) {
           const z = k * SEG + SEG / 2 - d
           if (z < -view.behind || z > view.ahead) continue
@@ -986,7 +1046,12 @@ function makeSource() {
       } else if (raftWater(rd)) {
         // white water: the whole trail is river between the put-in and the take-out
         push({ prop: 'waterQuad', x: 0, y: -0.3, z: rd - d, rotY: 0, scale: [PATH_HALF * 2 + 1.2, 0.05, ROW + 0.01] })
-      } else trailRow(push, r, rd, rd - d, surfaceAt(rd), gaps, 0)
+      } else {
+        // a collapsing bridge: the planks behind the runner give way and drop into the gorge
+        const bsec = sim?.sectionAt(rd)
+        const behind = bsec?.kind === 'bridge' ? d - 1.5 - rd : 0
+        trailRow(push, r, rd, rd - d, surfaceAt(rd), gaps, behind > 0 ? -behind * behind * 0.35 : 0)
+      }
     }
     // obstacles
     if (sim) {
@@ -1409,6 +1474,9 @@ function Effects() {
           else if (e.kind === 'stream' || e.kind === 'gap') emit(34, [s.x, 0.1, 0.5], '#d8e6ea', 5.5, 0.45, 9, 0.9)
           else if (e.kind === 'log' || e.kind === 'swinglog' || e.kind === 'branch' || e.kind === 'roots') emit(26, [s.x, 0.7, 0.6], '#9c7a52', 5, 0.5, 9, 0.8)
           else emit(24, [s.x, 0.5, 0.6], '#d9c39a', 4.5, 0.6, 8, 0.9)
+          break
+        case 'collapse':
+          emit(20, [laneX(e.lane), 0.1, e.d - view.d], '#9c8664', 3.5, 0.6, 9, 0.8)
           break
         case 'rockfall':
           setTimeout(() => emit(26, [laneX(e.lane), 0.4, e.d - view.d], '#b8a888', 5, 0.7, 7, 0.9), 470)
@@ -1888,7 +1956,7 @@ function Atmosphere({ quality }: { quality: Quality }) {
     const variant: Variant = view.showcase ? 'day' : now.variant
     const V = VARIANT_LIGHT[variant]
     const glow = !view.showcase && flavorAt(d) === 'glow'
-    const cave = !view.showcase && run.sim?.sectionAt(d + 6)?.kind === 'cave'
+    const cave = !view.showcase && ['cave', 'cointunnel'].includes(run.sim?.sectionAt(d + 6)?.kind ?? '')
     caveK.v += ((cave ? 1 : 0) - caveK.v) * Math.min(1, dt * 2)
     const ck = caveK.v
     const k = Math.min(1, dt * 1.2)
@@ -2655,8 +2723,12 @@ function World() {
       <PropSet kit={kits.shadowDisc} prop="shadowDisc" capacity={40} source={source} receive={false} />
       <PropSet kit={kits.waterQuad} prop="waterQuad" capacity={200} source={source} receive={false} />
       <PropSet kit={kits.caveRoof} prop="caveRoof" capacity={30} source={source} />
-      <PropSet kit={kits.stalactite} prop="stalactite" capacity={20} source={source} shadows />
+      <PropSet kit={kits.stalactite} prop="stalactite" capacity={120} source={source} shadows />
       <PropSet kit={kits.sandPool} prop="sandPool" capacity={20} source={source} receive />
+      <PropSet kit={kits.mote} prop="mote" capacity={420} source={source} receive={false} />
+      <PropSet kit={kits.silk} prop="silk" capacity={260} source={source} receive={false} />
+      <PropSet kit={kits.toxicPool} prop="toxicPool" capacity={24} source={source} receive={false} />
+      <PropSet kit={kits.crack} prop="crack" capacity={80} source={source} receive={false} />
       <PropSet kit={kits.flame} prop="flame" capacity={160} source={source} receive={false} />
       <PropSet kit={kits.glowRing} prop="glowRing" capacity={16} source={source} receive={false} />
       <PropSet kit={kits.bolt} prop="bolt" capacity={8} source={source} receive={false} />
@@ -2918,13 +2990,52 @@ function GroundMist() {
  * runner on its wing: it pitches up on the climb, banks into lane changes, settles on the glide in, and after landing
  * its rider it climbs away. Up to two at once (a pool).
  */
+function Gliders() {
+  const pool = useMemo(() => [makeHangGlider(), makeHangGlider()], [])
+  const st = useMemo(() => new Map<number, { x: number; h: number; roll: number; pitch: number }>(), [])
+  useFrame((_, dtRaw) => {
+    const dt = Math.min(dtRaw, 0.05)
+    const sim = run.sim
+    const gl = sim ? sim.items.filter((it) => it.kind === 'plane' && it.glider && !it.gone && it.d - view.d > -30 && it.d - view.d < AHEAD) : []
+    pool.forEach((g, i) => {
+      const it = gl[i]
+      g.visible = !!it
+      if (!it) return
+      let k = st.get(it.id)
+      const riding = sim!.state.ride?.item === it.id
+      const tx = riding ? sim!.state.x : laneX(it.lane)
+      if (!k) {
+        k = { x: tx, h: it.h, roll: 0, pitch: 0 }
+        st.set(it.id, k)
+      }
+      const vx = (tx - k.x) / Math.max(dt, 1e-3)
+      k.x += (tx - k.x) * Math.min(1, dt * 10)
+      const climb = (it.h - k.h) / Math.max(dt, 1e-3)
+      k.h = it.h
+      k.roll += (THREE.MathUtils.clamp(-vx * 0.08, -0.5, 0.5) - k.roll) * Math.min(1, dt * 5)
+      const sp = Math.max(4, sim!.state.speed)
+      k.pitch += (THREE.MathUtils.clamp(-climb / sp, -0.25, 0.25) - k.pitch) * Math.min(1, dt * 4)
+      // the wing rides above the rider's head (the rider hangs from the strap); parked, it rests on its control frame
+      g.position.set(k.x, it.h + PLANE_DECK + 1.95, it.d - view.d)
+      g.rotation.set(k.pitch - 0.08, 0, k.roll)
+    })
+  })
+  return (
+    <>
+      {pool.map((g, i) => (
+        <primitive key={i} object={g} />
+      ))}
+    </>
+  )
+}
+
 function Planes() {
   const pool = useMemo(() => [makeBushPlane(), makeBushPlane()], [])
   const st = useMemo(() => new Map<number, { x: number; h: number; roll: number; pitch: number; spin: number }>(), [])
   useFrame((_, dtRaw) => {
     const dt = Math.min(dtRaw, 0.05)
     const sim = run.sim
-    const planes = sim ? sim.items.filter((it) => it.kind === 'plane' && !it.gone && it.d - view.d > -30 && it.d - view.d < AHEAD) : []
+    const planes = sim ? sim.items.filter((it) => it.kind === 'plane' && !it.glider && !it.gone && it.d - view.d > -30 && it.d - view.d < AHEAD) : []
     pool.forEach((pl, i) => {
       const it = planes[i]
       pl.group.visible = !!it
@@ -3042,6 +3153,7 @@ export default function WorldScene({ animalId, mode = 'run', quality = 'high' }:
         {quality !== 'low' && <Butterflies mode={mode} />}
         {mode === 'run' && quality !== 'low' && <GroundMist />}
         {mode === 'run' && <Planes />}
+        {mode === 'run' && <Gliders />}
         {mode !== 'preview' && <Overflights mode={mode} />}
       </Suspense>
       {mode !== 'run' && (

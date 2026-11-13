@@ -464,3 +464,41 @@ The brief (gameplay & challenge design doc v1.0, 10 Nov 2026) is applied to Wild
 - Checked by live screenshot: lightning (strike flash and bolt), wildfire, flood, earthquake (opened gaps), camp,
   supply drop. Not seen: the lightning ring up close, the closed earthquake cracks, the coin storm, the golden chest.
 - Not done from §3/§G: night blackout, sandstorm, toxic gas, volcano escape, rival explorer, map fragments.
+
+## 2026-11-13 late: brief library batch + merge of weather/surprise events
+
+- Merged `worktree-agent-ad51904dcca4d27a6` (584e3d5): lightning, wildfire, flash flood, earthquake, coin storm,
+  abandoned camp, supply drop, golden chest (see its own entry above).
+- New sections (fair rows, banners, warning sounds, challenge names, tests): **spike rollers** (rolling spiked logs to
+  jump), **hidden pits** (cracks that open 30 m ahead, `Item.hidden`, `collapse` event: shake, crack, dust), **blade
+  hallway** (temple, slide), **swarm** (bees/bats, slide), **spider webs** (slide), **poison frogs** (toxic puddles,
+  jump/avoid), **coin tunnel** (weaving coin line in a cave vault, rocks off the line), **hang-glider launch** (flight
+  mechanics with a glider: `Item.glider`, `makeHangGlider`, rider hangs under the wing).
+- **Collapsing bridge**: on broken-bridge sections the planks behind the runner drop into the gorge.
+- **Steering speed** setting (Gentle / Normal / Quick, solo runs; `RunOptions.steer`).
+- Autopilot now boards planes/gliders (race rivals fly too). Gauntlet pool includes the new hazard sections.
+- 54 tests. Checked live: hidden pits, coin tunnel, glider take-off, blades, poison puddles, swarm (distant).
+
+### Brief coverage audit (2026-11-13)
+
+| Brief section | Status |
+|---|---|
+| §1 Vision, core loop | Done: event every ~35–45 s, warnings, rewards, return to run |
+| §2A Terrain | Done: swinging logs, collapsing bridge, rolling boulder, quicksand, falling trees, spike rollers, rockfall/rockslide, root/obstacle rows, stepping stones, broken bridge, hidden pits. Not: carnivorous plants, rotating stone bridge, mudslide slope, bamboo squeeze, trunk balance, windstorm debris |
+| §2B Animals | Swarms (bees/bats), webs, poison frogs done. Blocked on realistic models: jaguar, anaconda, croc, boar, gorilla, elephants, monkeys, eagle, hippo, dogs, leopard, buffalo |
+| §2C Vehicles | Done: mine cart, handcar, plane, raft, jeep, zipline, glider. Not: drone, speedboat race, ATV, truck, cable car, horse, barrel, helicopter |
+| §2D Traversal | Done: ziplines, vine swing, glider launch. Not: climbing, wall run, falling platforms, rope nets |
+| §2E Water | Done: river stones, flood surge, raft rapids. Not: underwater swim, whirlpool, dam gates, diving |
+| §2F Temple | Done: dart corridor, blade hallway, idol gem, golden chest. Not: symbol door/memory/pressure-plate puzzles, stone wheel, collapsing ceiling |
+| §2G Weather | Done: lightning, wildfire, flash flood, earthquake, 9 lighting variants incl. night/storm/fog. Not: sandstorm, toxic gas, volcano escape |
+| §2H Mini-games | Done: coin tunnel, coin storm, risky-route rewards. Not: time trial, target toss, precision landing, memory gate |
+| §2I Set-pieces | Done: Final Jungle Gauntlet. Animal bosses blocked on models |
+| §3 Surprise events | Done: golden chest, coin storm, supply crate, abandoned camp, weather shifts. Not: rival explorer, map fragments, glowing guide animal, photo mode |
+| §4 Pacing / §5 Fairness | Done (director, tiers, no-repeat, seeded, fair rows, telegraphs, tests) |
+| §6 Controls | Done: swipes/keys, assisted controls, steering speed, left-handed, text size |
+| §7 Rewards | Done: coins, gems, stars, missions, daily run, weekly expedition, achievements, upgrades, local records. Not: relics, cosmetics/skins, online leaderboards |
+| §8 Regions | 100 zones / 20 kits cover all six regions' looks |
+| §9 Feedback | Done: sound cue per hazard, shake, ride camera pullback, success card, screen effects. Slow motion deliberately off (it read as stutter) |
+| §10 Monetization | Rewarded revive, Play Billing store; no interstitials. Server receipt check still missing |
+| §11 Architecture | Data-driven sections, seeded engine, tests; no analytics (privacy) |
+| §13 QA | Engine tests 54; live screenshot checks; not tested on low-end phones |
