@@ -1,7 +1,8 @@
 import { Award, Check, ChevronRight, Globe2, GraduationCap, Lock, PartyPopper, RotateCcw, Settings2, ShoppingBag, Trophy } from 'lucide-react'
 import { WORLD_LEN, ZONES, ZONE_COUNT, ZONE_LEN, getAnimal, type Variant } from '../engine/content'
 import { restorePurchases } from '../state/shop'
-import { ACHIEVEMENTS, DAILY_REWARDS, EVENT_TIERS, LEVEL_REWARD, MISSIONS, QUALITIES, today, useSave, type MissionType } from '../state/progress'
+import { ACHIEVEMENTS, DAILY_MIN_M, DAILY_REWARD_GEMS, DAILY_REWARDS, EVENT_TIERS, EXPEDITION_GOALS, LEVEL_REWARD, MISSIONS, QUALITIES, expeditionEnds, expeditionOf, today, useSave, weekId, type MissionType } from '../state/progress'
+import { CHALLENGE_NAME } from './challenges'
 import { headArt, kitArt } from './art'
 import { LevelEmblem, MissionBadge, TokenMark } from './icons'
 import { Backdrop, Coin, Gem, Header, fmt, toast, useCountdown, useFestival, useNav } from './common'
@@ -29,6 +30,7 @@ export function MissionsScreen({ onPlay }: { onPlay: () => void }) {
         <Header title="MISSIONS" />
         <div className="wb-panel wb-scroll mx-auto w-full max-w-[720px] flex-1 p-2">
           <div className="flex flex-col gap-2">
+            <DailyAndExpedition />
             {MISSIONS.map((m) => {
               const tier = tiers[m.type]
               const target = m.target(tier)
@@ -514,6 +516,91 @@ export function LeaderboardScreen() {
         </div>
       </div>
     </div>
+  )
+}
+
+// ---------------------------------------------------------------- daily run and weekly expedition
+
+/** Today's daily run (the same course for everyone, seeded by the date) and this week's themed expedition. */
+function DailyAndExpedition() {
+  const daily = useSave((s) => s.dailyRun)
+  const expedition = useSave((s) => s.expedition)
+  const week = weekId()
+  const theme = expeditionOf(week)
+  const ex = expedition?.week === week ? expedition : { week, clears: 0, claimed: [] as number[] }
+  const left = useCountdown(expeditionEnds(week))
+  const todays = daily?.date === today() ? daily : null
+  const startDaily = () => {
+    sfx.tap()
+    useNav.setState({ daily: true })
+    useNav.getState().go('run')
+  }
+  const claim = (i: number) => {
+    const r = useSave.getState().claimExpedition(i)
+    if (r.ok) {
+      sfx.gem()
+      haptic(30)
+      toast('Expedition reward added', 'good')
+    } else toast(r.reason, 'bad')
+  }
+  const max = EXPEDITION_GOALS[EXPEDITION_GOALS.length - 1].clears
+  return (
+    <>
+      <div className="wb-card wb-feature p-3">
+        <div className="flex items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="wb-feature-k">Daily run · {today()}</div>
+            <div className="wb-feature-n">Today's Trail</div>
+            <div className="text-[14px] text-white/70">
+              The same course for every runner today. No upgrades. Run {DAILY_MIN_M} m for <Gem size={14} /> {DAILY_REWARD_GEMS}
+              {todays?.rewarded ? ' (collected)' : ''}.
+            </div>
+            {todays && <div className="mt-1 text-[14px] wb-yellow">Your best today: {fmt(todays.best)}</div>}
+          </div>
+          <button className="wb-btn wb-btn-gold h-11 w-[96px] text-[20px]" onClick={startDaily}>
+            RUN
+          </button>
+        </div>
+      </div>
+      <div className="wb-card wb-feature p-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="wb-feature-k">Weekly expedition · ends in {left}</div>
+            <div className="wb-feature-n">{theme.name}</div>
+            <div className="text-[14px] text-white/70">{theme.blurb}: clear {theme.kinds.map((k) => CHALLENGE_NAME[k] ?? k).join(', ')}.</div>
+          </div>
+          <div className="shrink-0 text-right text-[22px] font-semibold">
+            {Math.min(ex.clears, max)}
+            <span className="text-[15px] text-white/50"> / {max}</span>
+          </div>
+        </div>
+        <div className="relative mt-3 h-1.5 rounded-full bg-black/50">
+          <div className="h-full rounded-full" style={{ width: `${Math.min(1, ex.clears / max) * 100}%`, background: 'linear-gradient(90deg,#a9864e,#f3e3bd)' }} />
+          {EXPEDITION_GOALS.map((g) => (
+            <span key={g.clears} className="absolute top-1/2 h-3 w-px -translate-y-1/2 bg-[var(--gold-hi)]" style={{ left: `${(g.clears / max) * 100}%` }} />
+          ))}
+        </div>
+        <div className="mt-3 grid grid-cols-3 gap-2">
+          {EXPEDITION_GOALS.map((g, i) => {
+            const got = ex.claimed.includes(i)
+            const ready = ex.clears >= g.clears && !got
+            return (
+              <button key={i} className={`wb-btn h-11 text-[16px] ${ready ? 'wb-btn-gold' : 'wb-btn-dark'}`} disabled={!ready} onClick={() => claim(i)}>
+                {got ? (
+                  <>
+                    <Check size={16} /> Claimed
+                  </>
+                ) : (
+                  <>
+                    {g.clears} · {g.coins ? <Coin size={16} /> : <Gem size={16} />} {g.coins ?? g.gems}
+                  </>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    </>
   )
 }
 

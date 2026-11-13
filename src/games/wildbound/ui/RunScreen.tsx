@@ -8,7 +8,7 @@ import { DOUBLE_MS, ROUTE_BONUS_TEXT, runTimeAt, raceStartZone, randomStartZone,
 import RouteChooser from './RouteChooser'
 import ChallengeHud, { Star } from './ChallengeHud'
 import { challengeTally } from './challenges'
-import { useSave } from '../state/progress'
+import { dailySeed, useSave } from '../state/progress'
 import { endRun, onPhase, onSimEvent, run, setPhase, startRun, type RunPhase } from '../scene/runController'
 import { Coin, Gem, fmt, toast, useFestival, useNav } from './common'
 import { ambienceScene, haptic, sfx, startAmbience, stopAmbience } from './sfx'
@@ -103,6 +103,7 @@ export default function RunScreen() {
   const [reviveLeft, setReviveLeft] = useState(0)
   const [count, setCount] = useState<string | null>(null)
   const tutorialRun = useRef(false)
+  const dailyRun = useRef(false)
   const a = getAnimal(animalId)
   // a race (Play with Friends / vs Computer) instead of a solo run
   const pending = useRaceUI((s) => s.pending)
@@ -142,17 +143,20 @@ export default function RunScreen() {
     bestBanner.current = false
     // the guided tutorial only runs when picked from the More menu, never automatically
     tutorialRun.current = nav.tutorial
-    useNav.setState({ tutorial: false })
+    // today's daily run: the date's seed and start zone, no store upgrades (the same course and rules for everyone)
+    dailyRun.current = nav.daily && !nav.tutorial
+    useNav.setState({ tutorial: false, daily: false })
+    const daySeed = dailySeed()
     startRun(
       {
-        seed: (Math.random() * 2 ** 31) | 0,
+        seed: dailyRun.current ? daySeed : (Math.random() * 2 ** 31) | 0,
         animalId: s.selected,
         eventActive: fest.active && fest.joined,
-        upgrades: s.upgrades,
+        upgrades: dailyRun.current ? {} : s.upgrades,
         tutorial: tutorialRun.current,
         rampMs: 1500,
         // every run starts in a new place on the 40 km world
-        startZone: (import.meta.env.DEV ? ((window as unknown as { __wbZone?: number }).__wbZone ?? (new URLSearchParams(location.search).has('wbzone') ? Number(new URLSearchParams(location.search).get('wbzone')) : undefined)) : undefined) ?? randomStartZone(),
+        startZone: dailyRun.current ? daySeed % 100 : (import.meta.env.DEV ? ((window as unknown as { __wbZone?: number }).__wbZone ?? (new URLSearchParams(location.search).has('wbzone') ? Number(new URLSearchParams(location.search).get('wbzone')) : undefined)) : undefined) ?? randomStartZone(),
         debugSectionAt: import.meta.env.DEV && new URLSearchParams(location.search).has('wbsectionat') ? Number(new URLSearchParams(location.search).get('wbsectionat')) : undefined,
         // dev only: window.__wbSection = 'temple' (or ?wbsection=temple) plants that challenge 70 m in
         debugSection: import.meta.env.DEV ? ((window as unknown as { __wbSection?: SectionKind }).__wbSection ?? ((new URLSearchParams(location.search).get('wbsection') as SectionKind | null) || undefined)) : undefined,
@@ -375,8 +379,8 @@ export default function RunScreen() {
     if (!sim || outcome) return
     const sum = sim.summary()
     const tutorial = tutorialRun.current
-    const challenges = { cleared: challengeTally.cleared, stars: challengeTally.stars, perfect: challengeTally.perfect, tier: tierAt(runTimeAt(sim.runD())) }
-    const r = useSave.getState().finishRun({ animalId: sim.animal.id, ...sum, tutorial, challenges })
+    const challenges = { cleared: challengeTally.cleared, stars: challengeTally.stars, perfect: challengeTally.perfect, tier: tierAt(runTimeAt(sim.runD())), kinds: [...challengeTally.kinds] }
+    const r = useSave.getState().finishRun({ animalId: sim.animal.id, ...sum, tutorial, challenges, daily: dailyRun.current })
     if (tutorial && sim.state.crashKind === null) useSave.getState().completeTutorial()
     setOutcome({ ...r, score: sum.score, distance: sum.distance, tokens: sum.tokens, tutorial })
     if (r.newBest && !tutorial) sfx.win()
@@ -439,6 +443,8 @@ export default function RunScreen() {
   const retry = () => {
     sfx.tap()
     if (!outcome) finish()
+    // a daily run is retried as the daily run (the same course)
+    if (dailyRun.current) useNav.setState({ daily: true })
     if (racing && pending) {
       // rematch vs the computer: a new trail, the same rivals
       useRaceUI.setState({ pending: { ...pending, seed: (Math.random() * 2 ** 31) | 0 } })
@@ -797,7 +803,7 @@ export default function RunScreen() {
             ) : (
               <>
                 <div className="wb-res">
-                  <div className="wb-res-eyebrow">Run ended</div>
+                  <div className="wb-res-eyebrow">{dailyRun.current ? 'Daily run ended' : 'Run ended'}</div>
                   <div className="wb-res-cause">{crashCause(sim?.state.crashKind ?? null)}</div>
                   <div className="wb-res-score">{fmt(outcome?.score ?? h?.score ?? 0)}</div>
                   {outcome?.newBest ? (

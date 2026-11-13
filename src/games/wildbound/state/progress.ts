@@ -22,7 +22,9 @@ export interface RunResult {
   stats: { jumps: number; slides: number; rolls: number; laneChanges: number; powerupsUsed: number; abilitiesUsed: number; broken: number; branchesUnder: number; waterfallSections: number; biomesSeen: number; nearMisses?: number; swings?: number }
   tutorial?: boolean
   /** the run's challenge sections (ChallengeHud tally) and the difficulty tier it reached */
-  challenges?: { cleared: number; stars: number; perfect: number; tier: number }
+  challenges?: { cleared: number; stars: number; perfect: number; tier: number; kinds?: string[] }
+  /** a daily run (seeded by the date) */
+  daily?: boolean
 }
 
 export interface RunRecord {
@@ -145,6 +147,42 @@ export function festival(now = Date.now()) {
 
 export const today = () => new Date().toISOString().slice(0, 10)
 
+// ---------------------------------------------------------------- daily run and weekly expedition (brief §5, §7)
+
+/** today's daily run: the same seed and start zone for every player */
+export const dailySeed = (date = today()) => {
+  let h = 2166136261
+  for (const c of `wildbound-daily-${date}`) h = Math.imul(h ^ c.charCodeAt(0), 16777619)
+  return h >>> 0
+}
+export const DAILY_REWARD_GEMS = 30
+/** the daily run counts once it reaches this far */
+export const DAILY_MIN_M = 300
+
+export interface ExpeditionDef {
+  name: string
+  blurb: string
+  kinds: string[]
+}
+/** one theme a week, in rotation: clear its challenges for milestone rewards */
+export const EXPEDITIONS: ExpeditionDef[] = [
+  { name: 'Thunder River', blurb: 'River crossings, white water and broken bridges', kinds: ['river', 'raft', 'bridge', 'zipline'] },
+  { name: 'Lost Temple Valley', blurb: 'Temple traps, swinging logs and falling trees', kinds: ['temple', 'swinglog', 'treefall', 'cave'] },
+  { name: 'Jaguar Highlands', blurb: 'Rockslides, mine carts and caves', kinds: ['rockslide', 'minecart', 'cave', 'rail'] },
+  { name: 'Emerald Canopy', blurb: 'Ziplines, vine swings and falling trees', kinds: ['zipline', 'vines', 'treefall', 'swinglog'] },
+  { name: 'Open Plains', blurb: 'Safari jeeps, airstrips and quicksand', kinds: ['jeep', 'flight', 'quicksand', 'rail'] },
+]
+export const EXPEDITION_GOALS = [
+  { clears: 3, coins: 500 },
+  { clears: 8, gems: 40 },
+  { clears: 15, gems: 100 },
+] as { clears: number; coins?: number; gems?: number }[]
+/** the week number (weeks start on Monday) */
+export const weekId = (now = Date.now()) => Math.floor((now / 86400000 + 3) / 7)
+export const expeditionOf = (week = weekId()) => EXPEDITIONS[week % EXPEDITIONS.length]
+/** when this week's expedition ends */
+export const expeditionEnds = (week = weekId()) => (week + 1) * 7 * 86400000 - 3 * 86400000
+
 export interface SaveState {
   coins: number
   gems: number
@@ -163,6 +201,10 @@ export interface SaveState {
   /** progress since the current tier started (coins, power-ups, branches, waterfall are counted) */
   missionProgress: Record<MissionType, number>
   achievements: Record<string, number>
+  /** today's daily run: best score and whether the day's reward was paid */
+  dailyRun?: { date: string; best: number; rewarded: boolean }
+  /** this week's expedition: themed clears and claimed milestones */
+  expedition?: { week: number; clears: number; claimed: number[] }
   event: { id: string; joined: boolean; tokens: number; claimed: number[] }
   daily: { lastClaim: string; streak: number }
   levelUps: number[]
@@ -226,6 +268,7 @@ interface Actions {
   recordRace: (r: { place: number; field: number; length: number; timeMs: number | null; coins: number; xp: number }) => void
   missionValue: (type: MissionType) => number
   claimMission: (type: MissionType) => Result
+  claimExpedition: (i: number) => Result
   claimAchievement: (id: string) => Result
   claimDaily: () => { coins?: number; gems?: number } | null
   joinEvent: () => void
@@ -234,6 +277,25 @@ interface Actions {
   applyPurchase: (orderId: string, grant: { animals?: AnimalId[]; gems?: number }) => boolean
   setSettings: (patch: Partial<Settings>) => void
   completeTutorial: () => void
+}
+
+/** the daily-run record and the expedition count after a run (and the day's gems, paid once) */
+function dailyAndExpedition(s: SaveState, r: RunResult): { patch: Partial<SaveState>; gems: number } {
+  const out: Partial<SaveState> = {}
+  let gems = 0
+  const week = weekId()
+  const theme = expeditionOf(week)
+  const themed = (r.challenges?.kinds ?? []).filter((k) => theme.kinds.includes(k)).length
+  const ex = s.expedition?.week === week ? s.expedition : { week, clears: 0, claimed: [] }
+  if (themed || ex !== s.expedition) out.expedition = { ...ex, clears: ex.clears + themed }
+  if (r.daily && !r.tutorial) {
+    const d = today()
+    const prev = s.dailyRun?.date === d ? s.dailyRun : { date: d, best: 0, rewarded: false }
+    const pay = !prev.rewarded && r.distance >= DAILY_MIN_M
+    out.dailyRun = { date: d, best: Math.max(prev.best, r.score), rewarded: prev.rewarded || pay }
+    if (pay) gems = DAILY_REWARD_GEMS
+  }
+  return { patch: out, gems }
 }
 
 export const useSave = create<SaveState & Actions>()(
@@ -329,9 +391,10 @@ export const useSave = create<SaveState & Actions>()(
           mp.branches += r.stats.branchesUnder
           mp.waterfall += r.stats.waterfallSections
           mp.run = Math.max(mp.run, r.distance)
+          const de = dailyAndExpedition(s, r)
           set({
             coins: s.coins + coins + levelsGained * LEVEL_REWARD.coins,
-            gems: s.gems + r.gems + levelsGained * LEVEL_REWARD.gems,
+            gems: s.gems + r.gems + levelsGained * LEVEL_REWARD.gems + de.gems,
             xp: s.xp + xp,
             best: {
               score: Math.max(s.best.score, r.score),
@@ -359,6 +422,7 @@ export const useSave = create<SaveState & Actions>()(
             },
             missionProgress: mp,
             levelUps,
+            ...de.patch,
             event: ev.joined ? { ...ev, tokens: ev.tokens + r.tokens } : ev,
           })
           return { coins, gems: r.gems, xp, newBest, levelsGained }
@@ -400,6 +464,17 @@ export const useSave = create<SaveState & Actions>()(
             missionTier: { ...s.missionTier, [type]: tier + 1 },
             missionProgress: { ...s.missionProgress, [type]: 0 },
           })
+          return ok
+        },
+
+        claimExpedition: (i) => {
+          const s = get()
+          const g = EXPEDITION_GOALS[i]
+          const ex = s.expedition?.week === weekId() ? s.expedition : { week: weekId(), clears: 0, claimed: [] }
+          if (!g) return no('No such reward')
+          if (ex.claimed.includes(i)) return no('Already claimed')
+          if (ex.clears < g.clears) return no('Not finished yet')
+          set({ coins: s.coins + (g.coins ?? 0), gems: s.gems + (g.gems ?? 0), expedition: { ...ex, claimed: [...ex.claimed, i] } })
           return ok
         },
 

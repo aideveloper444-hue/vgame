@@ -420,3 +420,14 @@ The brief (gameplay & challenge design doc v1.0, 10 Nov 2026) is applied to Wild
   chunky tyres, spare wheel and headlamps. Warning sounds (rapids, engine), boarding banners, challenge names.
 - Test: both vehicles x 12 seeds (fair rows, autopilot survives) plus boarding, steering, jump, duck and rock rules.
   47 tests. Checked live by screenshot: both rides. Not seen: a crash from a vehicle, the gully ramp close up.
+
+## 2026-11-13 night: daily run and weekly expedition (brief §5 seeded daily challenge, §7 weekly expedition)
+
+- **Daily run** ("Today's Trail" card on Missions): the date seeds the course and start zone (`dailySeed`), store
+  upgrades off, so every runner gets the same trail. Best score per day saved (`dailyRun`); the first run of the day
+  that reaches 300 m pays 30 gems. Retry keeps the daily course; the results screen says "Daily run ended".
+- **Weekly expedition**: five themes in rotation by week (Thunder River, Lost Temple Valley, Jaguar Highlands, Emerald
+  Canopy, Open Plains), each a set of challenge kinds. Clearing those challenges counts (the challenge card's tally now
+  records kinds); milestones 3 / 8 / 15 pay 500 coins / 40 gems / 100 gems (`claimExpedition`). Countdown to the
+  week's end. Old saves start empty (optional fields).
+- Checked by screenshot: Missions with both cards; the daily run starts from RUN. Not seen: a claim, the daily reward.

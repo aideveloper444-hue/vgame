@@ -104,6 +104,7 @@ export default function ChallengeHud({ runKey, solo }: { runKey: number; solo: b
           const bonus = solo ? stars * STAR_BONUS : 0
           if (bonus) s.score += bonus
           challengeTally.cleared++
+          challengeTally.kinds.push(t.sec.kind)
           challengeTally.stars += stars
           challengeTally.bonus += bonus
           if (stars === 3) challengeTally.perfect++

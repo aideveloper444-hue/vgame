@@ -18,6 +18,8 @@ interface Nav {
   storeTab: StoreTab
   /** start the next run as the tutorial */
   tutorial: boolean
+  /** start the next run as today's daily run (seeded by the date) */
+  daily: boolean
   levelUp: number | null
   go: (s: Screen, opts?: { previewId?: AnimalId; storeTab?: StoreTab; replace?: boolean }) => void
   pop: () => void
@@ -29,6 +31,7 @@ export const useNav = create<Nav>((set, get) => ({
   previewId: 'sonic',
   storeTab: 'characters',
   tutorial: false,
+  daily: false,
   levelUp: null,
   go: (screen, opts = {}) => {
     const cur = get()
