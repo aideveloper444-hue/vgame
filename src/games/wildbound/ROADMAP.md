@@ -502,3 +502,22 @@ The brief (gameplay & challenge design doc v1.0, 10 Nov 2026) is applied to Wild
 | §10 Monetization | Rewarded revive, Play Billing store; no interstitials. Server receipt check still missing |
 | §11 Architecture | Data-driven sections, seeded engine, tests; no analytics (privacy) |
 | §13 QA | Engine tests 54; live screenshot checks; not tested on low-end phones |
+
+## 2026-11-13 late: wildlife with our own realistic models, a clear forest path, planes in the air
+
+- **Stampede** (`stampede`, Survivor; savannah, grassland, baobab, desert, beach, coast, lakeside): the realistic
+  elephant (titan.glb, scaled 1.45 to a bull) charges down one or two lanes per row (never three), closing the gap;
+  the ground shakes as they pass. **Jaguar ambush** (`jaguar`, Adventurer; jungle and deep forest): the jaguar (tiger
+  body, jaguar coat) crouches on the verge facing its lane, springs into it 26 m ahead (`Item.ambush`, `pounce` event:
+  roar, jolt) and turns to face the runner. `Wildlife` in WorldScene pools full-quality `WildAnimal` instances.
+  Both join the gauntlet pool. Tests: 55.
+- **Clear forest path** (`clearVerge`, all kits): off-centre island trees stand at least 1 m + 0.42 x height from the
+  edge (trunks can't reach the trail, canopies still arch over), broad undergrowth keeps 1.2 m off the edge and the
+  nearest stays small, hanging vines keep back.
+- **Planes in the air**: the first airstrip chance in a run is always taken; airstrips also in forest clearings, pine
+  woods and riversides; the plane or glider picks the runner up from any lane (like a zipline); sky overflights in
+  every kit (not night or storm), lower over woods, every 150–330 m.
+- Magnet ring and power sparks recoloured from neon pink/green to the champagne palette.
+- Autopilot jumps onto parked trolleys (it used to run into them).
+- Checked live: stampede (elephants charging past), jaguars crouched on the verge, forest path, airstrip take-off from
+  a side lane. Not seen: the jaguar's spring up close.

@@ -25,6 +25,8 @@ export const CHALLENGE_NAME: Partial<Record<SectionKind, string>> & Record<strin
   toxic: 'Poison Frogs',
   cointunnel: 'Coin Tunnel',
   glider: 'Glider',
+  stampede: 'Stampede',
+  jaguar: 'Jaguar Ambush',
   jeep: 'Safari Jeep',
   lightning: 'Lightning',
   wildfire: 'Wildfire',

@@ -22,6 +22,14 @@ export function threatAhead(sim: RunSim, look = sim.state.speed * 0.55 + 4): Ite
 export function autopilot(sim: RunSim, threat = threatAhead(sim)) {
   const s = sim.state
   const look = s.speed * 0.55 + 4
+  // a parked trolley in the lane: jump onto it (running into it is a crash)
+  if (!s.ride) {
+    const tr = sim.items.find((it) => it.kind === 'trolley' && !it.ridden && !it.gone && it.lane === s.lane && it.d - s.d > 0 && it.d - s.d < (s.speed * 0.64) / 2 + it.len)
+    if (tr && s.pose !== 'jump') {
+      sim.input('jump')
+      return
+    }
+  }
   if (!threat) {
     // vines: a computer runner grabs the vine when it is on one
     const vine = sim.items.find((it) => it.kind === 'vine' && !it.gone && it.lane === s.lane && it.d - s.d > 0 && it.d - s.d < 2.2)

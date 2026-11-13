@@ -337,6 +337,12 @@ export default function RunScreen() {
               haptic(40)
             }
             break
+          case 'pounce':
+            // the jaguar springs: a roar and a jolt
+            sfx.roar()
+            run.shake = Math.max(run.shake, 0.35)
+            haptic(40)
+            break
           case 'collapse':
             // a hidden pit gives way: a crack and a short shake
             run.shake = Math.max(run.shake, 0.45)

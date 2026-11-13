@@ -76,6 +76,33 @@ const TREES = ['tree1', 'tree2', 'tree3'] as const
 /** big trees whose canopy and roots reach well past their placement point (see the ravine rule in makeSource) */
 const TREEISH = /^(tree|atree|btree|wtree|jtree|acacia|palm|birch|pine|redwood|baobab|cypress)/
 const BTREES = ['btree1', 'btree2', 'btree3'] as const
+/** the island-tree models: normalised on their bounding box, so the trunk sits up to 0.3 x height off the placement */
+const OFFSET_TREE = /^(tree|atree|btree|wtree|jtree|acacia)/
+/** broad undergrowth that crowds the trail if it grows right at the edge */
+const VERGE_PLANT = new Set(['calathea', 'anthurium', 'fern', 'shrub', 'pachira', 'bush', 'treefern'])
+/**
+ * A clear path (all kits): big off-centre trees stand far enough out that no rotation brings the trunk onto the
+ * trail (their canopies still arch over it), broad plants keep 1.2 m off the edge and the nearest ones stay small,
+ * hanging vines keep back from the edge.
+ */
+function clearVerge(p: Placement): Placement {
+  const ax = Math.abs(p.x)
+  const sx = p.x < 0 ? -1 : 1
+  if (OFFSET_TREE.test(p.prop)) {
+    const hgt = typeof p.scale === 'number' ? p.scale : p.scale[1]
+    const minX = PATH_HALF + 1 + 0.42 * hgt
+    return ax < minX ? { ...p, x: sx * minX } : p
+  }
+  if (VERGE_PLANT.has(p.prop)) {
+    const minX = PATH_HALF + 1.2
+    const x = ax < minX ? sx * (minX + (minX - ax) * 0.5) : p.x
+    const near = Math.abs(x) < PATH_HALF + 2.6
+    const scale = near ? (typeof p.scale === 'number' ? Math.min(p.scale, 0.75) : (p.scale.map((v) => Math.min(v, 0.85)) as [number, number, number])) : p.scale
+    return x === p.x && scale === p.scale ? p : { ...p, x, scale }
+  }
+  if (p.prop === 'vine' && ax < PATH_HALF + 1.2) return { ...p, x: sx * (PATH_HALF + 1.2 + (PATH_HALF + 1.2 - ax)) }
+  return p
+}
 
 /** The new zone kits (2026-11-06): savannah, desert, canyon, swamp, volcanic, coast, blossom, ice, birch. */
 function kitScenery(out: Placement[], k: number, b: BiomeId, side: number, h: (n: number) => number, at: (n: number) => number, zc: number) {
@@ -903,7 +930,7 @@ function makeSource() {
         const zip = sec?.kind === 'zipline'
         const holed = zip || holes.some((g) => Math.abs(g.d - zc) < g.len + SEG / 2 + 3)
         for (const p0 of scenery(k)) {
-          let p = p0
+          let p = clearVerge(p0)
           if (holed && TREEISH.test(p.prop)) {
             const hgt = typeof p.scale === 'number' ? p.scale : p.scale[1]
             const minX = PATH_HALF + 1 + 0.68 * hgt
@@ -1457,7 +1484,7 @@ function Effects() {
           break
         case 'pickup':
         case 'power':
-          emit(22, [s.x, s.y + 0.8, 0], e.kind === 'shield' ? '#7fd3ff' : e.kind === 'magnet' ? '#ff5d8f' : e.kind === 'speed' ? '#ffb02e' : '#7dff8a', 4, 0.45, 1, 0.7)
+          emit(22, [s.x, s.y + 0.8, 0], e.kind === 'shield' ? '#7fd3ff' : e.kind === 'magnet' ? '#f3e3bd' : e.kind === 'speed' ? '#f0c879' : '#e8d6a8', 4, 0.45, 1, 0.7)
           break
         case 'break':
           emit(16, [laneX(e.lane), 0.6, e.d - view.d], '#c8b48a', 5, 0.5, 9, 0.7)
@@ -1642,7 +1669,7 @@ function Runner({ animalId }: { animalId: AnimalId }) {
       </mesh>
       <mesh ref={ring} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.05, 0]} visible={false}>
         <torusGeometry args={[1.1, 0.04, 8, 48]} />
-        <meshBasicMaterial color="#ff5d8f" transparent opacity={0.7} toneMapped={false} />
+        <meshBasicMaterial color="#dcc08a" transparent opacity={0.7} toneMapped={false} />
       </mesh>
       <mesh ref={rope} visible={false}>
         <cylinderGeometry args={[0.05, 0.06, 1, 6]} />
@@ -1708,6 +1735,88 @@ function Rival({ r }: { r: Racer }) {
         <meshBasicMaterial color={r.color} transparent opacity={0.75} toneMapped={false} />
       </mesh>
     </group>
+  )
+}
+
+/**
+ * Wildlife on the trail, drawn with the game's own realistic rigged models: elephants charging in a stampede (the
+ * elephant model, scaled to a bull's size) and the jaguar of an ambush (the tiger body in its jaguar coat), which
+ * crouches on the verge facing its lane, springs into it, then turns to face the runner. Small pools of each.
+ */
+type WildSlot = { pose: WildPoseState; group: THREE.Group | null }
+function Wildlife() {
+  const ele = useRef<WildSlot[]>(Array.from({ length: 5 }, () => ({ pose: { pose: 'run', speed: 6, t: 0 }, group: null })))
+  const cat = useRef<WildSlot[]>(Array.from({ length: 2 }, () => ({ pose: { pose: 'idle', speed: 0, t: 0 }, group: null })))
+  const sprung = useMemo(() => new Map<number, number>(), [])
+  useFrame(() => {
+    const sim = view.showcase ? null : run.sim
+    const now = performance.now()
+    const els = sim ? sim.items.filter((it) => it.kind === 'elephant' && !it.gone && !it.broken && it.d - view.d > -8 && it.d - view.d < AHEAD) : []
+    let rumble = 0
+    ele.current.forEach((slot, i) => {
+      const it = els[i]
+      if (!slot.group) return
+      slot.group.visible = !!it
+      if (!it) return
+      const z = it.d - view.d
+      slot.group.position.set(laneX(it.lane), 0, z)
+      slot.group.rotation.set(0, Math.PI, 0)
+      slot.pose.pose = 'run'
+      slot.pose.speed = 6.5
+      if (z < 10 && z > -4) rumble = Math.max(rumble, 1 - Math.abs(z - 3) / 9)
+    })
+    if (rumble > 0) run.shake = Math.max(run.shake, 0.18 * rumble)
+    const cats = sim ? sim.items.filter((it) => it.kind === 'pounce' && !it.gone && it.d - view.d > -6 && it.d - view.d < AHEAD) : []
+    cat.current.forEach((slot, i) => {
+      const it = cats[i]
+      if (!slot.group) return
+      slot.group.visible = !!it
+      if (!it) return
+      const side = it.ambush ?? 1
+      const z = it.d - view.d
+      const verge = side * (LANE_W * 1.5 + 1.1)
+      if (it.h === 0) {
+        // crouched on the verge, facing its lane, tail flicking
+        slot.group.position.set(verge, 0, z)
+        slot.group.rotation.set(0, side > 0 ? -Math.PI / 2 : Math.PI / 2, 0)
+        slot.pose.pose = 'idle'
+        slot.pose.speed = 0
+        return
+      }
+      let t0 = sprung.get(it.id)
+      if (t0 === undefined) {
+        t0 = now
+        sprung.set(it.id, now)
+        if (sprung.size > 40) sprung.delete(sprung.keys().next().value!)
+      }
+      const p = Math.min(1, (now - t0) / 520)
+      const x = verge + (laneX(it.lane) - verge) * (p * p * (3 - 2 * p))
+      slot.group.position.set(x, 1.3 * Math.sin(Math.PI * p), z)
+      // mid-air it turns from facing across the trail to facing the runner
+      const across = side > 0 ? -Math.PI / 2 : Math.PI / 2
+      slot.group.rotation.set(0, across + (Math.PI - across) * Math.min(1, p * 1.3), 0)
+      slot.pose.pose = p < 1 ? 'jump' : 'idle'
+      slot.pose.t = p
+      slot.pose.speed = 0
+    })
+  })
+  return (
+    <>
+      {ele.current.map((slot, i) => (
+        <group key={`e${i}`} ref={(g) => void (slot.group = g)} visible={false} scale={1.45}>
+          <Suspense fallback={null}>
+            <WildAnimal animalId="titan" poseOf={() => slot.pose} onStep={emitDust} />
+          </Suspense>
+        </group>
+      ))}
+      {cat.current.map((slot, i) => (
+        <group key={`c${i}`} ref={(g) => void (slot.group = g)} visible={false} scale={1.08}>
+          <Suspense fallback={null}>
+            <WildAnimal animalId="jax" poseOf={() => slot.pose} />
+          </Suspense>
+        </group>
+      ))}
+    </>
   )
 }
 
@@ -3082,10 +3191,11 @@ function Overflights({ mode }: { mode: SceneMode }) {
       let go = false
       if (mode === 'run') {
         const b = biomeAt(view.d)
-        const open = !(BEAM_KIT[b.biome.id] ?? 0) || (BEAM_KIT[b.biome.id] ?? 0) < 0.6
+        // planes cross the sky over any country (not at night or in a storm); lower over the woods so they show
+        // through the canopy
         if (run.phase === 'running' && view.d > st.nextD) {
-          go = open && b.variant !== 'storm' && b.variant !== 'night'
-          st.nextD = view.d + 220 + Math.random() * 260
+          go = b.variant !== 'storm' && b.variant !== 'night'
+          st.nextD = view.d + 150 + Math.random() * 180
         }
       } else {
         st.nextT -= dt
@@ -3098,7 +3208,7 @@ function Overflights({ mode }: { mode: SceneMode }) {
         st.on = true
         st.dir = Math.random() < 0.5 ? -1 : 1
         st.x = -st.dir * 140
-        st.y = 30 + Math.random() * 14
+        st.y = (mode === 'run' && (BEAM_KIT[biomeAt(view.d).biome.id] ?? 0) >= 0.6 ? 20 : 28) + Math.random() * 10
         st.z = 70 + Math.random() * 50
       }
     }
@@ -3154,6 +3264,7 @@ export default function WorldScene({ animalId, mode = 'run', quality = 'high' }:
         {mode === 'run' && quality !== 'low' && <GroundMist />}
         {mode === 'run' && <Planes />}
         {mode === 'run' && <Gliders />}
+        {mode === 'run' && <Wildlife />}
         {mode !== 'preview' && <Overflights mode={mode} />}
       </Suspense>
       {mode !== 'run' && (

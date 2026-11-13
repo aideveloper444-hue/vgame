@@ -171,7 +171,7 @@ function lone(kind: ObstacleKind, lane: Lane = 1, animalId: AnimalId = 'titan') 
   ;(sim as unknown as { nextSectionAt: number }).nextSectionAt = 1e9
   sim.sections = []
   sim.state.shieldUntil = 0
-  sim.items.push({ id: 1, d: 20, lane, kind, h: 0, len: { log: 0.45, roots: 0.45, trap: 0.5, rock: 0.75, ruin: 0.8, branch: 0.35, barrier: 0.3, gap: 1.2, boulder: 0.9, trolley: 1.1, stream: 1.3, rubble: 0.45, stalactite: 0.35, plane: 1.6, quicksand: 1.3, darts: 0.3, swinglog: 0.4, minecart: 1.0, buffer: 0.4, beam: 0.3, bough: 0.4, raft: 1.1, jeep: 1.3, strike: 0.6, fire: 0.9, ember: 0.35, roller: 0.45, blade: 0.3, swarm: 0.5, web: 0.3, toxic: 1.2  }[kind], gone: false, passed: false, broken: false, frozen: false, moving: 0 })
+  sim.items.push({ id: 1, d: 20, lane, kind, h: 0, len: { log: 0.45, roots: 0.45, trap: 0.5, rock: 0.75, ruin: 0.8, branch: 0.35, barrier: 0.3, gap: 1.2, boulder: 0.9, trolley: 1.1, stream: 1.3, rubble: 0.45, stalactite: 0.35, plane: 1.6, quicksand: 1.3, darts: 0.3, swinglog: 0.4, minecart: 1.0, buffer: 0.4, beam: 0.3, bough: 0.4, raft: 1.1, jeep: 1.3, strike: 0.6, fire: 0.9, ember: 0.35, roller: 0.45, blade: 0.3, swarm: 0.5, web: 0.3, toxic: 1.2, elephant: 1.7, pounce: 0.9 }[kind], gone: false, passed: false, broken: false, frozen: false, moving: 0 })
   return sim
 }
 const until = (sim: RunSim, d: number) => runFor(sim, d - sim.state.d)
@@ -838,7 +838,7 @@ test('brief library batch: rollers and puddles are jumped, blades, swarms and we
 })
 
 test('brief library batch: every new section is fair and a careful runner gets through', () => {
-  for (const kind of ['spikeroll', 'pitfall', 'blades', 'swarm', 'webs', 'toxic', 'cointunnel', 'glider'] as const)
+  for (const kind of ['spikeroll', 'pitfall', 'blades', 'swarm', 'webs', 'toxic', 'cointunnel', 'glider', 'stampede', 'jaguar'] as const)
     for (let seed = 1; seed <= 12; seed++) {
       const { sim, sec } = withSection(kind, seed)
       const rows = new Map<number, Item[]>()
@@ -862,6 +862,22 @@ test('brief library batch: every new section is fair and a careful runner gets t
   // the glider section flies a glider
   const g = withSection('glider', 1).sim.items.find((it) => it.kind === 'plane')
   assert.ok(g?.glider, 'glider craft')
+})
+
+test('wildlife: a charging elephant must be dodged; a jaguar only threatens its lane once it springs (26 m out)', () => {
+  const e = lone('elephant', 1)
+  e.state.loyalUsed = true
+  until(e, 22)
+  assert.equal(e.state.crashKind, 'elephant', 'an elephant in the lane')
+  const { sim } = withSection('jaguar', 3)
+  const cats = sim.items.filter((it) => it.kind === 'pounce')
+  assert.equal(cats.length, 3)
+  assert.ok(cats.every((it) => it.ambush && it.h === 0), 'waiting on the verge')
+  const first = Math.min(...cats.map((it) => it.d))
+  until(sim, first - 27)
+  assert.ok(cats.filter((it) => it.d === first).every((it) => it.h === 0), 'still waiting 27 m out')
+  runFor(sim, 2)
+  assert.ok(cats.filter((it) => it.d === first).every((it) => it.h === 1), 'sprung by 25 m')
 })
 
 test('zone 72 (Abandoned Railway Forest) has a railway', () => {

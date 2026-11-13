@@ -178,6 +178,18 @@ export const sfx = {
         tone(660, 0.18, 'triangle', 0.06)
         tone(880, 0.3, 'triangle', 0.06, undefined, 0.16)
         break
+      case 'stampede':
+        // the ground drumming under a herd, and a bull's trumpet
+        noise(1.6, 0.22, 'lowpass', 120, 1.5, 70)
+        tone(40, 1.4, 'sine', 0.16, 34)
+        tone(330, 0.5, 'sawtooth', 0.05, 520, 0.5)
+        tone(520, 0.4, 'sawtooth', 0.04, 420, 0.95)
+        break
+      case 'jaguar':
+        // a low, close growl
+        noise(0.9, 0.16, 'lowpass', 260, 2.5, 140)
+        tone(70, 0.9, 'sawtooth', 0.06, 55)
+        break
       case 'spikeroll':
         // iron rumbling over stone
         noise(1.0, 0.14, 'lowpass', 220, 2, 140)
