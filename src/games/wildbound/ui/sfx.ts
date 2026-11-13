@@ -178,6 +178,17 @@ export const sfx = {
         tone(660, 0.18, 'triangle', 0.06)
         tone(880, 0.3, 'triangle', 0.06, undefined, 0.16)
         break
+      case 'raft':
+        // the roar of rapids building
+        noise(1.4, 0.16, 'bandpass', 700, 0.5, 1600)
+        noise(1.2, 0.08, 'lowpass', 300, 1, 160, 0.2)
+        break
+      case 'jeep':
+        // an engine turning over and catching
+        tone(70, 0.25, 'sawtooth', 0.06, 90)
+        tone(80, 0.7, 'sawtooth', 0.06, 140, 0.28)
+        noise(0.7, 0.05, 'lowpass', 400, 1, 900, 0.28)
+        break
       case 'flight':
         tone(85, 1.0, 'sawtooth', 0.04, 140)
         break

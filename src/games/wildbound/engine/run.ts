@@ -115,7 +115,14 @@ export function flightAlt(p: number) {
   const down = q > 0.82 ? 1 - ((q - 0.82) / 0.18) ** 2 * (3 - 2 * ((q - 0.82) / 0.18)) : 1
   return PLANE_DECK + FLY_H * Math.min(up, down) * (1 + 0.06 * Math.sin(q * Math.PI * 4))
 }
-export type RideKind = 'trolley' | 'plane' | 'minecart'
+export type RideKind = 'trolley' | 'plane' | 'minecart' | 'raft' | 'jeep'
+/** vehicles that are steered: a lane change moves the vehicle (track, channel or line) instead of hopping off */
+export const STEERED: RideKind[] = ['minecart', 'raft', 'jeep']
+export const isSteered = (k?: RideKind | null) => !!k && STEERED.includes(k)
+/** parked vehicles that board when the runner runs into them */
+const BOARDS: ObstacleKind[] = ['minecart', 'raft', 'jeep']
+/** the rider's height on each vehicle (the raft sits low on the water) */
+const RIDE_BASE: Partial<Record<RideKind, number>> = { raft: 0.42, jeep: 1.05 }
 
 /** zipline cables: height at the start gantry and how far they fall to the far one */
 export const ZIP_TOP = 6.2
@@ -326,7 +333,7 @@ export function mulberry32(seed: number) {
   }
 }
 
-const HALF_LEN: Record<ObstacleKind, number> = { log: 0.45, roots: 0.45, trap: 0.5, rock: 0.75, ruin: 0.8, branch: 0.35, barrier: 0.3, gap: 1.2, boulder: 0.9, trolley: 1.1, stream: 1.3, rubble: 0.45, stalactite: 0.35, plane: 1.6, quicksand: 1.3, darts: 0.3, swinglog: 0.4, minecart: 1.0, buffer: 0.4, beam: 0.3, bough: 0.4 }
+const HALF_LEN: Record<ObstacleKind, number> = { log: 0.45, roots: 0.45, trap: 0.5, rock: 0.75, ruin: 0.8, branch: 0.35, barrier: 0.3, gap: 1.2, boulder: 0.9, trolley: 1.1, stream: 1.3, rubble: 0.45, stalactite: 0.35, plane: 1.6, quicksand: 1.3, darts: 0.3, swinglog: 0.4, minecart: 1.0, buffer: 0.4, beam: 0.3, bough: 0.4, raft: 1.1, jeep: 1.3 }
 /** height the runner must be above the trail to clear a jump obstacle */
 const CLEARANCE: Partial<Record<ObstacleKind, number>> = { log: 0.55, roots: 0.4, trap: 0.45, gap: 0.02, rock: 1.2, ruin: 1.5, boulder: 1.2, trolley: 1.2, stream: 0.02, rubble: 0.45, quicksand: 0.02 }
 
@@ -546,11 +553,11 @@ export class RunSim {
         const next = Math.max(0, Math.min(2, s.lane + (cmd === 'left' ? -1 : 1))) as Lane
         if (next !== s.lane) {
           // a trolley is left by changing lane; a mine cart switches track; a plane steers
-          if (s.ride && s.ride.kind !== 'plane' && s.ride.kind !== 'minecart') this.dismount(false)
+          if (s.ride && s.ride.kind !== 'plane' && !isSteered(s.ride.kind)) this.dismount(false)
           if (s.swing && !s.swing.zip) break
           s.laneFrom = { lane: s.lane, t: s.t, d: s.d }
           s.lane = next
-          if (s.ride?.kind === 'minecart') s.ride.lane = next
+          if (s.ride && isSteered(s.ride.kind)) s.ride.lane = next
           if (s.swing?.zip) s.swing.lane = next
           s.stats.laneChanges++
           this.tutDone('lane')
@@ -686,11 +693,11 @@ export class RunSim {
       }
       if (s.d >= s.ride.end - 1.5) this.dismount(true)
     } else if (s.ride) {
-      s.base = RIDE_H
+      s.base = RIDE_BASE[s.ride.kind ?? 'trolley'] ?? RIDE_H
       const tr = this.items.find((it) => it.id === s.ride!.item)
       if (tr) {
         tr.d = Math.min(s.ride.end, s.d + 0.15)
-        if (s.ride.kind === 'minecart') tr.lane = s.lane
+        if (isSteered(s.ride.kind)) tr.lane = s.lane
       }
       if (s.d >= s.ride.end - 1.5) this.dismount(true)
     } else if (s.base > 0) s.base = Math.max(0, s.base - dt * (s.pose === 'jump' ? 1.2 : 5))
@@ -766,11 +773,12 @@ export class RunSim {
     const low = (s.pose === 'slide' || s.pose === 'roll') && s.poseT > 0.03 && s.poseT < 0.97
     const bigJump = this.powerOn('superjump') || this.powerOn('megajump') || this.abilityOn('leap') || this.abilityOn('cliff')
     if (s.ride?.kind === 'plane') return true
-    if (s.ride?.kind === 'minecart') {
-      // in the cart: jump the broken rails, duck under the beams, switch track away from a buffer stop
-      if (kind === 'minecart') return true
-      if (kind === 'gap') return s.pose === 'jump'
-      if (kind === 'beam') return low
+    if (s.ride && isSteered(s.ride.kind)) {
+      // in a vehicle: jump what is low (broken rails, gullies, floating logs), duck what is overhead (beams,
+      // branches), steer away from anything else (buffer stops, rocks, boulders)
+      if (BOARDS.includes(kind)) return true
+      if (kind === 'gap' || kind === 'log') return s.pose === 'jump'
+      if (kind === 'beam' || kind === 'branch') return low
       return false
     }
     if (PIT(kind) && (this.abilityOn('cliff') || s.ride || s.swing)) return true
@@ -808,14 +816,15 @@ export class RunSim {
         }
         continue
       }
-      if (it.kind === 'minecart') {
-        // run into a parked cart (any pose) to climb in; carts never hurt the runner
+      if (BOARDS.includes(it.kind as ObstacleKind)) {
+        // run into a parked vehicle (any pose) to climb in; parked vehicles never hurt the runner
         if (!it.ridden && !s.ride && !s.swing) {
           const sec = this.sectionAt(it.d)
-          s.ride = { lane: it.lane, end: sec ? sec.to - 4 : it.d + 80, item: it.id, kind: 'minecart' }
+          const kind = it.kind as RideKind
+          s.ride = { lane: it.lane, end: sec ? sec.to - 4 : it.d + 80, item: it.id, kind }
           s.pose = 'run'
           s.actionMs = 0
-          this.events.push({ type: 'ride', on: true, kind: 'minecart' })
+          this.events.push({ type: 'ride', on: true, kind })
         }
         continue
       }
@@ -1249,10 +1258,13 @@ export class RunSim {
       if (has(['jungle', 'forest', 'bamboo', 'giantroot', 'redwood', 'temple', 'ruins', 'pine', 'fern'])) W.push(['swinglog', 1])
       // mine carts in rocky country, ziplines across ravines in the big woods
       if (has(['canyon', 'hills', 'cliffside', 'volcanic', 'ruins', 'mossy', 'glow', 'deadwood'])) W.push(['minecart', 1.3])
+      // white water in river country, a safari jeep in the open plains
+      if (has(['river', 'swamp', 'mangrove', 'waterfall', 'lagoon', 'lakeside', 'jungle'])) W.push(['raft', 1.4])
+      if (has(['savannah', 'desert', 'grassland', 'baobab', 'beach', 'coast'])) W.push(['jeep', 1.4])
       if (has(['forest', 'jungle', 'redwood', 'giantroot', 'cliffside', 'cedar', 'pine', 'fern'])) W.push(['zipline', 1.2])
       if (!W.length) W.push(['river', 1], ['rockslide', 1])
       const kind = this.pickSection(W, this.runD(d0), (z.flavor === 'rail' || kit === 'railway' ? 'rail' : z.flavor === 'vines' ? 'vines' : null))
-      const rows = kind === 'minecart' ? 8 : kind === 'flight' || kind === 'zipline' ? 6 : kind === 'cave' || kind === 'rail' || kind === 'temple' ? 4 : 3
+      const rows = kind === 'minecart' || kind === 'raft' || kind === 'jeep' ? 8 : kind === 'flight' || kind === 'zipline' ? 6 : kind === 'cave' || kind === 'rail' || kind === 'temple' ? 4 : 3
       const len = (this.rowGap(d0 + 60) + 1) * rows + 40
       // keep inside the zone (clear of its 400 m boundaries) and clear of every junction
       let from = d0
@@ -1264,7 +1276,7 @@ export class RunSim {
         this.nextSectionAt = Math.max(clash ? clash.end + 20 : 0, from + 60)
         continue
       }
-      this.sections.push({ kind, from, to: from + len, lane: kind === 'flight' || kind === 'minecart' || kind === 'zipline' ? 1 : this.rng() < 0.5 ? 0 : 2, built: false, announced: false })
+      this.sections.push({ kind, from, to: from + len, lane: kind === 'flight' || kind === 'minecart' || kind === 'zipline' || kind === 'raft' || kind === 'jeep' ? 1 : this.rng() < 0.5 ? 0 : 2, built: false, announced: false })
       this.sectionLog.push(kind)
       if (this.sectionLog.length > 8) this.sectionLog.shift()
       this.nextSectionAt = this.nextChallengeAt(from + len)
@@ -1531,6 +1543,43 @@ export class RunSim {
           }
           this.lastRowD = d
           // the clean track wanders, a track at a time
+          clean = Math.max(0, Math.min(2, clean + (this.rng() < 0.5 ? -1 : 1))) as Lane
+        }
+        sec.to = this.lastRowD + 14
+        break
+      }
+      case 'raft':
+      case 'jeep': {
+        // a vehicle run, like the mine line: a vehicle parked in every lane (run into one), then rows the rider steers
+        // through. Raft: rocks in the rapids (steer), floating logs (jump the raft over), low branches (duck). Jeep:
+        // boulders and acacia trunks (steer), gullies off a ramp (jump), low acacia boughs (duck). Every row leaves one
+        // clean lane; rows are 1.3x the reaction gap apart because the vehicle is faster than running.
+        const raft = sec.kind === 'raft'
+        const at = from + 5
+        for (const l of [0, 1, 2] as Lane[]) this.add(at, l, sec.kind as ObstacleKind, 0)
+        this.lastRowD = at
+        const sp = (d: number) => gapAt(d) * 1.3
+        const H = RIDE_BASE[sec.kind as RideKind] ?? RIDE_H
+        let d = at + sp(at) + 2
+        let clean = Math.floor(this.rng() * 3) as Lane
+        const wall: ObstacleKind = raft ? 'rock' : this.rng() < 0.5 ? 'rock' : 'boulder'
+        const low: ObstacleKind = raft ? 'log' : 'gap'
+        for (let i = 0; i < 6; i++, d += sp(d)) {
+          const others = ([0, 1, 2] as Lane[]).filter((l) => l !== clean)
+          if (i === 2 || i === 4) {
+            // a full-width hazard: every lane low (jump) or every lane overhead (duck)
+            const k: ObstacleKind = this.rng() < 0.5 ? low : 'branch'
+            for (const l of [0, 1, 2] as Lane[]) this.add(d, l, k)
+            for (let c = -2; c <= 2; c++) this.add(d + c * 1.6, clean, 'coin', H + 0.7 + (k === low ? 1.2 * (1 - (c / 2.5) ** 2) : -0.3))
+          } else {
+            const w = this.add(d, others[0], wall)
+            w.moving = 0
+            const r = this.rng()
+            const k: ObstacleKind = r < 0.5 ? wall : r < 0.75 ? low : 'branch'
+            this.add(d, others[1], k).moving = 0
+            for (let c = 0; c < 5; c++) this.add(d - 9 + c * 2.2, clean, c === 2 ? 'gem' : 'coin', H + 0.7)
+          }
+          this.lastRowD = d
           clean = Math.max(0, Math.min(2, clean + (this.rng() < 0.5 ? -1 : 1))) as Lane
         }
         sec.to = this.lastRowD + 14

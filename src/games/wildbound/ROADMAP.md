@@ -405,3 +405,18 @@ The brief (gameplay & challenge design doc v1.0, 10 Nov 2026) is applied to Wild
 - Checked by screenshot: store (characters, power-ups, coins), missions, festival, character selection and details,
   the pickup textures. Not seen: the level-up modal (needs a level gained), pickups up close in a live run.
 - Still weak: store cards for Nova, Blaze and Zara are crops of the in-game models (flat yellow), not proper art.
+
+## 2026-11-13 night: vehicles — white-water raft and safari jeep (brief §C)
+
+- Ride code generalised: `STEERED` rides (mine cart, raft, jeep) are boarded by running into a parked vehicle, a
+  lane change steers, jump clears low hazards (broken rails, gullies, floating logs), slide ducks overhead ones (beams,
+  branches), anything else must be steered round. Per-vehicle rider height (`RIDE_BASE`).
+- **White-water raft** (`raft`, Adventurer tier; river, swamp, mangrove, waterfall, lagoon, lakeside, jungle): rafts at
+  the bank, then the whole trail is river; rocks in the rapids, floating logs, low branches; the raft bobs and leans
+  into the steer. **Safari jeep** (`jeep`, Adventurer; savannah, desert, grassland, baobab, beach, coast): boulders,
+  gullies with a timber ramp, low acacia boughs; the jeep leans and pitches on jumps.
+- Six rows each, one clean lane per row, two full-width jump/duck rows; coins and a gem on the clean lane.
+- Procedural models (props.tsx): lashed log raft with rope bindings; open olive 4x4 with roll bar, windscreen frame,
+  chunky tyres, spare wheel and headlamps. Warning sounds (rapids, engine), boarding banners, challenge names.
+- Test: both vehicles x 12 seeds (fair rows, autopilot survives) plus boarding, steering, jump, duck and rock rules.
+  47 tests. Checked live by screenshot: both rides. Not seen: a crash from a vehicle, the gully ramp close up.

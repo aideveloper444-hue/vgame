@@ -171,7 +171,7 @@ function lone(kind: ObstacleKind, lane: Lane = 1, animalId: AnimalId = 'titan') 
   ;(sim as unknown as { nextSectionAt: number }).nextSectionAt = 1e9
   sim.sections = []
   sim.state.shieldUntil = 0
-  sim.items.push({ id: 1, d: 20, lane, kind, h: 0, len: { log: 0.45, roots: 0.45, trap: 0.5, rock: 0.75, ruin: 0.8, branch: 0.35, barrier: 0.3, gap: 1.2, boulder: 0.9, trolley: 1.1, stream: 1.3, rubble: 0.45, stalactite: 0.35, plane: 1.6, quicksand: 1.3, darts: 0.3, swinglog: 0.4, minecart: 1.0, buffer: 0.4, beam: 0.3, bough: 0.4 }[kind], gone: false, passed: false, broken: false, frozen: false, moving: 0 })
+  sim.items.push({ id: 1, d: 20, lane, kind, h: 0, len: { log: 0.45, roots: 0.45, trap: 0.5, rock: 0.75, ruin: 0.8, branch: 0.35, barrier: 0.3, gap: 1.2, boulder: 0.9, trolley: 1.1, stream: 1.3, rubble: 0.45, stalactite: 0.35, plane: 1.6, quicksand: 1.3, darts: 0.3, swinglog: 0.4, minecart: 1.0, buffer: 0.4, beam: 0.3, bough: 0.4, raft: 1.1, jeep: 1.3 }[kind], gone: false, passed: false, broken: false, frozen: false, moving: 0 })
   return sim
 }
 const until = (sim: RunSim, d: number) => runFor(sim, d - sim.state.d)
@@ -665,6 +665,52 @@ test('pacing director: quiet start, run-time spacing, tiers and no quick repeats
     const k = pick(W, 100, null)
     assert.ok(!log.slice(-SECTION_NO_REPEAT).includes(k), `${k} repeated within ${SECTION_NO_REPEAT} (${log.slice(-SECTION_NO_REPEAT)})`)
     log.push(k)
+  }
+})
+
+test('raft and jeep: board by running in, steer by lane, jump the low hazards, duck the overhead ones, every row fair', () => {
+  for (const kind of ['raft', 'jeep'] as const) {
+    for (let seed = 1; seed <= 12; seed++) {
+      const { sim, sec } = withSection(kind, seed)
+      const rows = new Map<number, Item[]>()
+      for (const it of sim.items) if (isObstacle(it.kind) && it.kind !== kind) rows.set(it.d, [...(rows.get(it.d) ?? []), it])
+      assert.ok(rows.size >= 6, `${kind}: six rows`)
+      for (const [d, row] of rows) {
+        const kinds = new Set(row.map((it) => it.kind))
+        const full = new Set(row.map((it) => it.lane)).size === 3
+        // a full row is one movable hazard in every lane, never a wall or a jump-and-duck mix
+        if (full) assert.ok(kinds.size === 1 && !ESCAPES[row[0].kind as ObstacleKind].includes('lane'), `${kind} seed ${seed}: row at ${d} is unfair (${[...kinds]})`)
+      }
+      runFor(sim, sec.to + 10 - sim.state.d, () => autopilot(sim))
+      assert.ok(sim.state.alive, `${kind} seed ${seed}: crashed into ${sim.state.crashKind} at ${sim.state.d.toFixed(1)}`)
+    }
+    // boarding, steering and the rules, on one hand-built row
+    const { sim } = withSection(kind, 1)
+    const vehicle = sim.items.find((it) => it.kind === kind && it.lane === 1)!
+    sim.items = sim.items.filter((it) => !isObstacle(it.kind) || it.kind === kind)
+    until(sim, vehicle.d + 2)
+    assert.equal(sim.state.ride?.kind, kind, `${kind}: boarded`)
+    sim.input('left')
+    runFor(sim, 4)
+    assert.equal(sim.state.ride?.kind, kind, `${kind}: a lane change steers, it does not hop off`)
+    const low = kind === 'raft' ? 'log' : 'gap'
+    const add = (k: ObstacleKind, d: number) => sim.items.push({ id: 900 + d, d, lane: sim.state.lane, kind: k, h: 0, len: k === 'gap' ? 1.2 : 0.4, gone: false, passed: false, broken: false, frozen: false, moving: 0 })
+    const at = sim.state.d + 22
+    add(low, at)
+    until(sim, at - (sim.state.speed * 0.64) / 2 - 0.4)
+    sim.input('jump')
+    runFor(sim, 6)
+    assert.ok(sim.state.alive, `${kind}: jumped the ${low}`)
+    const at2 = sim.state.d + 22
+    add('branch', at2)
+    until(sim, at2 - 2.2)
+    sim.input('slide')
+    runFor(sim, 6)
+    assert.ok(sim.state.alive, `${kind}: ducked the branch`)
+    const at3 = sim.state.d + 22
+    add('rock', at3)
+    until(sim, at3 + 2)
+    assert.equal(sim.state.crashKind, 'rock', `${kind}: a rock in the lane must be steered round`)
   }
 })
 

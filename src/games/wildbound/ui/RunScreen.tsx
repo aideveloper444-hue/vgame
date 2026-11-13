@@ -306,6 +306,14 @@ export default function RunScreen() {
               sfx.power()
               haptic(60)
               run.shake = Math.max(run.shake, 0.35)
+            } else if (e.on && e.kind === 'raft') {
+              setBanner({ id: Date.now(), big: 'Paddles in!', small: 'Steer round rocks · jump logs · duck branches' })
+              sfx.power()
+              haptic(40)
+            } else if (e.on && e.kind === 'jeep') {
+              setBanner({ id: Date.now(), big: 'Hold tight!', small: 'Steer round boulders · jump gullies · duck boughs' })
+              sfx.power()
+              haptic(40)
             } else if (e.on && e.kind === 'minecart') {
               setBanner({ id: Date.now(), big: 'All aboard!', small: 'Switch tracks · jump broken rails · duck the beams' })
               sfx.power()

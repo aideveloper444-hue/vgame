@@ -434,6 +434,12 @@ function surfaceAt(d: number, b: BiomeId = biomeId(d)): Surface {
 
 // ---------------------------------------------------------------- items on the trail
 
+/** inside a raft section's river (from just past the parked rafts to just before the take-out) */
+function raftWater(rd: number) {
+  const sec = view.showcase ? null : run.sim?.sectionAt(rd)
+  return !!sec && sec.kind === 'raft' && sec.built && rd > sec.from + 7 && rd < sec.to - 6
+}
+
 const broken = new Map<number, number>()
 const fallen = new Map<number, number>()
 
@@ -532,6 +538,8 @@ function itemPlacements(it: Item, z: number, now: number, out: Placement[]) {
       out.push({ prop: 'boulder', x: X, y: lift, z, rotY: 0, rotX: -it.d / 0.95, rotZ: tumble, scale: s([1.95, 1.9, 1.95]) })
       break
     case 'gap':
+      // a gully on the jeep track: a timber ramp leads up to its near lip
+      if (run.sim?.sectionAt(it.d)?.kind === 'jeep') out.push({ prop: 'sleeper', x, y: 0.12, z: z - it.len - 1.4, rotY: 0, rotX: -0.2, scale: [1.8, 0.1, 2.3] })
       for (const e of [-1, 1]) out.push({ prop: 'stub', x, y: -0.05, z: z + e * (it.len + 0.8), rotY: e > 0 ? Math.PI : 0, rotX: e * 0.08, scale: [2.0, 0.12, 0.6] })
       break
     case 'trolley':
@@ -583,6 +591,29 @@ function itemPlacements(it: Item, z: number, now: number, out: Placement[]) {
       const st = run.sim?.state
       const riding = !!st && st.ride?.item === it.id
       out.push({ prop: 'minecart', x: riding ? st!.x : x, y: 0.27 + (riding ? Math.max(0, st!.y - RIDE_H) : 0), z, rotY: 0, rotZ: riding ? THREE.MathUtils.clamp((laneX(st!.lane) - st!.x) * 0.06, -0.12, 0.12) : 0, scale: 1.28 })
+      break
+    }
+    case 'raft':
+    case 'jeep': {
+      // the ridden vehicle follows the rider across lanes, leans into the steer and lifts with a jump; a raft bobs on
+      // the current, a parked one rocks gently at the bank
+      const st = run.sim?.state
+      const riding = !!st && st.ride?.item === it.id
+      const raft = it.kind === 'raft'
+      const base = raft ? 0.42 : 1.05
+      const lean = riding ? THREE.MathUtils.clamp((laneX(st!.lane) - st!.x) * (raft ? 0.09 : 0.05), -0.16, 0.16) : 0
+      const bob = raft ? Math.sin(now / 420 + it.id) * 0.04 : 0
+      const lifted = riding ? Math.max(0, st!.y - base) : 0
+      out.push({
+        prop: it.kind,
+        x: riding ? st!.x : x,
+        y: (raft ? -0.16 : 0) + bob + lifted,
+        z,
+        rotY: 0,
+        rotX: raft ? Math.sin(now / 530 + it.id) * 0.03 : -lifted * 0.08,
+        rotZ: lean + (raft ? Math.sin(now / 610 + it.id) * 0.025 : 0),
+        scale: raft ? 0.36 : 1.94,
+      })
       break
     }
     case 'buffer':
@@ -849,6 +880,9 @@ function makeSource() {
           const lift = liftOf(ri)
           trailRow(push, r, rd, rd - d, surfaceAt(rd, route.biome), lift === 0 ? gaps : [], lift)
         })
+      } else if (raftWater(rd)) {
+        // white water: the whole trail is river between the put-in and the take-out
+        push({ prop: 'waterQuad', x: 0, y: -0.3, z: rd - d, rotY: 0, scale: [PATH_HALF * 2 + 1.2, 0.05, ROW + 0.01] })
       } else trailRow(push, r, rd, rd - d, surfaceAt(rd), gaps, 0)
     }
     // obstacles
@@ -2512,9 +2546,11 @@ function World() {
       <PropSet kit={kits.birch} prop="birch" capacity={150} source={source} shadows />
       <PropSet kit={kits.trolley} prop="trolley" capacity={6} source={source} shadows />
       <PropSet kit={kits.minecart} prop="minecart" capacity={6} source={source} shadows />
+      <PropSet kit={kits.raft} prop="raft" capacity={6} source={source} shadows />
+      <PropSet kit={kits.jeep} prop="jeep" capacity={6} source={source} shadows />
       <PropSet kit={kits.chevron} prop="chevron" capacity={8} source={source} shadows />
       <PropSet kit={kits.shadowDisc} prop="shadowDisc" capacity={12} source={source} receive={false} />
-      <PropSet kit={kits.waterQuad} prop="waterQuad" capacity={30} source={source} receive={false} />
+      <PropSet kit={kits.waterQuad} prop="waterQuad" capacity={200} source={source} receive={false} />
       <PropSet kit={kits.caveRoof} prop="caveRoof" capacity={30} source={source} />
       <PropSet kit={kits.stalactite} prop="stalactite" capacity={20} source={source} shadows />
       <PropSet kit={kits.sandPool} prop="sandPool" capacity={20} source={source} receive />

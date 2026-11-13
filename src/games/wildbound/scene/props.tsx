@@ -98,6 +98,8 @@ export type ProcProp =
   | 'birch'
   | 'trolley'
   | 'minecart'
+  | 'raft'
+  | 'jeep'
   | 'chevron'
   | 'redwood'
   | 'treefern'
@@ -512,6 +514,51 @@ export function useProcKits(): Record<ProcProp, PropKit> {
     const rust = new THREE.MeshStandardMaterial({ color: '#4a3226', roughness: 0.82, metalness: 0.55 })
     const ironDark = new THREE.MeshStandardMaterial({ color: '#26272a', roughness: 0.55, metalness: 0.8 })
     const yellowBar = new THREE.MeshStandardMaterial({ color: '#8f9296', roughness: 0.3, metalness: 0.9 })
+    // white-water raft: six peeled logs lashed across two cross-beams, rope bindings at both ends
+    const raftLogs: THREE.BufferGeometry[] = []
+    for (let i = 0; i < 6; i++) {
+      const x = -0.7 + i * 0.28
+      raftLogs.push(new THREE.CylinderGeometry(0.14, 0.15, 2.4 - (i % 2) * 0.12, 12).rotateX(Math.PI / 2).translate(x, 0.14, 0).toNonIndexed())
+    }
+    const raftBeams = iron([box(1.8, 0.1, 0.16, 0, 0.3, 0.75), box(1.8, 0.1, 0.16, 0, 0.3, -0.75)])
+    const raftRope: THREE.BufferGeometry[] = []
+    for (const z of [0.75, -0.75]) for (let i = 0; i < 6; i++) raftRope.push(new THREE.TorusGeometry(0.16, 0.022, 6, 14).translate(-0.7 + i * 0.28, 0.14, z).toNonIndexed())
+    const raftBark = new THREE.MeshStandardMaterial({ color: '#7a5a3c', roughness: 0.92 })
+    // safari jeep: an open four-by-four in matte olive, bonnet, grille, windscreen frame, roll bar, chunky tyres
+    const jeepBody = iron([
+      box(1.56, 0.5, 2.7, 0, 0.72, 0),
+      box(1.5, 0.22, 1.0, 0, 1.06, 0.82),
+      box(1.62, 0.08, 0.62, 0, 0.98, 1.38),
+      box(0.18, 0.12, 0.55, 0.78, 0.9, 0.82),
+      box(0.18, 0.12, 0.55, -0.78, 0.9, 0.82),
+      box(0.18, 0.12, 0.55, 0.78, 0.9, -0.82),
+      box(0.18, 0.12, 0.55, -0.78, 0.9, -0.82),
+    ])
+    const jeepDark = iron([
+      box(1.3, 0.34, 0.06, 0, 0.82, 1.36),
+      rod(-0.7, 1.16, 0.32, -0.7, 1.74, 0.22, 0.035),
+      rod(0.7, 1.16, 0.32, 0.7, 1.74, 0.22, 0.035),
+      rod(-0.7, 1.74, 0.22, 0.7, 1.74, 0.22, 0.035),
+      rod(-0.7, 0.98, -0.2, -0.7, 1.9, -0.3, 0.045),
+      rod(0.7, 0.98, -0.2, 0.7, 1.9, -0.3, 0.045),
+      rod(-0.7, 1.9, -0.3, 0.7, 1.9, -0.3, 0.045),
+      rod(-0.7, 1.9, -0.3, -0.7, 0.98, -1.3, 0.04),
+      rod(0.7, 1.9, -0.3, 0.7, 0.98, -1.3, 0.04),
+      box(1.4, 0.1, 0.2, 0, 0.5, 1.42),
+      box(1.4, 0.1, 0.2, 0, 0.5, -1.42),
+    ])
+    const jeepTyres: THREE.BufferGeometry[] = []
+    for (const wx of [-0.78, 0.78]) for (const wz of [-0.9, 0.95]) jeepTyres.push(new THREE.CylinderGeometry(0.4, 0.4, 0.3, 22).rotateZ(Math.PI / 2).translate(wx, 0.4, wz).toNonIndexed())
+    jeepTyres.push(new THREE.CylinderGeometry(0.36, 0.36, 0.26, 22).rotateX(Math.PI / 2).translate(0, 0.92, -1.5).toNonIndexed())
+    const jeepHubs: THREE.BufferGeometry[] = []
+    for (const wx of [-0.94, 0.94]) for (const wz of [-0.9, 0.95]) jeepHubs.push(new THREE.CylinderGeometry(0.2, 0.2, 0.04, 14).rotateZ(Math.PI / 2).translate(wx, 0.4, wz).toNonIndexed())
+    const jeepLamps = iron([
+      new THREE.CylinderGeometry(0.1, 0.1, 0.05, 14).rotateX(Math.PI / 2).translate(0.5, 0.86, 1.4),
+      new THREE.CylinderGeometry(0.1, 0.1, 0.05, 14).rotateX(Math.PI / 2).translate(-0.5, 0.86, 1.4),
+    ])
+    const olive = new THREE.MeshStandardMaterial({ color: '#5f6346', roughness: 0.78, metalness: 0.15 })
+    const tyre = new THREE.MeshStandardMaterial({ color: '#1b1c1c', roughness: 0.95 })
+    const lamp = new THREE.MeshStandardMaterial({ color: '#f4ecd8', emissive: '#f1e2b8', emissiveIntensity: 0.6, roughness: 0.2 })
     // mine cart: a flared riveted iron tub with strap bands and a rolled rim, on a chassis and the handcar's wheels
     const cartTub = iron([
       box(1.24, 0.06, 1.74, 0, 0.62, 0),
@@ -988,6 +1035,18 @@ export function useProcKits(): Record<ProcProp, PropKit> {
         [cartTub, rust],
         [cartIron, ironDark],
         [mergeGeometries(wheels)!, ironDark],
+      ]),
+      raft: multi([
+        [mergeGeometries(raftLogs)!, raftBark],
+        [raftBeams, wood],
+        [mergeGeometries(raftRope)!, rope],
+      ]),
+      jeep: multi([
+        [jeepBody, olive],
+        [jeepDark, ironDark],
+        [mergeGeometries(jeepTyres)!, tyre],
+        [mergeGeometries(jeepHubs)!, metal],
+        [jeepLamps, lamp],
       ]),
       trolley: multi([
         [deck, wood],

@@ -16,6 +16,8 @@ export const CHALLENGE_NAME: Partial<Record<SectionKind, string>> & Record<strin
   swinglog: 'Log Trap',
   minecart: 'Mine Cart',
   zipline: 'Zipline',
+  raft: 'White-Water Raft',
+  jeep: 'Safari Jeep',
 }
 export const nameOf = (k: string) => CHALLENGE_NAME[k as SectionKind] ?? k.charAt(0).toUpperCase() + k.slice(1)
 export const textOf = (k: string): { big: string; small: string } => (SECTION_TEXT as Record<string, { big: string; small: string }>)[k] ?? { big: nameOf(k), small: '' }

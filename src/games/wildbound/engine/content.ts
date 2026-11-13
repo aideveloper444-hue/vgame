@@ -396,7 +396,7 @@ export function biomeAt(d: number): { biome: BiomeDef; index: number; variant: V
 
 // ---------------------------------------------------------------- obstacles & pickups
 
-export type ObstacleKind = 'log' | 'roots' | 'trap' | 'rock' | 'ruin' | 'branch' | 'barrier' | 'gap' | 'boulder' | 'trolley' | 'stream' | 'rubble' | 'stalactite' | 'plane' | 'quicksand' | 'darts' | 'swinglog' | 'minecart' | 'buffer' | 'beam' | 'bough'
+export type ObstacleKind = 'log' | 'roots' | 'trap' | 'rock' | 'ruin' | 'branch' | 'barrier' | 'gap' | 'boulder' | 'trolley' | 'stream' | 'rubble' | 'stalactite' | 'plane' | 'quicksand' | 'darts' | 'swinglog' | 'minecart' | 'buffer' | 'beam' | 'bough' | 'raft' | 'jeep'
 export type PickupKind = 'coin' | 'gem' | 'token' | 'magnet' | 'shield' | 'speed' | 'superjump' | 'megajump' | 'boost'
 /** a hanging vine at the lip of a ravine: jump into it to swing across */
 export type MarkerKind = 'vine' | 'zipline'
@@ -432,9 +432,12 @@ export const ESCAPES: Record<ObstacleKind, Escape[]> = {
   buffer: ['lane'],
   beam: ['low'],
   bough: ['lane'],
+  // white-water raft and safari jeep: parked at the start of their sections, boarded by running into them
+  raft: ['jump', 'lane'],
+  jeep: ['jump', 'lane'],
 }
 /** Obstacles that strength abilities can break. Gaps never break. */
-export const BREAKABLE: Record<ObstacleKind, boolean> = { log: true, roots: true, trap: true, rock: true, ruin: true, branch: true, barrier: true, gap: false, boulder: true, trolley: false, stream: false, rubble: true, stalactite: true, plane: false, quicksand: false, darts: false, swinglog: true, minecart: false, buffer: false, beam: true, bough: true }
+export const BREAKABLE: Record<ObstacleKind, boolean> = { log: true, roots: true, trap: true, rock: true, ruin: true, branch: true, barrier: true, gap: false, boulder: true, trolley: false, stream: false, rubble: true, stalactite: true, plane: false, quicksand: false, darts: false, swinglog: true, minecart: false, buffer: false, beam: true, bough: true, raft: false, jeep: false }
 export const isObstacle = (k: ItemKind): k is ObstacleKind => k in ESCAPES
 
 export const OBSTACLES_BY_BIOME: Record<BiomeId, ObstacleKind[]> = {
@@ -501,7 +504,7 @@ export const POWER_KINDS: PowerUpKind[] = POWERUPS.map((p) => p.kind)
 export const isPowerUp = (k: string): k is PowerUpKind => (POWER_KINDS as string[]).includes(k)
 
 /** Challenge sections the generator drops into zones that suit them. */
-export type SectionKind = 'rail' | 'river' | 'bridge' | 'rockslide' | 'cave' | 'vines' | 'flight' | 'treefall' | 'quicksand' | 'temple' | 'swinglog' | 'minecart' | 'zipline'
+export type SectionKind = 'rail' | 'river' | 'bridge' | 'rockslide' | 'cave' | 'vines' | 'flight' | 'treefall' | 'quicksand' | 'temple' | 'swinglog' | 'minecart' | 'zipline' | 'raft' | 'jeep'
 export const SECTION_TEXT: Record<SectionKind, { big: string; small: string }> = {
   rail: { big: 'Railway ahead!', small: 'Jump onto the trolley and ride it' },
   river: { big: 'River crossing!', small: 'Hop the stepping stones' },
@@ -515,6 +518,8 @@ export const SECTION_TEXT: Record<SectionKind, { big: string; small: string }> =
   temple: { big: 'Temple traps!', small: 'Slide under the darts, steer round the pillars' },
   swinglog: { big: 'Log trap!', small: 'Duck under the swinging logs' },
   minecart: { big: 'Mine carts!', small: 'Hop in – change lane to switch tracks' },
+  raft: { big: 'White water!', small: 'Board a raft – steer round the rocks, duck the branches' },
+  jeep: { big: 'Safari jeep!', small: 'Jump in – steer round the rocks, jump the gullies' },
   zipline: { big: 'Zipline!', small: 'Grab the line – change lane to dodge the branches' },
 }
 
@@ -540,7 +545,7 @@ export const tierName = (tier: number) => TIERS[Math.max(0, Math.min(TIERS.lengt
 /** the first tier at which each challenge may be picked */
 export const SECTION_MIN_TIER: Record<SectionKind, number> = {
   river: 1, bridge: 1, vines: 1, rail: 1, flight: 1, quicksand: 1, swinglog: 1, zipline: 1,
-  treefall: 2, rockslide: 2, cave: 2, minecart: 2,
+  treefall: 2, rockslide: 2, cave: 2, minecart: 2, raft: 2, jeep: 2,
   temple: 3,
 }
 /** a challenge is not picked again until this many others have run (zone signature sections are exempt) */

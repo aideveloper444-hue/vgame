@@ -14,7 +14,7 @@ const blocks = (sim: RunSim, l: number, from: number, to: number, onlyWalls = fa
 export function threatAhead(sim: RunSim, look = sim.state.speed * 0.55 + 4): Item | undefined {
   const s = sim.state
   return sim.items
-    .filter((it) => isObstacle(it.kind) && !it.gone && !it.broken && it.kind !== 'trolley' && it.kind !== 'minecart' && !(s.swing && it.kind === 'gap') && it.lane === s.lane && it.d + it.len > s.d - 0.3 && it.d - s.d < look)
+    .filter((it) => isObstacle(it.kind) && !it.gone && !it.broken && it.kind !== 'trolley' && it.kind !== 'minecart' && it.kind !== 'raft' && it.kind !== 'jeep' && !(s.swing && it.kind === 'gap') && it.lane === s.lane && it.d + it.len > s.d - 0.3 && it.d - s.d < look)
     .sort((a, b) => a.d - b.d)[0]
 }
 
