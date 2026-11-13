@@ -442,3 +442,25 @@ The brief (gameplay & challenge design doc v1.0, 10 Nov 2026) is applied to Wild
   shown on the results screen.
 - Test: 6 seeds, legs 1-2-3 in order, distinct kinds, not before Expert, breathers 7.5–60 s. 48 tests.
 - Dev only: `?wbgauntlet` plants a gauntlet 40 m in. Checked live: leg 1 and leg 3 cards. Not seen: the conquered card.
+
+## 2026-11-13: surprise events (brief §3) and weather / disasters (brief §G)
+
+- **Lightning** (storm and rain zones, tier 2): a cold glowing ring pulses on a lane, the bolt lands 30 m out (white
+  screen flash, thunder) and the lane burns; one or two lanes per row, never three.
+- **Wildfire** (dry country, tier 2): burning lanes to steer round (ember bed and flickering flames), burning
+  branches across the trail to duck, flames in the verges either side.
+- **Flash flood** (rivers, swamps, any rain, tier 1): floodwater across the trail to jump (narrower than a river
+  channel), surge debris (logs, rocks) to avoid, flooded verges.
+- **Earthquake** (ruins, temple, canyon, volcanic, cliffside, tier 3): dark fissures that split open into gaps 38 m out
+  (camera shake), a falling stone; the last crack runs across the trail (jump).
+- Surprise events, labelled "Surprise" on the challenge card: **coin storm** (every free lane full of coins, one
+  obstacle a row), **abandoned camp** (no obstacles; tents, crates, a shield and a gem), **supply drop** (a crate falls
+  into a lane with its shadow first; catching it switches on a random power-up), and the **golden chest** at the end of
+  the hidden stash on a dangerous junction route (+500 coins, +5 gems).
+- Surprises are not offered in zones with a signature section (zone 72's railway, the Hanging Vine zones).
+- New sounds: warning cues for each, thunder, the chest cascade. New props: flame, glowRing, bolt.
+- Tests: 52 after merging onto the vehicles and gauntlet work (fairness and autopilot over 12 seeds for the 5 hazard sections, strike/crack timing, wildfire escapes,
+  camp, crate and chest). The 3 km variety test now asks for river, bridge, cave and at least 8 kinds.
+- Checked by live screenshot: lightning (strike flash and bolt), wildfire, flood, earthquake (opened gaps), camp,
+  supply drop. Not seen: the lightning ring up close, the closed earthquake cracks, the coin storm, the golden chest.
+- Not done from §3/§G: night blackout, sandstorm, toxic gas, volcano escape, rival explorer, map fragments.

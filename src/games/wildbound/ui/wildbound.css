@@ -1154,3 +1154,8 @@
     0 0 30px -8px rgba(220, 192, 138, 0.4),
     0 18px 40px -18px rgba(0, 0, 0, 0.85);
 }
+/* a lightning strike: a cold white flash instead of the hot crash flash */
+.wb-flash.is-strike {
+  background: radial-gradient(ellipse 90% 80% at 50% 40%, rgba(236, 244, 255, 0.7), rgba(188, 214, 255, 0.25) 60%, rgba(0, 0, 0, 0.2) 100%);
+  animation-duration: 0.45s;
+}

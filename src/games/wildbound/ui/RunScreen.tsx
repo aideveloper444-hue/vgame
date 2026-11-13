@@ -339,6 +339,11 @@ export default function RunScreen() {
           case 'rockfall':
             // a falling tree lands with a crack and a thud (rocks keep the shake and dust)
             if (run.sim?.items.some((it) => it.kind === 'log' && it.fall && Math.abs(it.d - e.d) < 0.5)) setTimeout(() => sfx.timber(), 380)
+            // a lightning strike: thunder and a cold white flash
+            if (run.sim?.items.some((it) => it.kind === 'strike' && Math.abs(it.d - e.d) < 0.5 && it.lane === e.lane)) {
+              sfx.thunder()
+              setFlash(-Date.now())
+            }
             run.shake = Math.max(run.shake, 0.6)
             haptic(30)
             break
@@ -356,6 +361,16 @@ export default function RunScreen() {
           case 'surface':
             // tell the player about a slippery surface once per run, not every time it comes round again
             if (GRIP[e.grip].label && !gripSeen.current.has(e.grip) && gripSeen.current.add(e.grip)) setBanner({ id: Date.now(), big: e.grip === 'ice' ? 'Ice!' : e.grip === 'snow' ? 'Deep snow' : 'Mud!', small: GRIP[e.grip].label })
+            break
+          case 'chest':
+            setBanner({ id: Date.now(), big: 'Golden chest!', small: `+${e.coins} coins · +${e.gems} gems` })
+            sfx.chest()
+            haptic(60)
+            break
+          case 'crate':
+            setBanner({ id: Date.now(), big: 'Supply crate', small: POWERUPS.find((p) => p.kind === e.kind)!.name })
+            sfx.power()
+            haptic(30)
             break
           case 'tier':
             // the pacing director stepped up a difficulty tier (Explorer, Adventurer, Survivor, Expert, Legend)
@@ -619,7 +634,7 @@ export default function RunScreen() {
       {edge && <div key={edge.id} className={`wb-edge pointer-events-none absolute inset-0 ${edge.tone === 'power' ? 'is-power' : ''}`} onAnimationEnd={() => setEdge(null)} />}
       {/* screen effects: speed streaks, a hit flash, the cleared sweep, the tier title */}
       <div className="wb-speed" style={{ opacity: (h?.rush ?? 0) * 0.85 }} />
-      {flash > 0 && <div key={flash} className="wb-flash" onAnimationEnd={() => setFlash(0)} />}
+      {flash !== 0 && <div key={flash} className={`wb-flash ${flash < 0 ? 'is-strike' : ''}`} onAnimationEnd={() => setFlash(0)} />}
       {sweep > 0 && <div key={sweep} className="wb-sweep" onAnimationEnd={() => setSweep(0)} />}
       {tier && (
         <div key={tier.id} className="wb-tier" onAnimationEnd={(ev) => ev.animationName === 'wb-tier' && setTier(null)}>

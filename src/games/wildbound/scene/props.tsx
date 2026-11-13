@@ -113,6 +113,9 @@ export type ProcProp =
   | 'caveRoof'
   | 'stalactite'
   | 'sandPool'
+  | 'flame'
+  | 'glowRing'
+  | 'bolt'
   | 'crystal'
   | 'tuft'
   | 'tuftDark'
@@ -608,6 +611,12 @@ export function useProcKits(): Record<ProcProp, PropKit> {
     const crystalMat = new THREE.MeshStandardMaterial({ color: '#c4d8dc', emissive: '#4a8c9a', emissiveIntensity: 0.55, roughness: 0.18, metalness: 0.05 })
     const waterMat = new THREE.MeshStandardMaterial({ color: '#284c50', roughness: 0.06, metalness: 0.1, transparent: true, opacity: 0.88, emissive: '#06191d', emissiveIntensity: 0.35, envMapIntensity: 1.5 })
     const shadowMat = new THREE.MeshBasicMaterial({ color: '#000000', transparent: true, opacity: 0.5, depthWrite: false })
+    // fire, lightning: additive light that is not tone-mapped, so it glows against dusk and storm skies
+    const glow = (color: string, opacity: number) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, side: THREE.DoubleSide })
+    const flameOuter = glow('#b8400e', 0.5)
+    const flameInner = glow('#e09a3a', 0.55)
+    const ringMat = glow('#bcd6ff', 0.95)
+    const boltMat = glow('#eef4ff', 1)
     // 2026-11-06 forest kits: redwood, tree fern, baobab, cypress, glowing mushroom, dead tree, coral
     const redBark = new THREE.MeshStandardMaterial({ map: prepTex(tex.cliffD, true), color: '#b0583a', roughness: 1 })
     const redwoodTrunk = new THREE.CylinderGeometry(0.55, 1.0, 30, 10).translate(0, 15, 0)
@@ -1086,6 +1095,14 @@ export function useProcKits(): Record<ProcProp, PropKit> {
       stalactite: kit(mergeGeometries(spikes2)!, caveRock),
       // a flat rounded pool (an ellipse once scaled to the lane), so the sinking patch has soft natural edges
       sandPool: kit(new THREE.CylinderGeometry(0.5, 0.5, 0.02, 40), sandPoolMat),
+      // a tongue of flame: an open outer cone and a brighter inner core
+      flame: multi([
+        [new THREE.ConeGeometry(0.5, 1, 14, 3, true).translate(0, 0.5, 0), flameOuter],
+        [new THREE.ConeGeometry(0.28, 0.62, 10, 1, true).translate(0, 0.31, 0), flameInner],
+      ]),
+      // the telegraph ring on the ground where lightning will strike
+      glowRing: kit(new THREE.TorusGeometry(0.5, 0.035, 6, 48).rotateX(-Math.PI / 2), ringMat),
+      bolt: kit(new THREE.CylinderGeometry(0.05, 0.12, 1, 6).translate(0, 0.5, 0), boltMat),
       crystal: kit(crystalGeo, crystalMat),
     }
   }, [tex])

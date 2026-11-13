@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { Section } from '../engine/run'
 import { onSimEvent, run } from '../scene/runController'
 import { haptic, sfx } from './sfx'
+import { SURPRISE_SECTIONS } from '../engine/content'
 import { challengeTally, nameOf, resetChallengeTally, textOf } from './challenges'
 
 /*
@@ -153,11 +154,15 @@ export default function ChallengeHud({ runKey, solo }: { runKey: number; solo: b
             ? 'Gauntlet conquered'
             : card.leg
               ? `Final gauntlet · ${card.leg}/3`
-              : card.mode === 'done'
-                ? 'Challenge cleared'
-                : card.mode === 'live'
-                  ? 'Challenge'
-                  : 'Challenge ahead'}
+              : (SURPRISE_SECTIONS as string[]).includes(card.kind)
+                ? card.mode === 'ahead'
+                  ? 'Surprise ahead'
+                  : 'Surprise'
+                : card.mode === 'done'
+                  ? 'Challenge cleared'
+                  : card.mode === 'live'
+                    ? 'Challenge'
+                    : 'Challenge ahead'}
         </span>
         {card.mode === 'ahead' && <span className="wb-chal-dist">{Math.max(0, Math.ceil(card.dist / 5) * 5)} m</span>}
         {card.mode === 'done' && card.bonus > 0 && <span className="wb-chal-dist">+{card.bonus}</span>}

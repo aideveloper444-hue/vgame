@@ -467,6 +467,66 @@ function itemPlacements(it: Item, z: number, now: number, out: Placement[]) {
   }
   const s = (v: [number, number, number]): [number, number, number] => [v[0] * fade, v[1] * fade, v[2] * fade]
   const X = x + off
+  if (it.kind === 'strike') {
+    // lightning (brief §G): a cold glowing ring pulses on the lane it will strike; then a bolt, and the lane burns
+    if (it.h === 0) {
+      const pulse = 1 + 0.1 * Math.sin(now / 110 + r * 6)
+      out.push({ prop: 'glowRing', x, y: 0.05, z, rotY: 0, scale: [1.7 * pulse, 1, 1.7 * pulse] })
+      out.push({ prop: 'glowRing', x, y: 0.05, z, rotY: 0, scale: [0.9 * pulse, 1, 0.9 * pulse] })
+      return
+    }
+    let t0 = fallen.get(it.id)
+    if (t0 === undefined) {
+      t0 = now
+      fallen.set(it.id, now)
+      if (fallen.size > 100) fallen.delete(fallen.keys().next().value!)
+    }
+    const age = now - t0
+    if (age < 380) {
+      const w = 1 - age / 380
+      out.push({ prop: 'bolt', x: x + (r - 0.5) * 0.3, y: 0, z, rotY: r * 6, rotZ: (r - 0.5) * 0.08, scale: [0.16 * (1 + w), 18, 0.16 * (1 + w)] })
+      out.push({ prop: 'bolt', x: x + (r - 0.5) * 0.3 + 0.4, y: 6, z: z + 0.2, rotY: r * 3, rotZ: 0.5, scale: [0.08, 5, 0.08] })
+    }
+    out.push({ prop: 'shadowDisc', x, y: 0.03, z, rotY: 0, scale: [1.1, 1, 0.9] })
+    for (let k = 0; k < 3; k++) out.push({ prop: 'flame', x: x + (k - 1) * 0.5, y: 0, z: z + (k % 2) * 0.25, rotY: 0, scale: [0.5, 0.9 + 0.3 * Math.sin(now / 80 + k * 1.9 + r * 9), 0.5] })
+    return
+  }
+  if (it.kind === 'gap' && it.fall && !it.broken) {
+    // an earthquake crack: dark fissures across the lane until it splits open into a gap
+    if (it.h === 0) {
+      out.push({ prop: 'shadowDisc', x, y: 0.02, z, rotY: (r - 0.5) * 0.5, scale: [LANE_W * 0.48, 1, 0.07] })
+      out.push({ prop: 'shadowDisc', x: x + (r - 0.5) * 0.6, y: 0.021, z: z + 0.25, rotY: 0.9 + r, scale: [0.6, 1, 0.05] })
+      return
+    }
+    for (const e of [-1, 1]) out.push({ prop: 'mossrocks', x: x + (r - 0.5) * 0.5, y: -0.2, z: z + e * (it.len + 0.35), rotY: r * 6 + e, scale: [1.6, 0.35, 0.5] })
+    return
+  }
+  if ((it.kind === 'chest' || it.kind === 'crate') && !it.gone) {
+    if (it.kind === 'chest') {
+      // the golden chest: a dark timber box with brass straps on its lid
+      out.push({ prop: 'sleeper', x, y: 0, z, rotY: 0.08, scale: [0.95, 0.5, 0.62] })
+      out.push({ prop: 'sleeper', x, y: 0.5, z, rotY: 0.08, rotX: -0.12, scale: [0.98, 0.2, 0.64] })
+      for (const bx of [-0.3, 0.3]) out.push({ prop: 'rail', x: x + bx, y: 0, z, rotY: 0.08, scale: [0.07, 0.72, 0.66] })
+      out.push({ prop: 'glowRing', x, y: 0.04, z, rotY: 0, scale: [1.3, 1, 1.3] })
+      return
+    }
+    // a supply crate dropping into its lane: the shadow first, then the crate falls once the runner is near
+    let drop = 1
+    if (z < 48) {
+      let t0 = fallen.get(it.id)
+      if (t0 === undefined) {
+        t0 = now
+        fallen.set(it.id, now)
+        if (fallen.size > 100) fallen.delete(fallen.keys().next().value!)
+      }
+      drop = 1 - Math.min(1, (now - t0) / 1100)
+    }
+    out.push({ prop: 'shadowDisc', x, y: 0.03, z, rotY: 0, scale: [0.7 + 0.5 * (1 - drop), 1, 0.7 + 0.5 * (1 - drop)] })
+    const y = 0.2 + 16 * drop * drop
+    out.push({ prop: 'sleeper', x, y, z, rotY: r, scale: [0.85, 0.85, 0.85] })
+    for (const b of [-0.3, 0.3]) out.push({ prop: 'rail', x: x + b * Math.cos(r), y: y - 0.01, z: z - b * Math.sin(r), rotY: r, scale: [0.07, 0.87, 0.87] })
+    return
+  }
   if (it.kind === 'log' && it.fall && !it.broken) {
     // a falling tree (design brief: falling tree ambush / tree collapse chain). One item of the row draws the whole
     // tree: it stands at the trail edge shivering, and topples across its lanes once the runner is close.
@@ -556,6 +616,17 @@ function itemPlacements(it: Item, z: number, now: number, out: Placement[]) {
       break
     case 'stalactite':
       out.push({ prop: 'stalactite', x: X, y: lift, z, rotY: 0, rotZ: tumble, scale: s([2.1, 2.45, 0.7]) })
+      break
+    case 'fire': {
+      // a burning lane in a wildfire: a bed of embers and tongues of flame that never hold still
+      out.push({ prop: 'lava', x, y: -0.02, z, rotY: 0, scale: [LANE_W * 0.85, 0.05, 1.5] })
+      for (let k = 0; k < 4; k++) out.push({ prop: 'flame', x: x + (k - 1.5) * 0.5, y: 0, z: z + ((k * 37) % 3 - 1) * 0.3, rotY: 0, scale: [0.6, 1.2 + 0.4 * Math.sin(now / 85 + k * 1.7 + r * 9), 0.6] })
+      break
+    }
+    case 'ember':
+      // a burning branch across the trail at head height
+      out.push({ prop: 'trunk', x: X, y: 1.12 + lift, z, rotY: (r - 0.5) * 0.15, rotZ: tumble, scale: s([2.9, 0.42, 0.45]) })
+      if (!it.broken) for (let k = 0; k < 3; k++) out.push({ prop: 'flame', x: x + (k - 1) * 0.8, y: 1.45, z, rotY: 0, scale: [0.35, 0.6 + 0.25 * Math.sin(now / 75 + k * 2.3 + r * 7), 0.35] })
       break
     case 'quicksand':
       // a dark wet pool of sinking sand with soft rounded edges
@@ -813,7 +884,7 @@ function makeSource() {
     }
     // trail: rows of tiles, holes where gaps are
     const sim = view.showcase ? null : run.sim
-    const gaps = sim ? sim.items.filter((it) => (it.kind === 'gap' || it.kind === 'stream') && !it.gone) : []
+    const gaps = sim ? sim.items.filter((it) => (it.kind === 'gap' || it.kind === 'stream') && !it.gone && !(it.fall && it.h === 0)) : []
     // challenge sections in view: railway track, bridge (no banks: open water below), cave vault
     if (sim) for (const sec of sim.sections) {
       if (sec.to < d - view.behind || sec.from > d + view.ahead) continue
@@ -853,6 +924,38 @@ function makeSource() {
           push({ prop: 'sleeper', x: 0, y: 3.55, z, rotY: 0, scale: [PATH_HALF * 2 + 1.7, 0.36, 0.36] })
         }
       }
+      if (sec.kind === 'flood') {
+        // a flash flood: the water has burst over the verges on both sides
+        for (let k = Math.floor(sec.from / SEG) - 1; k * SEG < sec.to + SEG; k++) {
+          const z = k * SEG + SEG / 2 - d
+          if (z < -view.behind || z > view.ahead) continue
+          for (const side of [-1, 1]) push({ prop: 'waterQuad', x: side * (PATH_HALF + 3.2), y: -0.06, z, rotY: 0, scale: [6.2, 0.08, SEG + 0.05] })
+        }
+      }
+      if (sec.kind === 'wildfire') {
+        // the verges are burning too: flames in the undergrowth either side
+        for (let k = Math.floor(sec.from / 2.5); k * 2.5 < sec.to; k++) {
+          const z = k * 2.5 - d
+          if (z < -view.behind || z > view.ahead) continue
+          const side = k % 2 ? 1 : -1
+          const h = hash01(k, 41)
+          push({ prop: 'flame', x: side * (PATH_HALF + 1.0 + h * 2.2), y: 0, z, rotY: 0, scale: [0.8, 1.3 + h + 0.4 * Math.sin(performance.now() / 90 + k), 0.8] })
+        }
+      }
+      if (sec.kind === 'camp') {
+        // an abandoned camp: canvas A-frame tents, crates and a cold fire ring on both verges
+        for (let k = 0; k < 3; k++) {
+          const z = sec.from + 6 + k * 7 - d
+          if (z < -view.behind || z > view.ahead) continue
+          const side = k % 2 ? 1 : -1
+          const tx = side * (PATH_HALF + 2.0)
+          for (const e of [-1, 1]) push({ prop: 'sleeper', x: tx + e * 0.62, y: 0, z, rotY: 0, rotZ: e * 0.62, scale: [0.08, 1.75, 2.2] })
+          push({ prop: 'post', x: tx, y: 0, z: z - 1.15, rotY: 0, scale: [0.08, 1.45, 0.08] })
+          push({ prop: 'sleeper', x: tx - side * 1.6, y: 0, z: z + 1.6, rotY: 0.4 * side, scale: [0.6, 0.55, 0.6] })
+          push({ prop: 'sleeper', x: tx - side * 1.55, y: 0.55, z: z + 1.6, rotY: 0.9 * side, scale: [0.42, 0.4, 0.42] })
+          push({ prop: 'mossrocks', x: -side * (PATH_HALF + 1.6), y: -0.1, z: z + 3, rotY: k, scale: [1.1, 0.3, 1.1] })
+        }
+      }
       if (sec.kind === 'temple') {
         // carved stone pillars line the corridor, every other pair carrying a lintel
         for (let k = Math.floor(sec.from / SEG); k * SEG < sec.to; k++) {
@@ -890,7 +993,7 @@ function makeSource() {
       const now = performance.now()
       for (const it of sim.items) {
         // obstacles, plus the vine and zipline markers (their vines, cables and gantries)
-        if (it.gone || (!isObstacle(it.kind) && it.kind !== 'vine' && it.kind !== 'zipline')) continue
+        if (it.gone || (!isObstacle(it.kind) && it.kind !== 'vine' && it.kind !== 'zipline' && it.kind !== 'chest' && it.kind !== 'crate')) continue
         const z = it.d - d
         if (z < -BEHIND || z > AHEAD) continue
         itemPlacements(it, z, now, scratch)
@@ -2522,7 +2625,7 @@ function World() {
       {glb('shrub', 40)}
       {glb('pachira', 30)}
       {glb('stump', 16)}
-      {glb('mossrocks', 30)}
+      {glb('mossrocks', 50)}
       {glb('pebble', 40)}
       {glb('rockface', 70)}
       {glb('mountain', 12)}
@@ -2537,7 +2640,7 @@ function World() {
       <PropSet kit={kits.bankSand} prop="bankSand" capacity={110} source={source} />
       <PropSet kit={kits.bankGold} prop="bankGold" capacity={70} source={source} />
       <PropSet kit={kits.bankBasalt} prop="bankBasalt" capacity={70} source={source} />
-      <PropSet kit={kits.lava} prop="lava" capacity={40} source={source} receive={false} />
+      <PropSet kit={kits.lava} prop="lava" capacity={60} source={source} receive={false} />
       <PropSet kit={kits.dune} prop="dune" capacity={40} source={source} />
       <PropSet kit={kits.palm} prop="palm" capacity={60} source={source} shadows />
       <PropSet kit={kits.reeds} prop="reeds" capacity={120} source={source} />
@@ -2549,11 +2652,14 @@ function World() {
       <PropSet kit={kits.raft} prop="raft" capacity={6} source={source} shadows />
       <PropSet kit={kits.jeep} prop="jeep" capacity={6} source={source} shadows />
       <PropSet kit={kits.chevron} prop="chevron" capacity={8} source={source} shadows />
-      <PropSet kit={kits.shadowDisc} prop="shadowDisc" capacity={12} source={source} receive={false} />
+      <PropSet kit={kits.shadowDisc} prop="shadowDisc" capacity={40} source={source} receive={false} />
       <PropSet kit={kits.waterQuad} prop="waterQuad" capacity={200} source={source} receive={false} />
       <PropSet kit={kits.caveRoof} prop="caveRoof" capacity={30} source={source} />
       <PropSet kit={kits.stalactite} prop="stalactite" capacity={20} source={source} shadows />
       <PropSet kit={kits.sandPool} prop="sandPool" capacity={20} source={source} receive />
+      <PropSet kit={kits.flame} prop="flame" capacity={160} source={source} receive={false} />
+      <PropSet kit={kits.glowRing} prop="glowRing" capacity={16} source={source} receive={false} />
+      <PropSet kit={kits.bolt} prop="bolt" capacity={8} source={source} receive={false} />
       <PropSet kit={kits.crystal} prop="crystal" capacity={30} source={source} receive={false} />
       {glb('btree1', 40, true)}
       {glb('btree2', 40, true)}

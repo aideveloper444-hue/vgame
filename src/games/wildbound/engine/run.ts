@@ -178,6 +178,8 @@ export type SimEvent =
   | { type: 'nearmiss'; kind: ObstacleKind }
   | { type: 'surface'; grip: Grip }
   | { type: 'swing'; on: boolean; zip?: boolean }
+  | { type: 'chest'; coins: number; gems: number }
+  | { type: 'crate'; kind: PowerUpKind }
   | { type: 'tier'; tier: number; name: string }
 
 export interface RunStats {
@@ -348,7 +350,7 @@ export function mulberry32(seed: number) {
   }
 }
 
-const HALF_LEN: Record<ObstacleKind, number> = { log: 0.45, roots: 0.45, trap: 0.5, rock: 0.75, ruin: 0.8, branch: 0.35, barrier: 0.3, gap: 1.2, boulder: 0.9, trolley: 1.1, stream: 1.3, rubble: 0.45, stalactite: 0.35, plane: 1.6, quicksand: 1.3, darts: 0.3, swinglog: 0.4, minecart: 1.0, buffer: 0.4, beam: 0.3, bough: 0.4, raft: 1.1, jeep: 1.3 }
+const HALF_LEN: Record<ObstacleKind, number> = { log: 0.45, roots: 0.45, trap: 0.5, rock: 0.75, ruin: 0.8, branch: 0.35, barrier: 0.3, gap: 1.2, boulder: 0.9, trolley: 1.1, stream: 1.3, rubble: 0.45, stalactite: 0.35, plane: 1.6, quicksand: 1.3, darts: 0.3, swinglog: 0.4, minecart: 1.0, buffer: 0.4, beam: 0.3, bough: 0.4, raft: 1.1, jeep: 1.3, strike: 0.6, fire: 0.9, ember: 0.35 }
 /** height the runner must be above the trail to clear a jump obstacle */
 const CLEARANCE: Partial<Record<ObstacleKind, number>> = { log: 0.55, roots: 0.4, trap: 0.45, gap: 0.02, rock: 1.2, ruin: 1.5, boulder: 1.2, trolley: 1.2, stream: 0.02, rubble: 0.45, quicksand: 0.02 }
 
@@ -733,7 +735,8 @@ export class RunSim {
     this.swingTick()
 
     // rockslide: a rock drops onto the trail ahead
-    for (const it of this.items) if (it.fall && !it.passed && it.h === 0 && it.d - s.d < 38) {
+    // (lightning strikes a little closer: its ring telegraphs the lane first)
+    for (const it of this.items) if (it.fall && !it.passed && it.h === 0 && it.d - s.d < (it.kind === 'strike' ? 30 : 38)) {
       it.h = 1
       this.events.push({ type: 'rockfall', d: it.d, lane: it.lane })
     }
@@ -946,6 +949,25 @@ export class RunSim {
           s.score += 50
           this.events.push({ type: 'token', d: it.d, lane: it.lane })
           break
+        case 'chest': {
+          // a golden chest on a dangerous route: a big haul
+          const coins = 500
+          const gems = 5
+          s.coins += coins
+          s.gems += gems
+          s.score += 1500
+          this.events.push({ type: 'chest', coins, gems })
+          break
+        }
+        case 'crate': {
+          // a supply crate: a random power-up, switched on at once
+          const kinds: PowerUpKind[] = ['shield', 'magnet', 'superjump', 'megajump']
+          const kind = kinds[Math.floor(this.lootRng() * kinds.length)]
+          s.score += 200
+          this.activatePower(kind, true)
+          this.events.push({ type: 'crate', kind })
+          break
+        }
         default:
           if (isPowerUp(it.kind)) this.activatePower(it.kind, true)
       }
@@ -1024,6 +1046,8 @@ export class RunSim {
           const mid = Math.round((f.d + f.end) / 2)
           for (let i = 0; i < 5; i++) this.add(mid + i * 1.6, 1, 'gem', 0.7 + 4 * JUMP_H * ((i + 0.5) / 5) * (1 - (i + 0.5) / 5) * 0.9)
           for (const lane of [0, 2] as Lane[]) this.coinLine(mid - 4, lane, 6)
+          // and on a dangerous route, the golden chest itself at the end of the stash
+          if (r.risk === 'risky') this.add(mid + 10, 1, 'chest', 0.6)
         }
         if (r.bonus === 'coins') for (const lane of [0, 2] as Lane[]) this.coinLine(at - 2, lane, 8)
       }
@@ -1290,6 +1314,16 @@ export class RunSim {
       if (has(['river', 'swamp', 'mangrove', 'waterfall', 'lagoon', 'lakeside', 'jungle'])) W.push(['raft', 1.4])
       if (has(['savannah', 'desert', 'grassland', 'baobab', 'beach', 'coast'])) W.push(['jeep', 1.4])
       if (has(['forest', 'jungle', 'redwood', 'giantroot', 'cliffside', 'cedar', 'pine', 'fern'])) W.push(['zipline', 1.2])
+      // weather and disasters (brief §G): lightning in storms and rain, wildfire in dry country, flash floods along the
+      // water and in the rain, earthquakes among the ruins; surprise events (brief §3) anywhere, a little rarer
+      if (z.variant === 'storm') W.push(['lightning', 3])
+      else if (z.variant === 'rain') W.push(['lightning', 1.2])
+      if (has(['savannah', 'grassland', 'baobab', 'volcanic', 'desert', 'canyon', 'deadwood', 'autumn', 'cedar'])) W.push(['wildfire', 1.1])
+      if (has(['river', 'swamp', 'mangrove', 'waterfall', 'lagoon', 'lakeside'])) W.push(['flood', 1])
+      else if (z.variant === 'rain' || z.variant === 'storm') W.push(['flood', 0.8])
+      if (has(['ruins', 'temple', 'canyon', 'volcanic', 'cliffside'])) W.push(['quake', 1])
+      // (not in a zone with a signature section, which keeps its railway or vines)
+      if (!(z.flavor === 'rail' || kit === 'railway' || z.flavor === 'vines')) W.push(['coinstorm', 0.55], ['camp', 0.4], ['supply', 0.5])
       if (!W.length) W.push(['river', 1], ['rockslide', 1])
       // time for the gauntlet: three distinct challenges from this run's history (or any the tier allows)
       // (never in a zone with its own signature challenge: zone 72's railway, the Hanging Vine zones)
@@ -1304,7 +1338,7 @@ export class RunSim {
         this.nextGauntletT = runTimeAt(this.runD(d0)) + GAUNTLET.every
       }
       const kind = this.gauntletQueue[0] ?? this.pickSection(W, this.runD(d0), (z.flavor === 'rail' || kit === 'railway' ? 'rail' : z.flavor === 'vines' ? 'vines' : null))
-      const rows = kind === 'minecart' || kind === 'raft' || kind === 'jeep' ? 8 : kind === 'flight' || kind === 'zipline' ? 6 : kind === 'cave' || kind === 'rail' || kind === 'temple' ? 4 : 3
+      const rows = kind === 'minecart' || kind === 'raft' || kind === 'jeep' ? 8 : kind === 'flight' || kind === 'zipline' ? 6 : kind === 'cave' || kind === 'rail' || kind === 'temple' || kind === 'lightning' || kind === 'wildfire' || kind === 'flood' || kind === 'coinstorm' ? 4 : kind === 'camp' ? 2 : 3
       const len = (this.rowGap(d0 + 60) + 1) * rows + 40
       // keep inside the zone (clear of its 400 m boundaries) and clear of every junction
       let from = d0
@@ -1632,6 +1666,122 @@ export class RunSim {
           clean = Math.max(0, Math.min(2, clean + (this.rng() < 0.5 ? -1 : 1))) as Lane
         }
         sec.to = this.lastRowD + 14
+        break
+      }
+      case 'lightning': {
+        // lightning strikes: a glowing ring marks a lane, the bolt lands as the runner nears (30 m out) and the lane
+        // burns. One lane in the odd rows, two in the even ones; never all three
+        let d = from + 4
+        for (let i = 0; i < 4; i++, d += gapAt(d)) {
+          const lanes = ([0, 1, 2] as Lane[]).sort(() => this.rng() - 0.5)
+          const n = i % 2 === 0 ? 1 : 2
+          for (let j = 0; j < n; j++) this.add(d, lanes[j], 'strike', 0).fall = true
+          this.coinLine(d - 5, lanes[2], 4)
+          this.lastRowD = d
+        }
+        sec.to = this.lastRowD + 8
+        break
+      }
+      case 'wildfire': {
+        // a wildfire corridor: burning lanes to steer round and burning branches across the trail to duck
+        let d = from + 4
+        for (let i = 0; i < 4; i++, d += gapAt(d)) {
+          const lanes = ([0, 1, 2] as Lane[]).sort(() => this.rng() - 0.5)
+          if (i === 1) for (const l of lanes) this.add(d, l, 'ember')
+          else if (i === 2) {
+            this.add(d, lanes[0], 'fire')
+            this.add(d, lanes[1], 'ember')
+            this.coinLine(d - 5, lanes[2], 4)
+          } else {
+            this.add(d, lanes[0], 'fire')
+            this.add(d, lanes[1], 'fire')
+            this.coinLine(d - 5, lanes[2], 4)
+          }
+          this.lastRowD = d
+        }
+        sec.to = this.lastRowD + 8
+        break
+      }
+      case 'flood': {
+        // a flash flood: floodwater across the trail to jump, debris left by the surge (floating logs to jump or
+        // steer round, a pile of rocks to steer round)
+        let d = from + 4
+        for (let i = 0; i < 4; i++, d += gapAt(d)) {
+          const lanes = ([0, 1, 2] as Lane[]).sort(() => this.rng() - 0.5)
+          if (i % 2 === 0) {
+            // floodwater runs narrower than a river channel (a clean jump for every animal)
+            for (const l of lanes) this.add(d, l, 'stream').len = 0.9
+            this.coinArc(d, lanes[0])
+          } else {
+            const debris: ObstacleKind = i === 1 ? 'log' : 'rock'
+            this.add(d, lanes[0], debris)
+            this.add(d, lanes[1], debris)
+            this.coinLine(d - 5, lanes[2], 4)
+          }
+          this.lastRowD = d
+        }
+        sec.to = this.lastRowD + 8
+        break
+      }
+      case 'quake': {
+        // an earthquake: cracks in the ground split open into gaps as the runner nears (camera shake first), and
+        // stones fall. Two lanes, then a crack and a stone, then a crack right across (jump)
+        let d = from + 4
+        for (let i = 0; i < 3; i++, d += gapAt(d)) {
+          const lanes = ([0, 1, 2] as Lane[]).sort(() => this.rng() - 0.5)
+          if (i === 0) {
+            this.add(d, lanes[0], 'gap', 0).fall = true
+            this.add(d, lanes[1], 'gap', 0).fall = true
+            this.coinLine(d - 5, lanes[2], 4)
+          } else if (i === 1) {
+            this.add(d, lanes[0], 'gap', 0).fall = true
+            this.add(d, lanes[1], 'rock', 0).fall = true
+            this.coinLine(d - 5, lanes[2], 4)
+          } else {
+            for (const l of lanes) this.add(d, l, 'gap', 0).fall = true
+            this.coinArc(d, lanes[0])
+          }
+          this.lastRowD = d
+        }
+        sec.to = this.lastRowD + 8
+        break
+      }
+      case 'coinstorm': {
+        // a coin storm: every free lane is full of coins, and one obstacle per row keeps the eyes busy
+        let d = from + 4
+        const pool = OBSTACLES_BY_BIOME[this.biomeIdAt(from)]
+        for (let i = 0; i < 4; i++, d += gapAt(d)) {
+          const block = Math.floor(this.rng() * 3) as Lane
+          const k = pool[Math.floor(this.rng() * pool.length)]
+          this.add(d, block, k === 'boulder' ? 'rock' : k, 0)
+          for (const l of [0, 1, 2] as Lane[]) if (l !== block) this.coinLine(d - gapAt(d) + 4, l, Math.max(3, Math.floor((gapAt(d) - 6) / 2.2)))
+          if (ESCAPES[k === 'boulder' ? 'rock' : k].includes('jump')) this.coinArc(d, block)
+          this.lastRowD = d
+        }
+        sec.to = this.lastRowD + 8
+        break
+      }
+      case 'camp': {
+        // an abandoned camp: a quiet stretch with supplies left behind (a shield and coins); no obstacles
+        const d = from + 6
+        this.add(d + 8, 1, 'shield', 1.0)
+        for (const l of [0, 2] as Lane[]) this.coinLine(d, l, 8)
+        this.add(d + 18, 1, 'gem', 0.9)
+        this.lastRowD = d + 18
+        sec.to = d + 26
+        break
+      }
+      case 'supply': {
+        // a supply drop: a crate falls into a lane (its shadow first); coins lead to it, one row of obstacles before it
+        const d = from + 4
+        const lane = Math.floor(this.rng() * 3) as Lane
+        const other = ((lane + 1 + Math.floor(this.rng() * 2)) % 3) as Lane
+        this.add(d, other, 'rock', 0)
+        this.coinLine(d - 5, lane, 4)
+        this.add(d + gapAt(d), lane, 'crate', 0.6)
+        this.coinLine(d + 4, lane, 3)
+        this.lastRowD = d
+        sec.to = d + gapAt(d) + 8
         break
       }
       case 'zipline': {

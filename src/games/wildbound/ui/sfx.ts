@@ -192,11 +192,49 @@ export const sfx = {
       case 'flight':
         tone(85, 1.0, 'sawtooth', 0.04, 140)
         break
+      case 'lightning':
+        // distant thunder rolling in
+        noise(1.6, 0.16, 'lowpass', 220, 0.8, 70)
+        tone(55, 1.2, 'sine', 0.1, 40, 0.15)
+        break
+      case 'wildfire':
+        // crackling fire
+        for (let i = 0; i < 6; i++) noise(0.05, 0.12, 'highpass', 2500 + i * 300, 1, undefined, i * 0.09)
+        noise(1.0, 0.08, 'bandpass', 500, 0.8, 300)
+        break
+      case 'flood':
+        // a rushing swell of water
+        noise(1.3, 0.14, 'bandpass', 600, 0.5, 1600)
+        break
+      case 'quake':
+        // a deep rumble and the ground cracking
+        noise(1.4, 0.24, 'lowpass', 120, 1, 50)
+        tone(38, 1.2, 'sine', 0.16, 30)
+        noise(0.12, 0.15, 'highpass', 1800, 0.8, undefined, 0.9)
+        break
+      case 'coinstorm':
+      case 'camp':
+      case 'supply':
+        // a reward ahead: a light rising chime
+        for (const [i, f] of [784, 988, 1175].entries()) tone(f, 0.22, 'triangle', 0.06, undefined, i * 0.08)
+        break
       default:
         // anything newer: a low, neutral heads-up
         tone(330, 0.18, 'triangle', 0.06)
         tone(247, 0.3, 'triangle', 0.06, undefined, 0.14)
     }
+  },
+  /** a lightning strike: a sharp crack and a long roll of thunder */
+  thunder() {
+    if (!on()) return
+    noise(0.12, 0.35, 'highpass', 1600, 0.7)
+    noise(1.8, 0.3, 'lowpass', 400, 0.8, 60, 0.05)
+    tone(48, 1.4, 'sine', 0.18, 32, 0.05)
+  },
+  /** the golden chest: a rich cascade */
+  chest() {
+    if (!on()) return
+    for (const [i, f] of [523, 659, 784, 1047, 1319, 1568].entries()) tone(f, 0.35, 'triangle', 0.08, undefined, i * 0.07)
   },
   /** a falling tree hits the ground */
   timber() {

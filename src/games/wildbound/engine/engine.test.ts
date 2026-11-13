@@ -171,7 +171,7 @@ function lone(kind: ObstacleKind, lane: Lane = 1, animalId: AnimalId = 'titan') 
   ;(sim as unknown as { nextSectionAt: number }).nextSectionAt = 1e9
   sim.sections = []
   sim.state.shieldUntil = 0
-  sim.items.push({ id: 1, d: 20, lane, kind, h: 0, len: { log: 0.45, roots: 0.45, trap: 0.5, rock: 0.75, ruin: 0.8, branch: 0.35, barrier: 0.3, gap: 1.2, boulder: 0.9, trolley: 1.1, stream: 1.3, rubble: 0.45, stalactite: 0.35, plane: 1.6, quicksand: 1.3, darts: 0.3, swinglog: 0.4, minecart: 1.0, buffer: 0.4, beam: 0.3, bough: 0.4, raft: 1.1, jeep: 1.3 }[kind], gone: false, passed: false, broken: false, frozen: false, moving: 0 })
+  sim.items.push({ id: 1, d: 20, lane, kind, h: 0, len: { log: 0.45, roots: 0.45, trap: 0.5, rock: 0.75, ruin: 0.8, branch: 0.35, barrier: 0.3, gap: 1.2, boulder: 0.9, trolley: 1.1, stream: 1.3, rubble: 0.45, stalactite: 0.35, plane: 1.6, quicksand: 1.3, darts: 0.3, swinglog: 0.4, minecart: 1.0, buffer: 0.4, beam: 0.3, bough: 0.4, raft: 1.1, jeep: 1.3, strike: 0.6, fire: 0.9, ember: 0.35 }[kind], gone: false, passed: false, broken: false, frozen: false, moving: 0 })
   return sim
 }
 const until = (sim: RunSim, d: number) => runFor(sim, d - sim.state.d)
@@ -462,7 +462,9 @@ test('sections appear in zones that suit them, never at a junction, and a carefu
       for (const f of sim.forks) assert.ok(x.to <= f.d - 45 || x.from >= f.end + 10, `seed ${seed}: ${x.kind} overlaps a junction`)
     }
   }
-  for (const k of ['river', 'bridge', 'rockslide', 'cave']) assert.ok(kinds.has(k), `${k} seen in the first 3 km (${[...kinds]})`)
+  // the pool is wide now (weather, surprises): the core sections still show up, among plenty of variety
+  for (const k of ['river', 'bridge', 'cave']) assert.ok(kinds.has(k), `${k} seen in the first 3 km (${[...kinds]})`)
+  assert.ok(kinds.size >= 8, `variety in the first 3 km (${[...kinds]})`)
 })
 
 test('quicksand is jumped, temple darts and swinging logs are ducked', () => {
@@ -520,6 +522,94 @@ test('new challenge sections: every row leaves a way through and a careful runne
       runFor(sim, sec.to + 10 - sim.state.d, () => autopilot(sim))
       assert.ok(sim.state.alive, `${kind} seed ${seed}: crashed into ${sim.state.crashKind} at ${sim.state.d.toFixed(1)}`)
     }
+})
+
+test('weather, disasters and the coin storm: every row leaves a way through and a careful runner gets through', () => {
+  for (const kind of ['lightning', 'wildfire', 'flood', 'quake', 'coinstorm'] as const)
+    for (let seed = 1; seed <= 12; seed++) {
+      const { sim, sec } = withSection(kind, seed)
+      const rows = new Map<number, Item[]>()
+      for (const it of sim.items) if (isObstacle(it.kind)) rows.set(it.d, [...(rows.get(it.d) ?? []), it])
+      assert.ok(rows.size >= 3, `${kind}: has rows`)
+      for (const [d, row] of rows) {
+        const lanesBlocked = new Set(row.map((it) => it.lane))
+        const allMovable = row.every((it) => !ESCAPES[it.kind as ObstacleKind].includes('lane'))
+        assert.ok(lanesBlocked.size < 3 || allMovable, `${kind} seed ${seed}: row at ${d} is a wall`)
+      }
+      runFor(sim, sec.to + 10 - sim.state.d, () => autopilot(sim))
+      assert.ok(sim.state.alive, `${kind} seed ${seed}: crashed into ${sim.state.crashKind} at ${sim.state.d.toFixed(1)}`)
+    }
+})
+
+test('lightning strikes and earthquake cracks are harmless until they land, then block their lanes', () => {
+  for (const [kind, hazard, at] of [['lightning', 'strike', 30], ['quake', 'gap', 38]] as const) {
+    const { sim } = withSection(kind, 4)
+    const items = sim.items.filter((it) => it.kind === hazard && it.fall)
+    assert.ok(items.length >= 3, `${kind}: has telegraphed hazards`)
+    assert.ok(items.every((it) => it.h === 0), `${kind}: waiting`)
+    const first = Math.min(...items.map((it) => it.d))
+    until(sim, first - at - 1)
+    assert.ok(items.filter((it) => it.d === first).every((it) => it.h === 0), `${kind}: not yet at ${at + 1} m`)
+    until(sim, first - at + 1)
+    assert.ok(items.filter((it) => it.d === first).every((it) => it.h === 1), `${kind}: landed by ${at - 1} m`)
+    const lane = items.find((it) => it.d === first)!.lane
+    sim.state.lane = lane
+    sim.state.x = laneX(lane)
+    until(sim, first + 2)
+    assert.equal(sim.state.crashKind, hazard, `${kind}: standing in its lane is a crash`)
+  }
+})
+
+test('wildfire: burning lanes are steered round, burning branches ducked', () => {
+  for (const [kind, move] of [['ember', 'slide']] as const) {
+    const ok = lone(kind, 1)
+    ok.state.loyalUsed = true
+    until(ok, 17.6)
+    ok.input(move)
+    runFor(ok, 10)
+    assert.ok(ok.state.alive, `${kind}: ${move} should clear it`)
+  }
+  for (const kind of ['fire', 'strike', 'ember'] as const) {
+    const bad = lone(kind, 1)
+    bad.state.loyalUsed = true
+    if (kind !== 'ember') {
+      until(bad, 17.6)
+      bad.input('jump')
+    }
+    until(bad, 25)
+    assert.equal(bad.state.crashKind, kind, `${kind}: running into it (or jumping it) is a crash`)
+  }
+})
+
+test('surprise events: the camp is safe, the supply crate gives a power-up, the golden chest pays out', () => {
+  for (let seed = 1; seed <= 12; seed++) {
+    const { sim, sec } = withSection('camp', seed)
+    assert.ok(!sim.items.some((it) => isObstacle(it.kind)), 'the camp has no obstacles')
+    assert.ok(sim.items.some((it) => it.kind === 'shield'), 'a shield is left behind')
+    runFor(sim, sec.to + 5 - sim.state.d, () => autopilot(sim))
+    assert.ok(sim.state.alive)
+  }
+  for (let seed = 1; seed <= 12; seed++) {
+    const { sim, sec } = withSection('supply', seed)
+    const crate = sim.items.find((it) => it.kind === 'crate')!
+    assert.ok(crate, 'a crate')
+    let got: string | null = null
+    runFor(sim, sec.to + 5 - sim.state.d, () => {
+      autopilot(sim)
+      // steer under the crate once the rock row is passed
+      if (sim.state.d > crate.d - 9 && sim.state.lane !== crate.lane) sim.input(crate.lane < sim.state.lane ? 'left' : 'right')
+      for (const e of sim.events) if (e.type === 'crate') got = e.kind
+    })
+    assert.ok(sim.state.alive, `supply seed ${seed}: crashed into ${sim.state.crashKind}`)
+    assert.ok(got, `supply seed ${seed}: crate collected`)
+  }
+  const sim = lone('rock', 0)
+  sim.items = []
+  sim.items.push({ id: 9, d: 20, lane: 1, kind: 'chest', h: 0.6, len: 0.4, gone: false, passed: false, broken: false, frozen: false, moving: 0 })
+  const before = { coins: sim.state.coins, gems: sim.state.gems }
+  until(sim, 24)
+  assert.equal(sim.state.coins - before.coins, 500)
+  assert.equal(sim.state.gems - before.gems, 5)
 })
 
 test('mine carts and ziplines: every row leaves a way through and a careful runner gets through', () => {
