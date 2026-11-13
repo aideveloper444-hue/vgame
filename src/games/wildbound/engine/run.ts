@@ -9,6 +9,7 @@ import {
   OBSTACLES_BY_BIOME,
   ZONE_LEN,
   SECTION_MIN_TIER,
+  SURPRISE_SECTIONS,
   SECTION_NO_REPEAT,
   tierAt,
   tierName,
@@ -340,9 +341,9 @@ export const GAUNTLET = {
 /** Pacing (design brief section 4): quiet onboarding, a first hook, then a major challenge every so often. */
 export const PACING = {
   /** the first challenge comes this many seconds into the run (after the onboarding stretch) */
-  firstHook: [30, 48] as const,
+  firstHook: [22, 32] as const,
   /** seconds of plain running between challenges (junctions and obstacle rows fill the gap) */
-  gap: [22, 38] as const,
+  gap: [16, 28] as const,
   /** from Survivor on, sometimes two challenges are linked with only this short breather */
   linkedGap: [8, 12] as const,
   linkedChance: 0.3,
@@ -400,6 +401,8 @@ export class RunSim {
   private gauntletStep = 0
   /** this run has had its first flight */
   private flown = false
+  /** challenges planned so far this run (outside the gauntlet): the first three are the run's opening act */
+  private planned = 0
   private nextGauntletT = GAUNTLET.firstAt
   /** where on the 40 km world the run starts (metres); the run's own distance is state.d - origin */
   readonly origin: number
@@ -1026,6 +1029,12 @@ export class RunSim {
       const into = d % 100
       if (into < 15) d += 15 - into
       if (into > 40) d += 115 - into
+      // never over a planned challenge: the junction waits until after it
+      const blocked = this.sections.find((x) => d - 45 < x.to && Math.ceil(d / 100) * 100 + 110 > x.from)
+      if (blocked) {
+        this.nextForkAt = blocked.to + 46
+        continue
+      }
       const rnd = this.forkRng
       const here = biomeAt(d).biome.id
       const pool = BIOMES.map((b) => b.id).filter((b) => b !== here)
@@ -1192,8 +1201,9 @@ export class RunSim {
   private generate() {
     if (this.opts.tutorial) return
     const s = this.state
-    this.planForks(s.d + 700)
-    this.planSections(s.d + 400)
+    // challenges first (further ahead), then the junctions fit around them: a run is never starved of challenges
+    this.planSections(s.d + 1100)
+    this.planForks(s.d + 900)
     // nothing is placed past an unresolved split: each route's content comes once it is chosen
     const pending = this.forks.find((f) => f.picked < 0)
     const horizon = Math.min(s.d + 170, pending ? pending.d - 8 : Infinity)
@@ -1216,6 +1226,9 @@ export class RunSim {
       if (sec) {
         this.buildSection(sec, Math.max(sec.from + 4, this.lastRowD + this.rowGap(this.lastRowD) + 1))
         this.nextRow = this.lastRowD + this.rowGap(this.lastRowD) + 2
+        // a ride (trolley, plane, glider, zipline, cart, raft, jeep) sets the runner down at the section's end:
+        // the next row keeps a full reaction gap from there
+        if ((['rail', 'flight', 'glider', 'zipline', 'minecart', 'raft', 'jeep'] as SectionKind[]).includes(sec.kind)) this.nextRow = Math.max(this.nextRow, sec.to + this.rowGap(sec.to))
         continue
       }
       // a clear blend strip at every zone boundary and where a junction's routes end
@@ -1379,7 +1392,9 @@ export class RunSim {
         this.gauntletStep = 0
         this.nextGauntletT = runTimeAt(this.runD(d0)) + GAUNTLET.every
       }
-      const kind = this.gauntletQueue[0] ?? this.pickSection(W, this.runD(d0), (z.flavor === 'rail' || kit === 'railway' ? 'rail' : z.flavor === 'vines' ? 'vines' : null))
+      // the animal that lives here: a jaguar under the trees, an elephant herd anywhere open
+      const wild: SectionKind = has(['jungle', 'forest', 'moonlit', 'fern', 'mossy', 'giantroot', 'redwood', 'mangrove', 'bamboo', 'temple', 'glow', 'pine', 'cedar', 'autumn', 'birch', 'deadwood', 'swamp', 'mist', 'flower']) ? 'jaguar' : 'stampede'
+      const kind = this.gauntletQueue[0] ?? this.pickSection(W, this.runD(d0), (z.flavor === 'rail' || kit === 'railway' ? 'rail' : z.flavor === 'vines' ? 'vines' : null), wild)
       const rows = kind === 'minecart' || kind === 'raft' || kind === 'jeep' ? 8 : kind === 'flight' || kind === 'zipline' || kind === 'glider' ? 6 : kind === 'spikeroll' || kind === 'pitfall' || kind === 'blades' || kind === 'webs' || kind === 'cointunnel' || kind === 'stampede' ? 5 : kind === 'jaguar' ? 4 : kind === 'cave' || kind === 'rail' || kind === 'temple' || kind === 'lightning' || kind === 'wildfire' || kind === 'flood' || kind === 'coinstorm' ? 4 : kind === 'camp' ? 2 : 3
       const len = (this.rowGap(d0 + 60) + 1) * rows + 40
       // keep inside the zone (clear of its 400 m boundaries) and clear of every junction
@@ -1388,7 +1403,7 @@ export class RunSim {
       if (into < 12) from += 12 - into
       if ((from % ZONE_LEN) + len > ZONE_LEN - 12) from = Math.ceil(from / ZONE_LEN) * ZONE_LEN + 12
       const clash = this.forks.find((f) => from + len > f.d - 45 && from < f.end + 10)
-      if (clash || (this.nextForkAt && from + len > this.nextForkAt - 45 && from < this.nextForkAt + 200)) {
+      if (clash) {
         this.nextSectionAt = Math.max(clash ? clash.end + 20 : 0, from + 60)
         continue
       }
@@ -1397,6 +1412,8 @@ export class RunSim {
       this.sections.push({ kind, from, to: from + len, lane: kind === 'flight' || kind === 'glider' || kind === 'minecart' || kind === 'zipline' || kind === 'raft' || kind === 'jeep' ? 1 : this.rng() < 0.5 ? 0 : 2, built: false, announced: false, gauntlet })
       this.sectionLog.push(kind)
       if (this.sectionLog.length > 8) this.sectionLog.shift()
+      if (!gauntlet) this.planned++
+      if (kind === 'flight' || kind === 'glider') this.flown = true
       this.nextSectionAt = this.nextChallengeAt(from + len)
     }
     if (this.sections.length > 8) this.sections = this.sections.filter((x) => x.to > this.state.d - 80)
@@ -1406,15 +1423,20 @@ export class RunSim {
    * The pacing director's pick: weighted by the zone, limited to the run's difficulty tier, and never one of the
    * last few challenges again unless it is the zone's signature (zone 72's railway, the Hanging Vine zones).
    */
-  private pickSection(W: [SectionKind, number][], rd: number, signature: SectionKind | null): SectionKind {
+  private pickSection(W: [SectionKind, number][], rd: number, signature: SectionKind | null, wild: SectionKind = 'stampede'): SectionKind {
     const tier = tierAt(runTimeAt(rd))
-    // every run flies: the first chance at an airstrip is always taken
-    if (!this.sectionLog.includes('flight') && !this.flown && W.some(([k]) => k === 'flight')) {
-      this.flown = true
-      return 'flight'
+    // every run's opening act (outside the signature zones, which keep their railway or vines): a first real
+    // challenge, then the bush plane, then a wildlife encounter; after that the director's normal picks
+    if (!signature) {
+      if (this.planned === 1 && !this.flown) return 'flight'
+      if (this.planned === 2 && !this.sectionLog.some((k) => k === 'stampede' || k === 'jaguar')) return wild
     }
+    // the plane comes back now and then wherever there is room to take off
+    if (!signature && this.planned >= 5 && this.planned % 5 === 0 && W.some(([k]) => k === 'flight' || k === 'glider')) return W.some(([k]) => k === 'glider') && this.rng() < 0.5 ? 'glider' : 'flight'
     const recent = this.sectionLog.slice(-SECTION_NO_REPEAT)
-    const allowed = W.filter(([k]) => SECTION_MIN_TIER[k] <= tier)
+    let allowed = W.filter(([k]) => SECTION_MIN_TIER[k] <= tier)
+    // the first challenge of a run is a real one (not a surprise reward)
+    if (this.planned === 0 && allowed.some(([k]) => !(SURPRISE_SECTIONS as SectionKind[]).includes(k))) allowed = allowed.filter(([k]) => !(SURPRISE_SECTIONS as SectionKind[]).includes(k))
     let pool = allowed.filter(([k]) => k === signature || !recent.includes(k))
     // everything here ran recently: anything but the very last one
     if (!pool.length) pool = allowed.filter(([k]) => k !== recent[recent.length - 1])

@@ -16,10 +16,87 @@ export interface BushPlane {
   disc: THREE.Mesh
 }
 
-const CREAM = new THREE.Color('#e7e1d3')
-const BELLY = new THREE.Color('#b9b6ad')
-const STRIPE = new THREE.Color('#6b1f1a')
-const STRIPE2 = new THREE.Color('#1f2a2e')
+// expedition livery: warm white, deep oxblood red, navy pinstripes, a grey-blue belly
+const CREAM = new THREE.Color('#efebe2')
+const BELLY = new THREE.Color('#9aa1a3')
+const STRIPE = new THREE.Color('#8a1c16')
+const STRIPE2 = new THREE.Color('#1b2a3a')
+
+/**
+ * The fuselage paint as a texture (the lathe's u runs round the body from the belly, v from tail to nose), so the
+ * cheat line, pinstripe, red cowling and panel lines are crisp at any distance instead of smeared across big faces.
+ */
+function hullTexture(): THREE.CanvasTexture {
+  const W = 1024, H = 512
+  const c = document.createElement('canvas')
+  c.width = W
+  c.height = H
+  const g = c.getContext('2d')!
+  // y on the canvas = 1 - v (the tail at the bottom, the nose at the top)
+  const V = (v: number) => (1 - v) * H
+  g.fillStyle = '#efebe2'
+  g.fillRect(0, 0, W, H)
+  // belly: grey-blue round the bottom (u near 0 and 1), soft edged
+  for (const [a, b] of [[0, 0.16], [0.84, 1]] as const) {
+    const grad = g.createLinearGradient(a * W, 0, b * W, 0)
+    const lo = a === 0
+    grad.addColorStop(0, lo ? '#9aa1a3' : 'rgba(154,161,163,0)')
+    grad.addColorStop(0.7, lo ? '#9aa1a3' : '#9aa1a3')
+    grad.addColorStop(1, lo ? 'rgba(154,161,163,0)' : '#9aa1a3')
+    g.fillStyle = grad
+    g.fillRect(a * W, 0, (b - a) * W, H)
+  }
+  // cheat line along each side (u 0.25 and 0.75), with a navy pinstripe beneath it
+  for (const side of [0.25, 0.75]) {
+    const below = side < 0.5 ? -1 : 1
+    g.fillStyle = '#8a1c16'
+    g.fillRect((side - 0.028) * W, 0, 0.056 * W, H)
+    g.fillStyle = '#1b2a3a'
+    g.fillRect((side + below * 0.048 - 0.006) * W, 0, 0.012 * W, H)
+  }
+  // a red top spine from the windscreen back to the fin
+  g.fillStyle = '#8a1c16'
+  g.fillRect(0.47 * W, V(0.62), 0.06 * W, V(0) - V(0.62))
+  // the red cowling round the nose, a navy ring where it meets the cabin
+  g.fillStyle = '#8a1c16'
+  g.fillRect(0, 0, W, V(0.84))
+  g.fillStyle = '#1b2a3a'
+  g.fillRect(0, V(0.84), W, 5)
+  // panel lines and rivet rows (faint), a cabin door outline on each side
+  g.strokeStyle = 'rgba(30, 26, 22, 0.22)'
+  g.lineWidth = 2
+  for (const v of [0.18, 0.32, 0.46, 0.6, 0.72]) {
+    g.beginPath()
+    g.moveTo(0, V(v))
+    g.lineTo(W, V(v))
+    g.stroke()
+  }
+  for (const side of [0.25, 0.75]) g.strokeRect((side - 0.09) * W, V(0.7), 0.18 * W, V(0.55) - V(0.7))
+  g.fillStyle = 'rgba(30, 26, 22, 0.25)'
+  for (const v of [0.18, 0.32, 0.46, 0.6, 0.72]) for (let u = 0; u < 1; u += 0.012) g.fillRect(u * W, V(v) - 5, 2, 2)
+  // registration on both sides of the rear fuselage (written along the body)
+  for (const side of [0.25, 0.75]) {
+    g.save()
+    g.translate((side + (side < 0.5 ? 0.11 : -0.11)) * W, V(0.36))
+    g.rotate(side < 0.5 ? -Math.PI / 2 : Math.PI / 2)
+    g.fillStyle = '#1b2a3a'
+    g.font = 'bold 34px sans-serif'
+    g.textAlign = 'center'
+    g.textBaseline = 'middle'
+    g.fillText('PP-WLD', 0, 0)
+    g.restore()
+  }
+  // weathering: exhaust soot along the belly behind the nose, a little dust low down
+  const soot = g.createLinearGradient(0, V(0.86), 0, V(0.55))
+  soot.addColorStop(0, 'rgba(40,36,32,0.35)')
+  soot.addColorStop(1, 'rgba(40,36,32,0)')
+  g.fillStyle = soot
+  g.fillRect(0.08 * W, V(0.86), 0.12 * W, V(0.55) - V(0.86))
+  const tex = new THREE.CanvasTexture(c)
+  tex.colorSpace = THREE.SRGBColorSpace
+  tex.anisotropy = 8
+  return tex
+}
 
 let shared: {
   body: THREE.BufferGeometry
@@ -29,7 +106,7 @@ let shared: {
   metal: THREE.BufferGeometry
   tyre: THREE.BufferGeometry
   blades: THREE.BufferGeometry
-  mats: Record<'paint' | 'glass' | 'metal' | 'tyre' | 'blade' | 'disc', THREE.Material>
+  mats: Record<'hull' | 'paint' | 'glass' | 'metal' | 'tyre' | 'blade' | 'disc', THREE.Material>
 } | null = null
 
 /** colour every vertex of a geometry by height (and a stripe band), so one material can carry the livery */
@@ -72,7 +149,6 @@ function build() {
   }
   body.translate(0, FY, 0)
   body.computeVertexNormals()
-  livery(body, FY, 0.02)
 
   // ---- wing: a long straight wing with a rounded leading edge, a dihedral, red tips; on top of the cabin
   const WY = FY + 0.6
@@ -96,7 +172,7 @@ function build() {
   const wing = mergeGeometries(halves.map((g) => g.toNonIndexed()))!
   wing.translate(0, WY, 0.2)
   wing.computeVertexNormals()
-  livery(wing, -10, 99, { tipsFrom: 4.25 })
+  livery(wing, -10, 99, { tipsFrom: 3.75 })
 
   // ---- tail: stabiliser and a swept fin with a rudder line
   const stab = new THREE.BoxGeometry(3.3, 0.06, 0.85).translate(0, FY + 0.38, -2.95)
@@ -109,9 +185,20 @@ function build() {
   const fin = new THREE.ExtrudeGeometry(finShape, { depth: 0.07, bevelEnabled: false })
   fin.rotateY(Math.PI / 2)
   fin.translate(-0.035, FY + 0.42, -2.1)
-  const tail = mergeGeometries([stab.toNonIndexed(), fin.toNonIndexed()])!
+  const tail = mergeGeometries([stab.toNonIndexed(), fin.index ? fin.toNonIndexed() : fin])!
   tail.computeVertexNormals()
-  livery(tail, FY + 0.6, 0.15)
+  // the tail: white stabiliser, the fin red above a navy stripe
+  {
+    const pos = tail.attributes.position
+    const col = new Float32Array(pos.count * 3)
+    const cc = new THREE.Color()
+    for (let i = 0; i < pos.count; i++) {
+      const y = pos.getY(i) - (FY + 0.42)
+      cc.copy(y > 0.62 ? STRIPE : y > 0.5 ? STRIPE2 : CREAM)
+      col.set([cc.r, cc.g, cc.b], i * 3)
+    }
+    tail.setAttribute('color', new THREE.BufferAttribute(col, 3))
+  }
 
   // ---- glazing: windscreen, cabin side windows, a skylight
   const glassParts = [
@@ -180,6 +267,7 @@ function build() {
   blades.computeVertexNormals()
 
   const mats = {
+    hull: new THREE.MeshPhysicalMaterial({ map: hullTexture(), roughness: 0.3, metalness: 0.02, clearcoat: 0.8, clearcoatRoughness: 0.16 }),
     paint: new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.38, metalness: 0.05, clearcoat: 0.6, clearcoatRoughness: 0.3 }),
     glass: new THREE.MeshPhysicalMaterial({ color: '#1b2328', roughness: 0.05, metalness: 0.2, clearcoat: 1, envMapIntensity: 1.4 }),
     metal: new THREE.MeshStandardMaterial({ color: '#7a7c7f', roughness: 0.35, metalness: 0.85 }),
@@ -202,7 +290,7 @@ export function makeBushPlane(castShadow = true): BushPlane {
     group.add(mesh)
     return mesh
   }
-  add(s.body, s.mats.paint)
+  add(s.body, s.mats.hull)
   add(s.wing, s.mats.paint)
   add(s.tail, s.mats.paint)
   add(s.glass, s.mats.glass)

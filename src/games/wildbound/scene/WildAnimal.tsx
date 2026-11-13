@@ -1287,8 +1287,11 @@ export default function WildAnimal({
     c.vx = vx
     c.prevX = tmpV.x
     const moving = pose === 'run' || pose === 'jump' || pose === 'slide'
-    const leanT = moving ? THREE.MathUtils.clamp(-c.ax * 0.011, -0.2, 0.2) : 0
-    const steerT = moving ? THREE.MathUtils.clamp(c.vx * 0.045, -0.28, 0.28) : 0
+    // a runner leans gently into a lane change on the ground (with the velocity, so it never rocks back the other
+    // way as it settles) and holds level in the air: a body banking mid-jump reads as falling over
+    const air = pose === 'jump' || pose === 'roll'
+    const leanT = moving && !air ? THREE.MathUtils.clamp(-c.vx * 0.012, -0.07, 0.07) : 0
+    const steerT = moving ? THREE.MathUtils.clamp(c.vx * 0.022, -0.14, 0.14) * (air ? 0.5 : 1) : 0
     c.lean += (leanT - c.lean) * Math.min(1, dt * 9)
     c.steer += (steerT - c.steer) * Math.min(1, dt * 7)
     g.rotation.set(0, c.steer, c.lean)

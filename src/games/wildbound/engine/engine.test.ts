@@ -65,7 +65,8 @@ test('rows are spaced by the reaction window and world boundaries stay clear', (
   sim.state.invulnUntil = 1e12
   const ds = new Set<number>()
   runFor(sim, 3000, () => {
-    for (const it of sim.items) if (isObstacle(it.kind) && !it.moving) ds.add(Math.round(it.d * 100) / 100)
+    // (rides are not obstacle rows: the bush plane taxis on its strip, moored rafts and carts rock and roll)
+    for (const it of sim.items) if (isObstacle(it.kind) && !it.moving && !['plane', 'raft', 'minecart', 'jeep', 'trolley'].includes(it.kind)) ds.add(Math.round(it.d * 100) / 100)
   })
   const sorted = [...ds].sort((a, b) => a - b)
   for (let i = 1; i < sorted.length; i++) {
@@ -122,12 +123,15 @@ test('junctions: the lane at the split picks the route; each route has its own w
       const sim = new RunSim({ seed, animalId: 'titan' })
       sim.state.invulnUntil = 1e12
       sim.step(16)
+      // challenges are planned first and junctions fit between them: run on until the first one is planned
+      let g = 0
+      while (!sim.forks.length && g++ < 20000) sim.step(16)
       const f = sim.forks[0]
-      assert.ok(f && f.d > 200, 'a junction is planned ahead')
+      assert.ok(f && f.d - sim.state.d > 200, 'a junction is planned ahead')
       assert.ok(f.routes.length === 2 || f.routes.length === 3)
       assert.ok(f.routes.some((r) => r.risk === 'safe') && f.routes.some((r) => r.risk === 'risky'), 'a safe and a dangerous route at every junction')
       assert.ok(!sim.items.some((it) => it.d > f.d + 2 && it.d < f.d + 45), 'route content waits for the choice')
-      runFor(sim, f.d + 70, () => {
+      runFor(sim, f.d + 70 - sim.state.d, () => {
         if (sim.state.d < f.d) sim.state.lane = lane
       })
       assert.ok(f.picked >= 0, 'a route was taken')
@@ -463,7 +467,8 @@ test('sections appear in zones that suit them, never at a junction, and a carefu
     }
   }
   // the pool is wide now (weather, surprises): the core sections still show up, among plenty of variety
-  for (const k of ['river', 'bridge', 'cave']) assert.ok(kinds.has(k), `${k} seen in the first 3 km (${[...kinds]})`)
+  for (const k of ['river', 'bridge', 'flight']) assert.ok(kinds.has(k), `${k} seen in the first 3 km (${[...kinds]})`)
+  assert.ok(kinds.has('jaguar') || kinds.has('stampede'), `wildlife met in the first 3 km (${[...kinds]})`)
   assert.ok(kinds.size >= 8, `variety in the first 3 km (${[...kinds]})`)
 })
 
@@ -911,7 +916,7 @@ const layout = (sim: RunSim, to: number) => {
   sim.state.invulnUntil = 1e12
   const seen = new Map<number, string>()
   runFor(sim, to, () => {
-    for (const it of sim.items) if (isObstacle(it.kind) && it.kind !== 'boulder') seen.set(it.id, `${it.d.toFixed(2)}:${it.lane}:${it.kind}`)
+    for (const it of sim.items) if (isObstacle(it.kind) && it.kind !== 'boulder' && it.kind !== 'plane') seen.set(it.id, `${it.d.toFixed(2)}:${it.lane}:${it.kind}`)
   })
   return [...seen.values()].sort().join('|')
 }
@@ -1084,6 +1089,24 @@ test('race network: runner updates round-trip and cannot move runners this devic
   assert.equal(b.racers[1].d, 0, 'local runner untouched')
   b.apply(['host', 1e9, 99, -5, 9, 3, 1e9, -1, 0, 99, -4])
   assert.equal(b.racers[0].d, 2000, 'clamped')
+})
+
+test('every run opens with a challenge, the bush plane and a wildlife encounter within its first few minutes', () => {
+  for (let seed = 1; seed <= 16; seed++) {
+    const z = (seed * 37) % 100
+    const sim = new RunSim({ seed, animalId: 'sonic', startZone: z })
+    sim.state.invulnUntil = 1e12
+    const seen = new Map<string, number>()
+    runFor(sim, 2600, () => {
+      for (const x of sim.sections) if (x.from - sim.origin < 2600 && !seen.has(x.kind)) seen.set(x.kind, x.from - sim.origin)
+    })
+    const first = Math.min(...seen.values())
+    assert.ok(first < 500, `seed ${seed}: first challenge at ${first.toFixed(0)} m`)
+    const zone = biomeAt(sim.origin + 800)
+    const signature = zone.flavor === 'rail' || zone.biome.id === 'railway' || zone.flavor === 'vines'
+    if (!signature) assert.ok(seen.has('flight') || seen.has('glider'), `seed ${seed} (zone ${z + 1}): no flight (${[...seen.keys()]})`)
+    assert.ok(seen.has('jaguar') || seen.has('stampede'), `seed ${seed} (zone ${z + 1}): no wildlife (${[...seen.keys()]})`)
+  }
 })
 
 test('every run can start in a different zone: same easy start, fair trail, distance counted from 0', () => {

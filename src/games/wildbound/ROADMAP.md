@@ -521,3 +521,31 @@ The brief (gameplay & challenge design doc v1.0, 10 Nov 2026) is applied to Wild
 - Autopilot jumps onto parked trolleys (it used to run into them).
 - Checked live: stampede (elephants charging past), jaguars crouched on the verge, forest path, airstrip take-off from
   a side lane. Not seen: the jaguar's spring up close.
+
+## 2026-11-13 night: launch pass — every run meets the plane and wildlife, level jumps, release build
+
+- **Why players never met them** (headless sim, 12 runs x 150 s, random start zones): no run reached an animal
+  (jaguar unlocked at 90 s, stampede at 180 s), half had no plane, and one run had a single challenge in 150 s. Each
+  400 m zone held a junction, leaving ~178 m of trail per zone; most challenges are longer (a flight is ~208 m), so
+  they were pushed back again and again.
+- **Challenges come first now**: `planSections` plans 1,100 m ahead before `planForks` (900 m), and a junction waits
+  until after any planned challenge. Gaps 16–28 s, first hook 22–32 s.
+- **The opening act** (`RunSim.planned`, outside the railway/vine signature zones): a real first challenge (no
+  surprise reward), then the bush plane, then wildlife (a jaguar under trees, elephants anywhere open). The plane
+  returns every fifth challenge where an airstrip fits. Jaguar from tier 1, stampede from tier 2. Sim after: challenge
+  every ~30–40 s, plane by ~70 s, wildlife by ~110 s in every run. New test; tests 56.
+- **A gap after every ride**: the first row after a trolley, plane, glider, zipline, cart, raft or jeep is a full
+  reaction gap past the drop-off (zone 72 had a log wall 3.8 m after the trolley's buffer).
+- **Jumps stay level**: the runner rolled up to ~18° and yawed ~30° mid-air (a lean from lateral acceleration that
+  rocked back as the lane change settled, plus a second, outward lean on the Runner group). Now: no roll in the air,
+  a 4° lean with the velocity on the ground, a gentler turn toward the new lane.
+- **Airstrip clearing**: over a flight or glider section, trees (and bamboo) stand back by their reach + 4 m, vines
+  and ruin arches go, so the plane climbs over open ground instead of through the canopy.
+- **Plane**: fuselage painted with a 1024x512 livery texture (oxblood cheat line, navy pinstripe, red cowl and spine,
+  panel lines, rivets, PP-WLD registration, exhaust soot); wider red wingtips; red fin over a navy stripe. The camera
+  clears the tail as soon as the runner boards.
+- **Water** (streams, floods): rippled world-space surface over a faint sandy bed instead of a flat painted sheet.
+- **Release build**: `node scripts/build-wildbound.mjs [outDir]` builds `dist-wildbound/` and copies the assets it
+  loads (models/wildbound, models/amazon props and textures, icons): 77 MB. The old standalone build had no assets at
+  all. wildbound.html gains theme colour, description and home-screen tags. Checked served from a static server:
+  home, a run, no errors.

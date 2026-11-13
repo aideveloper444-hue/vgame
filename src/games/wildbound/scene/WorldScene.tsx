@@ -928,15 +928,20 @@ function makeSource() {
         // Where the trail has a hole, and over a whole zipline (where the rider hangs at canopy height), big trees
         // are pushed out by their own reach and hanging vines near the trail go, so the ravine and the view stay clear.
         const zip = sec?.kind === 'zipline'
-        const holed = zip || holes.some((g) => Math.abs(g.d - zc) < g.len + SEG / 2 + 3)
+        // an airstrip (plane or glider launch, from the run-up to the touchdown): a clearing wide enough for the wings
+        // and the climb, so the flight is over open ground and never through the canopy
+        const air = !view.showcase && !!run.sim?.sections.some((x) => (x.kind === 'flight' || x.kind === 'glider') && zc > x.from - 30 && zc < x.to + 14)
+        const holed = zip || air || holes.some((g) => Math.abs(g.d - zc) < g.len + SEG / 2 + 3)
         for (const p0 of scenery(k)) {
           let p = clearVerge(p0)
-          if (holed && TREEISH.test(p.prop)) {
+          if (holed && (TREEISH.test(p.prop) || (air && p.prop.startsWith('bamboo')))) {
             const hgt = typeof p.scale === 'number' ? p.scale : p.scale[1]
-            const minX = PATH_HALF + 1 + 0.68 * hgt
+            const minX = PATH_HALF + 1 + 0.68 * hgt + (air ? 4 : 0)
             if (Math.abs(p.x) < minX) p = { ...p, x: (p.x < 0 ? -1 : 1) * minX }
           }
-          if (zip && p.prop === 'vine' && Math.abs(p.x) < 9) continue
+          if ((zip || air) && p.prop === 'vine' && Math.abs(p.x) < (air ? 16 : 9)) continue
+          // (and no ruin archways over the strip)
+          if (air && (p.prop === 'block' || p.prop === 'pillar') && Math.abs(p.x) < 6) continue
           if (!open || (!BANKS.has(p.prop) && Math.abs(p.x) > 11)) emit(p)
         }
         if (!open) grassAt(k, biomeId(zc), emit)
@@ -1625,8 +1630,9 @@ function Runner({ animalId }: { animalId: AnimalId }) {
     const x = s?.x ?? 0
     g.current.position.set(x, s?.y ?? 0, 0)
     const tx = s ? laneX(s.lane) : 0
-    lean.current.rotation.y += ((tx - x) * 0.12 - lean.current.rotation.y) * Math.min(1, dt * 12)
-    lean.current.rotation.z += ((x - tx) * -0.05 - lean.current.rotation.z) * Math.min(1, dt * 12)
+    // a slight turn of the body toward the new lane (the lean itself is the animal's own, in WildAnimal)
+    lean.current.rotation.y += ((tx - x) * 0.06 - lean.current.rotation.y) * Math.min(1, dt * 12)
+    lean.current.rotation.z = 0
     const sh = !!sim && sim.powerOn('shield')
     if (shield.current) {
       shield.current.visible = sh
@@ -2206,11 +2212,13 @@ function ChaseCamera({ height }: { height: number }) {
     // any other ride or traversal (handcar, mine cart, zipline, vine swing): a short pull back so the new mode reads
     // (design brief §9), easing in over half a second and back out on leaving it
     // (hanging from a line or vine the runner is already high: a gentler pull, so the camera stays clear of the trees)
-    const riding = s && s.alive ? (s.ride && s.ride.kind !== 'plane' ? 1 : s.swing ? 0.45 : 0) : 0
-    rideCam.current += (riding - rideCam.current) * Math.min(1, dt * 2.2)
+    // (boarding the plane, the camera clears the tail straight away instead of waiting for the climb)
+    const onPlane = s?.ride?.kind === 'plane'
+    const riding = s && s.alive ? (s.ride ? 1 : s.swing ? 0.45 : 0) : 0
+    rideCam.current += (riding - rideCam.current) * Math.min(1, dt * (onPlane ? 4 : 2.2))
     const rc = rideCam.current * (1 - fl)
-    const back = -(2.0 + 0.7 * height) * (portrait ? 1.25 : 1) * (1 - o * 0.25) - rv * 0.9 - fl * 4.2 - rc * 1.5
-    const up = 1.2 + 0.75 * height + (portrait ? 0.45 : 0) + (s?.y ?? 0) * (0.35 + 0.55 * fl) + rv * 1.1 + fl * 1.2 + rc * 0.55
+    const back = -(2.0 + 0.7 * height) * (portrait ? 1.25 : 1) * (1 - o * 0.25) - rv * 0.9 - fl * 4.2 - rc * (onPlane ? 4.2 : 1.5)
+    const up = 1.2 + 0.75 * height + (portrait ? 0.45 : 0) + (s?.y ?? 0) * (0.35 + 0.55 * fl) + rv * 1.1 + fl * 1.2 + rc * (onPlane ? 1.4 : 0.55)
     const tx = x * 0.78 + o * 2.6
     camera.position.x += (tx - camera.position.x) * k
     camera.position.y += (up - camera.position.y) * k

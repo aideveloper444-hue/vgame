@@ -613,7 +613,9 @@ export function useProcKits(): Record<ProcProp, PropKit> {
     const crystalGeo = mergeGeometries([new THREE.ConeGeometry(0.18, 1.1, 6).translate(0, 0.55, 0), new THREE.ConeGeometry(0.12, 0.8, 6).rotateZ(0.4).translate(0.18, 0.35, 0.05), new THREE.ConeGeometry(0.1, 0.6, 6).rotateZ(-0.5).translate(-0.15, 0.28, -0.05)])!
     // quartz in the cave walls: milky, faintly lit from within
     const crystalMat = new THREE.MeshStandardMaterial({ color: '#c4d8dc', emissive: '#4a8c9a', emissiveIntensity: 0.55, roughness: 0.18, metalness: 0.05 })
-    const waterMat = new THREE.MeshStandardMaterial({ color: '#284c50', roughness: 0.06, metalness: 0.1, transparent: true, opacity: 0.88, emissive: '#06191d', emissiveIntensity: 0.35, envMapIntensity: 1.5 })
+    // streams and flood water: a glossy dark surface with ripples (the sand normal map in world space, so it never
+    // stretches with the pool's size) over a faint sandy bed, instead of one flat painted colour
+    const waterMat = worldUvMaterial(tex.sandD, tex.sandN, 3.4, { color: '#2a5452', roughness: 0.07, metalness: 0.1, transparent: true, opacity: 0.9, emissive: new THREE.Color('#06191d'), emissiveIntensity: 0.3, envMapIntensity: 1.7, normalScale: new THREE.Vector2(0.55, 0.55) })
     const shadowMat = new THREE.MeshBasicMaterial({ color: '#000000', transparent: true, opacity: 0.5, depthWrite: false })
     // fire, lightning: additive light that is not tone-mapped, so it glows against dusk and storm skies
     const glow = (color: string, opacity: number) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, side: THREE.DoubleSide })

@@ -584,8 +584,8 @@ export const SECTION_MIN_TIER: Record<SectionKind, number> = {
   lightning: 2, wildfire: 2,
   quake: 3,
   blades: 3,
-  stampede: 3,
-  jaguar: 2,
+  stampede: 2,
+  jaguar: 1,
 }
 /** surprise events: reward stretches announced as surprises rather than challenges */
 export const SURPRISE_SECTIONS: SectionKind[] = ['coinstorm', 'camp', 'supply']
