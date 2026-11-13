@@ -9,17 +9,7 @@ export interface LudoToken {
   color: LudoColor
   tokenIndex: 0 | 1 | 2 | 3
   distance: number // -1 base, 0..board.ringSpan ring, then home lane, board.finish finished
-  /** Shield power-up: this many of the owner's turns left during which the token can't be captured or bombed. */
-  shieldTurns?: number
 }
-
-export type PowerKind = 'speed' | 'shield' | 'bomb'
-export type PowerStock = Record<PowerKind, number>
-export const START_POWERS: PowerStock = { speed: 3, shield: 3, bomb: 3 }
-/** How far ahead (in ring cells) a Bomb can reach from one of your tokens. */
-export const STRIKE_RANGE = 6
-/** A Shield lasts this many of the owner's turns. */
-export const SHIELD_TURNS = 2
 
 export interface LudoPlayer {
   id: string
@@ -30,7 +20,6 @@ export interface LudoPlayer {
   tokens: LudoToken[]
   captures: number
   finishedCount: number
-  powers: PowerStock
 }
 
 export interface LegalMove {
@@ -50,8 +39,11 @@ export interface LudoLastEvent {
   /** World position [x, z] of the effect. */
   effectPos?: Vec2
   tokenIds?: string[]
-  /** Token that struck (its character plays the attack); null for a bomb, which has no attacker on the board. */
+  /** Token that struck (its character plays the attack). */
   attackerId?: string | null
+  /** 'win': the player who just brought all four tokens home, and the place they finished in (1 = first). */
+  playerId?: string
+  rank?: number
 }
 
 export interface PendingMove {
@@ -60,7 +52,7 @@ export interface PendingMove {
   finalDistance: number
 }
 
-export type LudoLogKind = 'roll' | 'move' | 'capture' | 'finish' | 'win' | 'warn' | 'chat' | 'power'
+export type LudoLogKind = 'roll' | 'move' | 'capture' | 'finish' | 'win' | 'warn' | 'chat'
 
 export interface LudoLogEntry {
   id: string
@@ -93,13 +85,11 @@ interface LudoState {
   pendingMove: PendingMove | null
   lastEvent: LudoLastEvent | null
   winnerId: string | null
+  /** Player ids in the order they brought all four tokens home; the last player left is appended when the match ends. */
+  rankings: string[]
   bestRoll: number
   eventLog: LudoLogEntry[]
   startedAt: number
-  /** Speed is on for the current turn: the next move goes double the roll. */
-  speedActive: boolean
-  /** The current player already used a power-up this turn. */
-  powerUsed: boolean
 
   startGame: (participants: { id: string; name: string; avatarEmoji: string; isBot: boolean }[]) => void
   rollDice: () => void
@@ -107,13 +97,52 @@ interface LudoState {
   selectToken: (tokenId: string) => void
   completeMove: () => void
   resetGame: () => void
-  useSpeed: () => boolean
-  useShield: (tokenId: string) => boolean
-  useBomb: (tokenId: string) => boolean
+  /** The current player let the roll timer run out: their turn passes to the next player. */
+  skipTurn: () => void
 }
 
+/** How long a player has to roll before their turn passes on. */
+export const ROLL_TIMEOUT_MS = 10000
+
+/**
+ * Match pacing (never shown to players): from PACE_START_MS the dice start quietly helping (see `pacedRoll`),
+ * ramping to full help by PACE_FULL_MS, so long matches move toward a finish.
+ */
+export const PACE_START_MS = 6 * 60 * 1000
+export const PACE_FULL_MS = 16 * 60 * 1000
+/** From this point sixes come up about twice as often (1 in 3 instead of 1 in 6). */
+export const SIX_BOOST_MS = 7 * 60 * 1000
+/** Extra chance of a forced six once the boost is on: 0.2 + 0.8 × 1/6 ≈ 1/3 overall. */
+const SIX_BOOST_CHANCE = 0.2
+
+/**
+ * A die roll that leans toward ending the match as time goes on. `pace` runs 0 → 1; at 0 it is a fair die.
+ * With rising probability it either hands a token in the home stretch the exact number it needs to get home
+ * (the slowest part of Ludo), gives a six to a player stuck with everyone in base, or takes the better of two rolls.
+ */
+function pacedRoll(board: LudoBoard, player: LudoPlayer, pace: number, sixBoost: boolean, sixesInARow: number): number {
+  const fair = () => 1 + Math.floor(Math.random() * 6)
+  // more sixes later in the match — but never the one that would be a third in a row and forfeit the turn
+  // two sixes already: a fair roll, so the help never pushes anyone into the three-sixes forfeit
+  if (sixesInARow >= 2) return fair()
+  const boostSix = sixBoost && Math.random() < SIX_BOOST_CHANCE
+  if (pace <= 0) return boostSix ? 6 : fair()
+  const live = player.tokens.filter((t) => t.distance >= 0 && t.distance < board.finish)
+  const inBase = player.tokens.some((t) => t.distance === -1)
+  // exact roll home for a token close to the finish
+  const needs = live.map((t) => board.finish - t.distance).filter((n) => n >= 1 && n <= 6)
+  if (needs.length && Math.random() < pace * 0.6) return needs[Math.floor(Math.random() * needs.length)]
+  if (boostSix) return 6
+  // nothing on the board: a six to bring someone out
+  if (!live.length && inBase && Math.random() < pace * 0.5) return 6
+  // otherwise lean toward bigger steps (3–5; sixes are left to the boost above so they don't pile up)
+  if (Math.random() < pace * 0.6) return 3 + Math.floor(Math.random() * 3)
+  return fair()
+}
+
+
 function makeTokens(color: LudoColor): LudoToken[] {
-  return [0, 1, 2, 3].map((i) => ({ id: makeId(`${color}-tok`), color, tokenIndex: i as 0 | 1 | 2 | 3, distance: -1, shieldTurns: 0 }))
+  return [0, 1, 2, 3].map((i) => ({ id: makeId(`${color}-tok`), color, tokenIndex: i as 0 | 1 | 2 | 3, distance: -1 }))
 }
 
 function buildPath(from: number, to: number): number[] {
@@ -123,7 +152,7 @@ function buildPath(from: number, to: number): number[] {
   return path
 }
 
-export function getLegalMoves(board: LudoBoard, players: LudoPlayer[], playerIndex: number, dice: number, steps = dice): LegalMove[] {
+export function getLegalMoves(board: LudoBoard, players: LudoPlayer[], playerIndex: number, dice: number): LegalMove[] {
   const player = players[playerIndex]
   const moves: LegalMove[] = []
   for (const token of player.tokens) {
@@ -132,7 +161,7 @@ export function getLegalMoves(board: LudoBoard, players: LudoPlayer[], playerInd
       if (dice === 6) moves.push({ tokenId: token.id, kind: 'ENTER', from: -1, to: 0, path: [0] })
       continue
     }
-    const to = token.distance + steps
+    const to = token.distance + dice
     if (to > board.finish) continue
     moves.push({ tokenId: token.id, kind: 'ADVANCE', from: token.distance, to, path: buildPath(token.distance, to) })
   }
@@ -147,7 +176,6 @@ function checkCapture(board: LudoBoard, players: LudoPlayer[], moved: LudoToken)
   for (const p of players) {
     if (p.color === moved.color) continue
     for (const t of p.tokens) {
-      if ((t.shieldTurns ?? 0) > 0) continue
       const otherAbs = absCellOf(t)
       if (otherAbs !== null && otherAbs === abs) captured.push(t)
     }
@@ -167,77 +195,14 @@ export function botChooseMove(board: LudoBoard, moves: LegalMove[], players: Lud
   return moves.reduce((best, m) => (m.to > best.to ? m : best), moves[0]).tokenId
 }
 
-/** Ring cells from `from` forward to `to` (0 if equal), going around the shared ring. */
-function ringGap(board: LudoBoard, from: number, to: number): number {
-  const n = board.ringSize
-  return (((to - from) % n) + n) % n
+export function ordinal(n: number): string {
+  const s = ['th', 'st', 'nd', 'rd']
+  const v = n % 100
+  return `${n}${s[(v - 20) % 10] ?? s[v] ?? s[0]}`
 }
 
-export interface StrikePair {
-  attacker: LudoToken
-  defender: LudoToken
-  gap: number
-}
-
-/**
- * Opponent tokens a player can Bomb: on the shared ring, not on a safe cell, not shielded,
- * and 1..STRIKE_RANGE cells ahead of one of the player's own ring tokens.
- */
-export function strikePairs(board: LudoBoard, players: LudoPlayer[], playerIndex: number): StrikePair[] {
-  const me = players[playerIndex]
-  if (!me) return []
-  const pairs: StrikePair[] = []
-  const mine = me.tokens
-    .map((t) => ({ t, abs: tokenAbs(board, t.color, t.distance) }))
-    .filter((x) => x.abs !== null && x.t.distance >= 0 && x.t.distance <= board.ringSpan)
-  for (const p of players) {
-    if (p.color === me.color) continue
-    for (const d of p.tokens) {
-      if ((d.shieldTurns ?? 0) > 0 || d.distance < 0 || d.distance > board.ringSpan) continue
-      const dAbs = tokenAbs(board, d.color, d.distance)
-      if (dAbs === null || board.isSafe(dAbs)) continue
-      let best: StrikePair | null = null
-      for (const m of mine) {
-        const gap = ringGap(board, m.abs!, dAbs)
-        // the attacker must be able to step onto that cell without passing its own home turn
-        if (gap >= 1 && gap <= STRIKE_RANGE && m.t.distance + gap <= board.ringSpan && (!best || gap < best.gap)) best = { attacker: m.t, defender: d, gap }
-      }
-      if (best) pairs.push(best)
-    }
-  }
-  return pairs
-}
-
-/** Own ring tokens that an opponent could strike next turn (worth shielding). */
-export function threatenedTokens(board: LudoBoard, players: LudoPlayer[], playerIndex: number): LudoToken[] {
-  const out: LudoToken[] = []
-  players.forEach((_, i) => {
-    if (i === playerIndex) return
-    for (const pair of strikePairs(board, players, i)) {
-      if (players[playerIndex].tokens.some((t) => t.id === pair.defender.id) && !out.some((t) => t.id === pair.defender.id)) out.push(pair.defender)
-    }
-  })
-  return out
-}
-
-export type BotPower =
-  | { kind: 'bomb'; target: string }
-  | { kind: 'shield'; token: string }
-  | { kind: 'speed' }
-  | null
-
-/** What a computer player does before rolling: bomb, shield, speed up, or nothing. */
-export function botChoosePower(board: LudoBoard, players: LudoPlayer[], playerIndex: number, level: 'easy' | 'smart'): BotPower {
-  const me = players[playerIndex]
-  if (!me) return null
-  const eager = level === 'smart' ? 1 : 0.55
-  // go after the rival who has walked furthest
-  const pairs = strikePairs(board, players, playerIndex).sort((a, b) => b.defender.distance - a.defender.distance)
-  if (pairs.length && me.powers.bomb > 0 && Math.random() < 0.45 * eager) return { kind: 'bomb', target: pairs[0].defender.id }
-  const threatened = threatenedTokens(board, players, playerIndex).sort((a, b) => b.distance - a.distance)
-  if (threatened.length && me.powers.shield > 0 && Math.random() < 0.5 * eager) return { kind: 'shield', token: threatened[0].id }
-  if (me.powers.speed > 0 && me.tokens.some((t) => t.distance >= 0 && t.distance < board.ringSpan - 12) && Math.random() < 0.18 * eager) return { kind: 'speed' }
-  return null
+export function rankEmoji(rank: number): string {
+  return rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : '🏅'
 }
 
 export const useLudoStore = create<LudoState>()(
@@ -250,11 +215,7 @@ export const useLudoStore = create<LudoState>()(
 
     function advanceTurn(playerGoesAgain = false) {
       set((state) => {
-        state.speedActive = false
         if (!playerGoesAgain) {
-          state.powerUsed = false
-          // shields wear off as their owner's turns pass
-          for (const t of state.players[state.currentPlayerIndex]?.tokens ?? []) if ((t.shieldTurns ?? 0) > 0) t.shieldTurns = (t.shieldTurns ?? 0) - 1
           state.consecutiveSixes = 0
           let next = state.currentPlayerIndex
           for (let i = 0; i < state.players.length; i++) {
@@ -281,11 +242,10 @@ export const useLudoStore = create<LudoState>()(
       pendingMove: null,
       lastEvent: null,
       winnerId: null,
+      rankings: [],
       bestRoll: 0,
       eventLog: [],
       startedAt: Date.now(),
-      speedActive: false,
-      powerUsed: false,
 
       startGame: (participants) => {
         const seated = participants.slice(0, 8)
@@ -299,7 +259,6 @@ export const useLudoStore = create<LudoState>()(
           tokens: makeTokens(colors[i]),
           captures: 0,
           finishedCount: 0,
-          powers: { ...START_POWERS },
         }))
         set({
           arms: armsFor(seated.length),
@@ -314,11 +273,10 @@ export const useLudoStore = create<LudoState>()(
           pendingMove: null,
           lastEvent: null,
           winnerId: null,
+          rankings: [],
           bestRoll: 0,
           eventLog: [],
           startedAt: Date.now(),
-          speedActive: false,
-          powerUsed: false,
         })
       },
 
@@ -330,13 +288,13 @@ export const useLudoStore = create<LudoState>()(
 
       rollDice: () => {
         if (get().phase !== 'rolling') return
-        const dice = 1 + Math.floor(Math.random() * 6)
         const players = get().players
         const idx = get().currentPlayerIndex
         const board0 = getBoard(get().arms)
-        // Speed doubles the move; if nothing can go that far, the roll counts normally
-        let moves = getLegalMoves(board0, players, idx, dice, get().speedActive ? dice * 2 : dice)
-        if (get().speedActive && !moves.some((m) => m.kind === 'ADVANCE')) moves = getLegalMoves(board0, players, idx, dice)
+        const elapsed = Date.now() - get().startedAt
+        const pace = Math.min(1, Math.max(0, (elapsed - PACE_START_MS) / (PACE_FULL_MS - PACE_START_MS)))
+        const dice = pacedRoll(board0, players[idx], pace, elapsed >= SIX_BOOST_MS, get().consecutiveSixes)
+        const moves = getLegalMoves(board0, players, idx, dice)
 
         set((state) => {
           state.diceValue = dice
@@ -421,7 +379,7 @@ export const useLudoStore = create<LudoState>()(
           if (captured.length > 0) {
             state.lastEvent = {
               type: 'capture',
-              text: `💥 ${st.name} captured ${captured.length} token${captured.length > 1 ? 's' : ''}!`,
+              text: `💥 ${st.name} captured ${captured.length} warrior${captured.length > 1 ? 's' : ''}!`,
               effectId: makeId('fx'),
               effectPos: tokenPos(board, token.color, pending.finalDistance, token.tokenIndex),
               tokenIds: captured.map((c) => c.id),
@@ -430,7 +388,7 @@ export const useLudoStore = create<LudoState>()(
           } else if (finished) {
             state.lastEvent = {
               type: 'finish',
-              text: `✓ ${st.name}'s token is home!`,
+              text: `✓ ${st.name}'s warrior is home!`,
               effectId: makeId('fx'),
               tokenIds: [pending.tokenId],
             }
@@ -438,10 +396,24 @@ export const useLudoStore = create<LudoState>()(
             state.lastEvent = null
           }
 
-          if (st.finishedCount >= 4) {
-            state.phase = 'gameOver'
-            state.winnerId = st.id
-            state.lastEvent = { type: 'win', text: `🏆 ${st.name} wins!` }
+          if (st.finishedCount >= 4 && !state.rankings.includes(st.id)) {
+            // this player is done and takes the next place; everyone else keeps playing for the rest
+            state.rankings.push(st.id)
+            const rank = state.rankings.length
+            if (rank === 1) state.winnerId = st.id
+            state.lastEvent = {
+              type: 'win',
+              text: `${rankEmoji(rank)} ${st.name} finished ${ordinal(rank)}!`,
+              effectId: makeId('fx'),
+              tokenIds: [pending.tokenId],
+              playerId: st.id,
+              rank,
+            }
+            const left = state.players.filter((p) => !state.rankings.includes(p.id))
+            if (left.length <= 1) {
+              for (const p of left) state.rankings.push(p.id)
+              state.phase = 'gameOver'
+            }
           }
         })
 
@@ -451,25 +423,43 @@ export const useLudoStore = create<LudoState>()(
           const victimName = victim?.name ?? 'a rival'
           pushLog({
             kind: 'capture',
-            icon: '💀',
+            icon: '💥',
             text: `${player.name} killed ${victimName}!`,
             ...actor,
             target: victim?.name,
             targetColor: victim?.color,
           })
         } else if (finished) {
-          pushLog({ kind: 'finish', icon: '🏁', text: `${player.name} brought a token home!`, ...actor })
+          pushLog({ kind: 'finish', icon: '🏁', text: `${player.name} brought a warrior home!`, ...actor })
         } else if (entered) {
-          pushLog({ kind: 'move', icon: '➤', text: `${player.name} entered a new token`, ...actor })
+          pushLog({ kind: 'move', icon: '➤', text: `${player.name} sent out a new warrior`, ...actor })
         } else {
           pushLog({ kind: 'move', icon: '➤', text: `${player.name} moved ${dice} step${dice > 1 ? 's' : ''}`, ...actor })
         }
-        if (get().phase === 'gameOver') pushLog({ kind: 'win', icon: '🏆', text: `${player.name} wins the game!`, ...actor })
+        const rank = get().rankings.indexOf(player.id) + 1
+        const justRanked = get().lastEvent?.type === 'win'
+        if (justRanked) pushLog({ kind: 'win', icon: rankEmoji(rank), text: `${player.name} finished ${ordinal(rank)}!`, ...actor })
 
-        if (get().phase === 'gameOver') return
+        if (get().phase === 'gameOver') {
+          const last = get().players.find((p) => p.id === get().rankings[get().rankings.length - 1])
+          if (last) pushLog({ kind: 'win', icon: '🏁', text: `Match over — ${last.name} came last`, actor: last.name, color: last.color })
+          return
+        }
 
-        const goAgain = (dice === 6 && get().consecutiveSixes < 3) || captured.length > 0 || finished
+        // a player who just finished hands the turn on; everyone else keeps the usual bonus turns
+        const goAgain = !justRanked && ((dice === 6 && get().consecutiveSixes < 3) || captured.length > 0 || finished)
         advanceTurn(goAgain)
+      },
+
+      skipTurn: () => {
+        if (get().phase !== 'rolling') return
+        const p = get().players[get().currentPlayerIndex]
+        if (!p) return
+        set((state) => {
+          state.lastEvent = null
+        })
+        pushLog({ kind: 'warn', icon: '⏱️', text: `${p.name} took too long — turn skipped`, actor: p.name, color: p.color })
+        advanceTurn()
       },
 
       resetGame: () => {
@@ -486,66 +476,10 @@ export const useLudoStore = create<LudoState>()(
           pendingMove: null,
           lastEvent: null,
           winnerId: null,
+          rankings: [],
           bestRoll: 0,
           eventLog: [],
-          speedActive: false,
-          powerUsed: false,
         })
-      },
-
-      useSpeed: () => {
-        const st = get()
-        const p = st.players[st.currentPlayerIndex]
-        if (!p || st.phase !== 'rolling' || st.powerUsed || p.powers.speed <= 0) return false
-        set((state) => {
-          state.players[state.currentPlayerIndex].powers.speed -= 1
-          state.speedActive = true
-          state.powerUsed = true
-        })
-        pushLog({ kind: 'power', icon: '⚡', text: `${p.name} used Speed: next move goes double`, actor: p.name, color: p.color })
-        return true
-      },
-
-      useShield: (tokenId) => {
-        const st = get()
-        const board = getBoard(st.arms)
-        const p = st.players[st.currentPlayerIndex]
-        const tok = p?.tokens.find((t) => t.id === tokenId)
-        if (!p || !tok || st.phase !== 'rolling' || st.powerUsed || p.powers.shield <= 0 || tok.distance < 0 || tok.distance >= board.finish) return false
-        set((state) => {
-          const sp = state.players[state.currentPlayerIndex]
-          sp.powers.shield -= 1
-          // +1: the turn it is raised on wears one off when it ends
-          sp.tokens.find((t) => t.id === tokenId)!.shieldTurns = SHIELD_TURNS + 1
-          state.powerUsed = true
-        })
-        pushLog({ kind: 'power', icon: '🛡️', text: `${p.name} shielded a token`, actor: p.name, color: p.color })
-        return true
-      },
-
-      useBomb: (tokenId) => {
-        const st = get()
-        const board = getBoard(st.arms)
-        const p = st.players[st.currentPlayerIndex]
-        const pair = strikePairs(board, st.players, st.currentPlayerIndex).find((x) => x.defender.id === tokenId)
-        if (!p || !pair || st.phase !== 'rolling' || st.powerUsed || p.powers.bomb <= 0) return false
-        const victim = st.players.find((pl) => pl.tokens.some((t) => t.id === tokenId))!
-        const d = pair.defender
-        set((state) => {
-          state.players[state.currentPlayerIndex].powers.bomb -= 1
-          state.powerUsed = true
-          state.players.find((pl) => pl.color === victim.color)!.tokens.find((t) => t.id === tokenId)!.distance = -1
-          state.lastEvent = {
-            type: 'capture',
-            text: `💣 ${p.name} bombed ${victim.name}!`,
-            effectId: makeId('fx'),
-            effectPos: tokenPos(board, d.color, d.distance, d.tokenIndex),
-            tokenIds: [tokenId],
-            attackerId: null,
-          }
-        })
-        pushLog({ kind: 'capture', icon: '💣', text: `${p.name} bombed ${victim.name}!`, actor: p.name, color: p.color, target: victim.name, targetColor: victim.color })
-        return true
       },
 
     }

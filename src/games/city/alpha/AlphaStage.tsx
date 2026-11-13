@@ -27,6 +27,7 @@ export interface AlphaStageProps {
   rollKey: number
   mapView: boolean
   onMap: () => void
+  onTileClick?: (tileId: number) => void
   canBuild: boolean
   buildCount: number
   onBuild: () => void
@@ -95,7 +96,7 @@ export default function AlphaStage(props: AlphaStageProps) {
         <Header {...props} />
 
         <div className="absolute inset-x-0" style={{ top: dyBoard, height: DESIGN_H }}>
-          <AlphaBoard mapView={props.mapView} />
+          <AlphaBoard mapView={props.mapView} onTileClick={props.onTileClick} />
           {props.players.slice(0, 4).map((p, i) => (
             <PlayerCard
               key={p.id}

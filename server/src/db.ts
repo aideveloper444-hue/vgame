@@ -193,6 +193,12 @@ CREATE TRIGGER IF NOT EXISTS audit_no_update BEFORE UPDATE ON audit BEGIN SELECT
 CREATE TRIGGER IF NOT EXISTS audit_no_delete BEFORE DELETE ON audit BEGIN SELECT RAISE(ABORT, 'audit is append-only'); END;
 `)
 
+// columns added after the first release: create them on databases made before they existed
+const hasColumn = (table: string, col: string) => (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === col)
+// the app-wide friend code (social hub net id) of the device a player signed in on, so Facebook friends can be found
+if (!hasColumn('users', 'net_id')) db.exec('ALTER TABLE users ADD COLUMN net_id TEXT')
+db.exec('CREATE INDEX IF NOT EXISTS users_net_id ON users (net_id)')
+
 type Row = Record<string, unknown>
 export const one = <T = Row>(sql: string, ...args: unknown[]) => db.prepare(sql).get(...(args as never[])) as T | undefined
 export const all = <T = Row>(sql: string, ...args: unknown[]) => db.prepare(sql).all(...(args as never[])) as T[]

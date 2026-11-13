@@ -45,6 +45,10 @@ export default function WildboundGame() {
   // an invite link (?room=CODE) or a party call opens Play with Friends straight away
   useEffect(() => {
     if (new URLSearchParams(location.search).has('room')) go('race')
+    // dev only: open a screen straight from the URL (?wbscreen=select), for screenshots and checks
+    const dev = import.meta.env.DEV ? new URLSearchParams(location.search).get('wbscreen') : null
+    const devPreview = import.meta.env.DEV ? new URLSearchParams(location.search).get('wbpreview') : null
+    if (dev) go(dev as Parameters<typeof go>[0], devPreview ? { previewId: devPreview as Parameters<typeof go>[1] extends infer O ? O extends { previewId?: infer P } ? P : never : never } : undefined)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   // back on the home screen: any race (and its online room) is over
@@ -102,6 +106,8 @@ export default function WildboundGame() {
           <Suspense fallback={null}>
             <WorldScene key={mode === 'run' ? 'run' : 'menu'} mode={mode} animalId={mode === 'preview' ? previewId : selected} quality={quality} />
           </Suspense>
+          {/* a soft lens vignette over the 3D view (free: plain CSS, no extra render pass) */}
+          <div className="pointer-events-none absolute inset-0" style={{ background: 'radial-gradient(ellipse 85% 75% at 50% 46%, transparent 58%, rgba(8,10,6,0.38) 100%)' }} />
         </div>
       )}
 
@@ -123,13 +129,13 @@ export default function WildboundGame() {
       <Toasts />
 
       {!ready && (
-        <div className="wb-layer z-[95] flex flex-col items-center justify-center gap-4" style={{ background: 'radial-gradient(circle at 50% 40%, #1f4a17, #050c04 75%)' }}>
+        <div className="wb-layer z-[95] flex flex-col items-center justify-center gap-4" style={{ background: 'radial-gradient(ellipse at 50% 38%, #1c201c, #070807 72%)' }}>
           <Logo size={1.3} className="wb-in" />
-          <div className="wb-title text-[26px] italic wb-yellow wb-stroke">Run · Explore · Survive</div>
-          <div className="h-3 w-[min(70vw,360px)] overflow-hidden rounded-full bg-black/50 ring-1 ring-white/20">
-            <div className="h-full rounded-full transition-all" style={{ width: `${Math.max(8, progress)}%`, background: 'linear-gradient(90deg,#ffe76a,#f2a20c)' }} />
+          <div className="text-[14px] font-semibold uppercase tracking-[0.42em] text-[var(--muted)]">Run · Explore · Survive</div>
+          <div className="mt-2 h-[2px] w-[min(60vw,280px)] overflow-hidden rounded-full bg-white/10">
+            <div className="h-full rounded-full transition-all" style={{ width: `${Math.max(8, progress)}%`, background: 'linear-gradient(90deg,#f3e3bd,#a9864e)' }} />
           </div>
-          <div className="text-[16px] text-white/80">Loading the forest…</div>
+          <div className="text-[13px] uppercase tracking-[0.28em] text-white/50">Loading the forest</div>
         </div>
       )}
 

@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { Canvas, useFrame } from '@react-three/fiber'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { ContactShadows, Environment, Lightformer } from '@react-three/drei'
 import { RoundedBoxGeometry } from 'three-stdlib'
 import * as THREE from 'three'
 import { DICE_FACE_QUATERNION } from '@/games/shared/three/diceFaceQuaternions'
+import { ludoSfx } from '@/lib/sound'
 
 const PIPS: Record<number, [number, number][]> = {
   1: [[0.5, 0.5]],
@@ -18,7 +19,7 @@ const PIPS: Record<number, [number, number][]> = {
 const FACE_ORDER = [1, 6, 2, 5, 3, 4]
 
 function makeFace(pips: number): THREE.CanvasTexture {
-  const size = 256
+  const size = 512
   const canvas = document.createElement('canvas')
   canvas.width = size
   canvas.height = size
@@ -29,7 +30,7 @@ function makeFace(pips: number): THREE.CanvasTexture {
   bg.addColorStop(1, '#dfe2ec')
   ctx.fillStyle = bg
   ctx.fillRect(0, 0, size, size)
-  const r = size * (pips === 1 ? 0.12 : 0.085)
+  const r = size * (pips === 1 ? 0.13 : 0.095)
   for (const [px, py] of PIPS[pips]) {
     const cx = px * size
     const cy = py * size
@@ -52,6 +53,24 @@ function makeFace(pips: number): THREE.CanvasTexture {
 }
 
 const SIZE = 1
+/** Share of the round the resting die's face spans: as big as fits inside the circle with its rounded corners. */
+const FACE_FILL = 0.74
+const SPIN_SCALE = 0.78
+
+/** Looks straight down at the die and zooms so its top face spans FACE_FILL of the round. */
+function TopDownCamera() {
+  const camera = useThree((s) => s.camera)
+  const width = useThree((s) => s.size.width)
+  const height = useThree((s) => s.size.height)
+  useLayoutEffect(() => {
+    camera.up.set(0, 0, -1)
+    camera.position.set(0, 10, 0)
+    camera.lookAt(0, 0, 0)
+    camera.zoom = (Math.min(width, height) * FACE_FILL) / SIZE
+    camera.updateProjectionMatrix()
+  }, [camera, width, height])
+  return null
+}
 
 function Die({ value, spinning }: { value: number; spinning: boolean }) {
   const ref = useRef<THREE.Mesh>(null)
@@ -60,20 +79,24 @@ function Die({ value, spinning }: { value: number; spinning: boolean }) {
   const materials = useMemo(
     () =>
       FACE_ORDER.map(
-        (p) =>
-          new THREE.MeshPhysicalMaterial({
-            map: makeFace(p),
-            roughness: 0.16,
+        (p) => {
+          // seen straight on, a glossy coat mirrored the bright surroundings across the face and greyed the pips;
+          // a satin finish lit partly by its own face texture keeps the white bright and the pips solid black
+          const face = makeFace(p)
+          return new THREE.MeshStandardMaterial({
+            map: face,
+            emissiveMap: face,
+            emissive: new THREE.Color('#ffffff'),
+            emissiveIntensity: 0.45,
+            roughness: 0.75,
             metalness: 0,
-            clearcoat: 1,
-            clearcoatRoughness: 0.08,
-            envMapIntensity: 1.3,
-          }),
+            envMapIntensity: 0.25,
+          })
+        },
       ),
     [],
   )
   const spinAxis = useRef(new THREE.Vector3(1, 0.6, 0.3).normalize())
-  const yaw = useRef(new THREE.Quaternion())
   const target = useRef(new THREE.Quaternion())
 
   useEffect(() => {
@@ -86,23 +109,25 @@ function Die({ value, spinning }: { value: number; spinning: boolean }) {
     if (!mesh) return
     const t = state.clock.elapsedTime
     if (spinning) {
+      // tumble a little smaller than at rest, so the spinning cube's corners stay inside the round
       mesh.rotateOnWorldAxis(spinAxis.current, delta * 16)
       mesh.rotateOnWorldAxis(new THREE.Vector3(0, 1, 0), delta * 5)
-      mesh.position.y = SIZE / 2 + Math.abs(Math.sin(t * 11)) * 0.5
+      mesh.scale.setScalar(SPIN_SCALE + Math.abs(Math.sin(t * 11)) * 0.06)
       return
     }
-    // settle on the rolled face, then idle with a gentle yaw so the top face stays readable
+    // settle with only the rolled face toward the camera, edges square to the screen, so the number reads at a glance
     const face = DICE_FACE_QUATERNION[(value || 1) as 1 | 2 | 3 | 4 | 5 | 6]
-    yaw.current.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 5 + Math.sin(t * 0.6) * 0.05)
-    target.current.set(...face).premultiply(yaw.current)
-    mesh.quaternion.slerp(target.current, 1 - Math.exp(-14 * delta))
+    target.current.set(...face)
+    mesh.quaternion.slerp(target.current, 1 - Math.exp(-16 * delta))
+    // a quick landing pop, then a slow breathing pulse
     const since = (performance.now() - settleStart.current) / 1000
-    const bounce = since < 0.45 ? Math.abs(Math.sin(since * Math.PI * 2.2)) * 0.18 * (1 - since / 0.45) : 0
-    mesh.position.y = SIZE / 2 + bounce + 0.06 + Math.sin(t * 1.8) * 0.045
+    const pop = since < 0.4 ? Math.sin((since / 0.4) * Math.PI) * 0.12 : 0
+    const target_ = 1 + pop + Math.sin(t * 1.8) * 0.012
+    mesh.scale.setScalar(THREE.MathUtils.damp(mesh.scale.x, target_, 14, delta))
   })
 
   return (
-    <mesh ref={ref} geometry={geometry} castShadow position={[0, SIZE / 2, 0]}>
+    <mesh ref={ref} geometry={geometry} castShadow position={[0, SIZE / 2, 0]} scale={SPIN_SCALE}>
       {materials.map((m, i) => (
         <primitive key={i} object={m} attach={`material-${i}`} />
       ))}
@@ -124,6 +149,7 @@ export default function LudoDice({
   canRoll,
   onRoll,
   sizeClassName = DEFAULT_SIZE,
+  countdown,
 }: {
   value: number
   spinning: boolean
@@ -132,13 +158,32 @@ export default function LudoDice({
   onRoll: () => void
   /** Width/height classes for the round platform. */
   sizeClassName?: string
+  /** Time left to roll: a ring around the die that empties over `ms`; `key` restarts it for each new turn. */
+  countdown?: { key: number; ms: number } | null
 }) {
+  // The portrait tablet layout is CSS-zoomed; the canvas is sized before the zoom, so render it at
+  // proportionally more pixels or the zoom would stretch (and blur) the die.
+  const stageRef = useRef<HTMLSpanElement>(null)
+  const [dpr, setDpr] = useState(() => Math.min(3, typeof window === 'undefined' ? 2 : window.devicePixelRatio || 1))
+  useLayoutEffect(() => {
+    const el = stageRef.current
+    if (!el || !el.offsetWidth) return
+    const zoom = el.getBoundingClientRect().width / el.offsetWidth
+    setDpr(Math.min(4, (window.devicePixelRatio || 1) * Math.max(1, zoom)))
+  }, [sizeClassName])
+
   // when the die lands, flash an impact ring and throw a few sparks off the platform
   const [impact, setImpact] = useState(0)
   const wasSpinning = useRef(false)
   useEffect(() => {
-    if (wasSpinning.current && !spinning) setImpact((n) => n + 1)
+    if (!wasSpinning.current && spinning) ludoSfx.diceRoll()
+    if (wasSpinning.current && !spinning) {
+      setImpact((n) => n + 1)
+      ludoSfx.diceLand()
+      if (value === 6) ludoSfx.six()
+    }
     wasSpinning.current = spinning
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [spinning])
   useEffect(() => {
     if (!impact) return
@@ -173,6 +218,23 @@ export default function LudoDice({
           WebkitMaskImage: 'radial-gradient(circle, transparent 62%, black 64%, black 69%, transparent 71%)',
         }}
       />
+      {countdown && (
+        <svg key={countdown.key} viewBox="0 0 100 100" className="pointer-events-none absolute -inset-[13%] z-10 -rotate-90" aria-hidden>
+          <circle cx="50" cy="50" r="46" fill="none" stroke="rgba(255,255,255,0.14)" strokeWidth="5" />
+          <circle
+            cx="50"
+            cy="50"
+            r="46"
+            fill="none"
+            strokeWidth="5"
+            strokeLinecap="round"
+            pathLength={100}
+            strokeDasharray="100"
+            className="ludo-roll-timer"
+            style={{ animationDuration: `${countdown.ms}ms`, ['--timer-color' as string]: accent, filter: `drop-shadow(0 0 4px ${accent})` }}
+          />
+        </svg>
+      )}
       {/* platform: glowing disc with a neon rim and a pulsing halo while it's your roll */}
       <span className="absolute inset-x-0 bottom-[-6%] h-[40%] rounded-[50%] opacity-70 blur-md" style={{ background: `radial-gradient(ellipse, ${accent}88, transparent 70%)` }} />
       <span
@@ -201,17 +263,22 @@ export default function LudoDice({
           ))}
         </span>
       )}
-      <span className={`pointer-events-none absolute inset-0 transition-[filter] duration-150 ${canRoll && !spinning ? 'ludo-dice-bob' : ''}`} style={{ filter: spinning ? 'blur(0.6px) brightness(1.08)' : undefined }}>
-        <Canvas dpr={[1, 2]} gl={{ alpha: true, antialias: true }} camera={{ position: [0, 3.1, 3.2], fov: 30 }} shadows style={{ background: 'transparent' }}>
+      <span ref={stageRef} className={`pointer-events-none absolute inset-0 transition-[filter] duration-150 ${canRoll && !spinning ? 'ludo-dice-bob' : ''}`} style={{ filter: spinning ? 'blur(0.6px) brightness(1.08)' : undefined }}>
+        {/* offsetSize: the portrait tablet layout is CSS-zoomed, and measuring with getBoundingClientRect would
+            size the canvas by the zoomed box, doubling it so the die slid off-centre and out of the round */}
+        <Canvas resize={{ offsetSize: true }} dpr={dpr} gl={{ alpha: true, antialias: true }} orthographic camera={{ position: [0, 10, 0], near: 0.1, far: 50 }} shadows="percentage" style={{ background: 'transparent' }}>
+          <TopDownCamera />
           <ambientLight intensity={0.6} />
-          <directionalLight position={[2, 6, 3]} intensity={1.6} castShadow />
-          <pointLight position={[0, 1.2, 1.6]} intensity={3} distance={5} color={accent} />
+          {/* angled light: from straight above, its highlight bounced into the camera and washed the pips grey */}
+          <directionalLight position={[3, 5, 2.5]} intensity={1.3} castShadow />
+          <pointLight position={[0, 0.4, 1.8]} intensity={2} distance={4} color={accent} />
           <Environment resolution={64}>
-            <Lightformer form="rect" intensity={2.4} position={[0, 5, 0]} rotation-x={Math.PI / 2} scale={[6, 6, 1]} />
+            {/* off to one side: straight overhead, its reflection would cover the face the camera looks down at and grey out the pips */}
+            <Lightformer form="rect" intensity={2.2} position={[3.5, 4, -2.5]} rotation-x={Math.PI / 2} scale={[4, 4, 1]} />
             <Lightformer form="rect" intensity={1.2} color="#ffd9a8" position={[-4, 1, 2]} rotation-y={Math.PI / 2} scale={[4, 2, 1]} />
             <Lightformer form="rect" intensity={1.2} color="#9ab8ff" position={[4, 1, -2]} rotation-y={-Math.PI / 2} scale={[4, 2, 1]} />
           </Environment>
-          <group position={[0, -0.62, 0]}>
+          <group position={[0, -SIZE / 2, 0]}>
             <Die value={value} spinning={spinning} />
             <ContactShadows position={[0, 0.001, 0]} opacity={0.65} scale={3} blur={2.2} far={1.6} />
           </group>

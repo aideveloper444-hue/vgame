@@ -4,7 +4,7 @@ import type { CardKind, CardReveal } from './useCityFx'
 
 const KIND_STYLE: Record<CardKind, { title: string; icon: string; from: string; to: string; ring: string }> = {
   CHANCE: { title: 'Chance', icon: '❓', from: '#a855f7', to: '#4c1d95', ring: '#d8b4fe' },
-  COMMUNITY: { title: 'Community', icon: '🎁', from: '#3b82f6', to: '#1e3a8a', ring: '#93c5fd' },
+  COMMUNITY: { title: 'Republic', icon: '🏛️', from: '#3b82f6', to: '#1e3a8a', ring: '#93c5fd' },
   EVENT: { title: 'City Event', icon: '✨', from: '#ec4899', to: '#6d28d9', ring: '#f9a8d4' },
 }
 

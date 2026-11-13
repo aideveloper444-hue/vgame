@@ -1,5 +1,13 @@
 import { useEffect } from 'react'
-import { useCityStore, botBuyDecision, botAuctionDecision, botUpgradeDecision, botTradeAcceptDecision } from './cityStore'
+import {
+  useCityStore,
+  botBuyDecision,
+  botAuctionDecision,
+  botUpgradeDecision,
+  botRedeemDecision,
+  botShouldPayJailFine,
+  botTradeAcceptDecision,
+} from './cityStore'
 import type { PropertyTile } from './cityBoardData'
 
 /**
@@ -27,7 +35,12 @@ export function useCityBotAutomation(enabled = true) {
     if (!enabled || !currentPlayer || phase === 'GAME_OVER') return
     if (!currentPlayer.isBot) return
     if (phase === 'ROLLING') {
-      const t = setTimeout(() => rollAndMove(), 700)
+      const t = setTimeout(() => {
+        const st = useCityStore.getState()
+        const me = st.players[st.currentPlayerIndex]
+        if (me && botShouldPayJailFine(me, st.config)) st.payJailFine()
+        rollAndMove()
+      }, 700)
       return () => clearTimeout(t)
     }
     if (phase === 'AWAITING_BUY_DECISION' && currentTile?.type === 'PROPERTY') {
@@ -36,8 +49,13 @@ export function useCityBotAutomation(enabled = true) {
     }
     if (phase === 'POST_MOVE_ACTIONS') {
       const t = setTimeout(() => {
-        const upgradeId = botUpgradeDecision(currentPlayer, tiles)
-        if (upgradeId !== null) upgradeProperty(upgradeId)
+        if (!currentPlayer.bankrupt) {
+          const redeemId = botRedeemDecision(currentPlayer, tiles)
+          if (redeemId !== null) useCityStore.getState().redeemProperty(redeemId)
+          const st = useCityStore.getState()
+          const upgradeId = botUpgradeDecision(st.players[st.currentPlayerIndex], st.tiles)
+          if (upgradeId !== null) upgradeProperty(upgradeId)
+        }
         endTurn()
       }, 700)
       return () => clearTimeout(t)

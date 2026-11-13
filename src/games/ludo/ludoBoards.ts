@@ -12,9 +12,31 @@ import {
 /** World-space point on the board plane: [x, z]. */
 export type Vec2 = [number, number]
 
-/** World size of one board cell. */
+/** World size of one board cell (the star boards; the classic board uses the uneven grid below). */
 export const CELL = 0.62
-const GRID = 15
+
+/*
+ * Classic board grid: 15 equal square spaces across. Every classic position (tokens, painted tiles,
+ * center pyramid, yard glows) goes through classicEdge, so they all stay aligned. The lane and home step
+ * are kept as separate constants so the walkway could be widened again, but they are equal: every space
+ * on the board is the same square.
+ */
+/** Width of the whole classic playing grid, world units. */
+export const CLASSIC_TOTAL = 9.6
+/** Width of one walkway lane (rows/columns 6–8). */
+export const CLASSIC_LANE = CLASSIC_TOTAL / 15
+/** Size of one grid step inside a home zone (rows/columns 0–5 and 9–14). */
+export const CLASSIC_HOME_STEP = (CLASSIC_TOTAL - 3 * CLASSIC_LANE) / 12
+
+/** How far (in cells) each painted home plate is inset inside its 6-cell quadrant: the plate is 4 cells wide. */
+export const HOME_INSET = 1
+
+/** Distance of classic grid line `t` (0..15, fractional allowed) from the grid's top/left edge. */
+export function classicEdge(t: number): number {
+  if (t <= 6) return t * CLASSIC_HOME_STEP
+  if (t <= 9) return 6 * CLASSIC_HOME_STEP + (t - 6) * CLASSIC_LANE
+  return 6 * CLASSIC_HOME_STEP + 3 * CLASSIC_LANE + (t - 9) * CLASSIC_HOME_STEP
+}
 
 /*
  * Every board shares one track shape per arm: 6 cells running outward, the tip cell, and 6 cells
@@ -67,8 +89,9 @@ export function tokenAbs(board: LudoBoard, color: LudoColor, distance: number): 
 
 /* ------------------------------------------------------------------ classic 15x15 cross */
 
+/** World [x, z] of the centre of classic cell (row, col); fractional coordinates allowed. */
 function gridWorld(row: number, col: number): Vec2 {
-  return [(col - (GRID - 1) / 2) * CELL, (row - (GRID - 1) / 2) * CELL]
+  return [classicEdge(col + 0.5) - CLASSIC_TOTAL / 2, classicEdge(row + 0.5) - CLASSIC_TOTAL / 2]
 }
 
 const FINISH_DIR: Record<ClassicColor, Vec2> = { RED: [-1, 0], GREEN: [0, -1], YELLOW: [1, 0], BLUE: [0, 1] }
@@ -85,7 +108,8 @@ function makeClassic(): LudoBoard {
     ringSpan: 50,
     homeStart: 51,
     finish: 56,
-    pieceScale: 1.4,
+    // warriors stand a little taller than a square so they read clearly from the board camera
+    pieceScale: 1.55,
     entryAbs: (c) => ENTRY_ABS[cc(c)],
     isSafe: (abs) => SAFE_ABS_CELLS.has(abs),
     ringPos: (abs) => gridWorld(...RING_CELLS[abs]),
@@ -98,8 +122,9 @@ function makeClassic(): LudoBoard {
     },
     finishPos: (c, i) => {
       const [dx, dz] = FINISH_DIR[cc(c)]
-      const spread = (i - 1.5) * 0.19
-      return [dx * 0.66 + dz * spread, dz * 0.66 + dx * spread]
+      // finished warriors stand on their team's triangle of the (now larger) center home
+      const spread = (i - 1.5) * CLASSIC_LANE * 0.31
+      return [dx * CLASSIC_LANE * 1.07 + dz * spread, dz * CLASSIC_LANE * 1.07 + dx * spread]
     },
     outline: [
       [-CLASSIC_HALF - 0.1, -CLASSIC_HALF],
@@ -181,7 +206,7 @@ function makeRadial(n: number): LudoBoard {
   const wedge = (k: number) => g.armAngle(k) + Math.PI / n
 
   const outline: Vec2[] = []
-  const bodyR = g.circumradius + 0.45
+  const bodyR = g.circumradius + 0.3 // matches the slim frame drawn by RadialFrame
   for (let k = 0; k < n; k++) {
     const a = wedge(k)
     outline.push([Math.cos(a) * bodyR, Math.sin(a) * bodyR])
@@ -195,7 +220,7 @@ function makeRadial(n: number): LudoBoard {
     ringSpan: ringSize - 2,
     homeStart: ringSize - 1,
     finish: ringSize + 4,
-    pieceScale: n >= 7 ? 0.82 : 0.9,
+    pieceScale: n >= 7 ? 0.98 : 1.08,
     entryAbs: (color) => 13 * armOf(color) + 8,
     isSafe: (abs) => safe.has(abs),
     ringPos: (abs) => ring[abs],

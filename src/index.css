@@ -330,47 +330,75 @@ body {
   }
 }
 
-/* ---------- Ludo premium HUD ---------- */
+/* ---------- Ludo premium HUD: black glass, neon edges ---------- */
 .ludo-glass {
-  background: linear-gradient(150deg, rgba(40, 36, 82, 0.62), rgba(12, 10, 30, 0.74));
-  border: 1px solid rgba(190, 170, 255, 0.2);
-  backdrop-filter: blur(14px) saturate(150%);
-  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  background: linear-gradient(150deg, rgba(22, 22, 30, 0.72), rgba(4, 4, 8, 0.82));
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
   box-shadow:
-    0 10px 24px -14px rgba(0, 0, 0, 0.9),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    0 10px 24px -14px rgba(0, 0, 0, 0.95),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .ludo-glass-strong {
-  background: linear-gradient(160deg, rgba(44, 38, 92, 0.95), rgba(12, 10, 30, 0.96));
-  border: 1px solid rgba(200, 180, 255, 0.28);
-  backdrop-filter: blur(18px) saturate(150%);
-  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  background: linear-gradient(160deg, rgba(24, 24, 32, 0.96), rgba(4, 4, 8, 0.97));
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
   box-shadow:
-    0 24px 50px -18px rgba(0, 0, 0, 0.9),
-    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    0 24px 50px -18px rgba(0, 0, 0, 0.95),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
-/* logo plate and currency pill: glass with a cyan-to-violet neon edge */
+/* logo plate and currency pill: black glass whose neon edge runs through the pop palette */
+@property --ludo-edge {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+@keyframes ludo-edge-spin {
+  to { --ludo-edge: 360deg; }
+}
 .ludo-logo-plate,
 .ludo-currency-pill {
   border: 1.5px solid transparent;
   background:
-    linear-gradient(150deg, rgba(30, 26, 72, 0.88), rgba(8, 8, 26, 0.9)) padding-box,
-    linear-gradient(110deg, #5ee7ff, #8b7dff 45%, #e879f9 75%, #5ee7ff) border-box;
+    linear-gradient(150deg, rgba(16, 16, 22, 0.94), rgba(2, 2, 6, 0.95)) padding-box,
+    conic-gradient(from var(--ludo-edge), #00e5ff, #7c4dff, #ff2d95, #ffe600, #39ff88, #00e5ff) border-box;
+  animation: ludo-edge-spin 6s linear infinite;
   box-shadow:
-    0 0 18px -2px rgba(110, 170, 255, 0.55),
-    0 0 40px -12px rgba(232, 121, 249, 0.5),
-    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+    0 0 16px -4px rgba(0, 229, 255, 0.5),
+    0 0 34px -12px rgba(255, 45, 149, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
 .ludo-logo-text {
-  background: linear-gradient(95deg, #7df9ff 0%, #8fb4ff 30%, #e879f9 62%, #ffd27a 100%);
+  background: linear-gradient(95deg, #ffffff 0%, #c8f6ff 45%, #ffd1ea 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  filter: drop-shadow(0 0 6px rgba(125, 200, 255, 0.55)) drop-shadow(0 0 14px rgba(232, 121, 249, 0.35));
+  filter: drop-shadow(0 0 6px rgba(0, 229, 255, 0.6)) drop-shadow(0 0 14px rgba(255, 45, 149, 0.35));
   padding-right: 0.12em;
+}
+
+/* the logo diamond buzzes on like a neon sign, then glows steadily */
+@keyframes ludo-neon-on {
+  0%, 8% { opacity: 0.15; }
+  10% { opacity: 1; }
+  14% { opacity: 0.25; }
+  18%, 40% { opacity: 1; }
+  42% { opacity: 0.4; }
+  44%, 100% { opacity: 1; }
+}
+.ludo-logo-mark {
+  filter: drop-shadow(0 0 4px rgba(0, 229, 255, 0.8)) drop-shadow(0 0 10px rgba(255, 45, 149, 0.5));
+  animation: ludo-neon-on 4.5s steps(1, end) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ludo-logo-mark,
+  .ludo-logo-plate,
+  .ludo-currency-pill { animation: none; }
 }
 
 @keyframes ludo-card-pulse {
@@ -479,6 +507,15 @@ body {
 /* the die floats gently while it is waiting for your tap */
 @keyframes ludo-dice-bob-kf { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
 .ludo-dice-bob { animation: ludo-dice-bob-kf 1.8s ease-in-out infinite; }
+/* turn banner: sweeps in from the left, holds, then slides out to the right */
+@keyframes ludo-turn-banner-kf {
+  0% { transform: translateX(-60px) scaleX(0.6); opacity: 0; }
+  14% { transform: translateX(0) scaleX(1); opacity: 1; }
+  78% { transform: translateX(0) scaleX(1); opacity: 1; }
+  100% { transform: translateX(60px) scaleX(0.9); opacity: 0; }
+}
+.ludo-turn-banner { animation: ludo-turn-banner-kf 1.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+@media (prefers-reduced-motion: reduce) { .ludo-turn-banner { animation: none; } }
 @media (prefers-reduced-motion: reduce) { .ludo-dice-bob { animation: none; } }
 
 /* tiny sparks drifting up around the active player's avatar */
@@ -571,6 +608,15 @@ body {
   100% { transform: translateY(0) scale(1); opacity: 1; }
 }
 .ludo-chip-in { animation: ludo-chip-in-kf 0.24s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+
+/* the roll countdown ring around the dice: drains over the turn, turning red near the end */
+@keyframes ludo-roll-timer-kf {
+  0% { stroke-dashoffset: 0; stroke: var(--timer-color, #8b5cf6); }
+  70% { stroke: var(--timer-color, #8b5cf6); }
+  80% { stroke: #fb7185; }
+  100% { stroke-dashoffset: 100; stroke: #f43f5e; }
+}
+.ludo-roll-timer { animation: ludo-roll-timer-kf linear forwards; }
 
 @media (prefers-reduced-motion: reduce) {
   .ludo-card-active, .ludo-spin, .ludo-shimmer-text, .ludo-dice-halo, .ludo-rays, .ludo-twinkle, .ludo-lamp, .ludo-mote, .ludo-confetti,

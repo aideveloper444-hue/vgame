@@ -1,21 +1,50 @@
 import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { AIM_COLOR, useLudoAim } from './ludoAim'
-import { RoundedBox } from '@react-three/drei'
+import { OrthographicCamera, RoundedBox } from '@react-three/drei'
 import { useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
 import * as THREE from 'three'
-import { makeEmojiTexture, makeSoftGlowTexture, makeStreakTexture } from './ludoTextures'
+import { makeSoftGlowTexture, makeStreakTexture } from './ludoTextures'
 import { makeEmblemTexture, paintBoard } from './ludoBoardTexture'
 import { paintRadialBoard } from './ludoRadialTexture'
-import { CELL, getBoard, radialGeometry, tokenPos, type LudoBoard, type Vec2 } from './ludoBoards'
+import { CELL, CLASSIC_HOME_STEP, CLASSIC_LANE, CLASSIC_TOTAL, HOME_INSET, getBoard, radialGeometry, tokenAbs, tokenPos, type LudoBoard, type Vec2 } from './ludoBoards'
 import { makeGlowPuddleTexture } from '@/games/shared/three/glowTextures'
 import SceneErrorBoundary from '@/games/shared/three/SceneErrorBoundary'
 import GameCanvas from '@/games/shared/three/GameCanvas'
 import LudoCharacter, { type CharacterPose } from './LudoCharacter'
 import { CHARACTER_HEIGHT, preloadCharacters } from './ludoCharacters'
 import { useLudoStore, type LudoToken } from './ludoStore'
+import { create } from 'zustand'
+import { ludoSfx } from '@/lib/sound'
+import { BOARD_THEMES, useBoardTheme, type BoardThemeId } from './ludoThemes'
 import LudoPortraitStudio from './LudoPortraitStudio'
 import LudoNeonCity from './LudoNeonCity'
 import { ALL_COLORS, COLOR_DEEP, COLOR_GLOW, type ClassicColor, type LudoColor } from './ludoBoardLayout'
+
+/**
+ * Neon power curve (0..1) for a scene that started at `t0`: the tubes stutter on like real neon over the
+ * first ~1.4 s, then settle into a slow breathing glow.
+ */
+const FLICKER: [number, number][] = [[0.12, 0], [0.2, 1], [0.3, 0.08], [0.36, 0.9], [0.5, 0.15], [0.56, 1], [0.66, 0.35], [0.74, 1], [0.86, 0.6]]
+export function neonPower(elapsed: number): number {
+  if (elapsed < 1.4) {
+    for (const [end, v] of FLICKER) if (elapsed < end) return v
+    return 0.6 + (elapsed - 0.86) / (1.4 - 0.86) * 0.4
+  }
+  return 0.92 + 0.08 * Math.sin(elapsed * 1.6)
+}
+/** Clock time at which the board's neon was last switched on. */
+let neonStart = -1
+function useNeonClock() {
+  useEffect(() => {
+    neonStart = -1
+  }, [])
+  return (t: number) => {
+    if (neonStart < 0) neonStart = t
+    return neonPower(t - neonStart)
+  }
+}
+
+/** The pop palette the rim lights chase through. */
+const POP = ['#ff2d95', '#00e5ff', '#ffe600', '#7c4dff', '#39ff88', '#ff6a00'].map((h) => new THREE.Color(h))
 
 /** Pixel rectangle (relative to the canvas) that the board must fit inside. */
 export interface BoardSlot {
@@ -25,7 +54,6 @@ export interface BoardSlot {
   height: number
 }
 
-const GRID = 15
 const TILE_TOP = 0.1
 /** How far the raised tiles stand above the grout between them. */
 const TILE_RELIEF = 0.07
@@ -35,6 +63,11 @@ const SLAB_BOTTOM = -0.02 - SLAB_THICK
 /** The inner yard pad is carved a little lower than the track tiles. */
 const YARD_TOP = TILE_TOP - 0.025
 const SLAB_HALF = 5.0
+/**
+ * Board image resolution ("ultra"): 4096 keeps tile edges, engraving and chevrons crisp even on a 4K screen
+ * or a full-width iPad Pro board, and is the largest size every target GPU supports.
+ */
+const BOARD_TEXTURE_SIZE = 4096
 /** The character model's forward axis is -Z; this turns it to face +Z (toward the camera) at yaw 0. */
 const MODEL_YAW = 0
 /**
@@ -47,24 +80,36 @@ function boardYaw(board: LudoBoard) {
   return board.kind === 'classic' ? CLASSIC_YAW : 0
 }
 
+/**
+ * Front-to-back stretch of the board. Portrait screens are width-bound, which left empty bands above and
+ * below the board; the camera rig stretches the board's depth (up to 35%) to fill that height up to the
+ * name cards. Warriors get the inverse stretch, so they keep their true proportions.
+ */
+const useBoardView = create<{ stretch: number; setStretch: (k: number) => void }>((set) => ({
+  stretch: 1,
+  setStretch: (stretch) => set({ stretch }),
+}))
+const MAX_STRETCH = 1.35
+
 /** Turns everything that lives on the board, so characters, lights and effects stay on their cells. */
 function BoardSpin({ children }: { children: ReactNode }) {
   const board = useBoard()
-  const viewportWidth = useThree((s) => s.size.width)
-  const viewportHeight = useThree((s) => s.size.height)
-  // The classic board uses nearly all the width on phones, as in a native portrait Ludo screen.
-  const phoneScale = board.kind === 'classic' && viewportWidth < 600 ? 1.06 : 1
-  // Portrait tablets have a proportionally shorter board slot because the controls stay on-screen;
-  // enlarge the table inside that slot so it still has the same visual weight as the phone layout.
-  const tabletScale = board.kind === 'classic' && viewportWidth >= 600 && viewportHeight > viewportWidth ? 1.06 : 1
-  return <group rotation={[0, boardYaw(board), 0]} scale={Math.max(phoneScale, tabletScale)}>{children}</group>
+  const stretch = useBoardView((s) => s.stretch)
+  return <group rotation={[0, boardYaw(board), 0]} scale={[1, 1, stretch]}>{children}</group>
 }
 
 const FX_MS = 2400
 
 /** Brief camera shake, kicked by capture impacts. */
 const cameraShake = { until: 0, strength: 0 }
-const CELEBRATE_MS = 1600
+/** A short cinematic push-in toward a board point (a capture, a warrior reaching home). */
+const cameraFocus = { x: 0, z: 0, start: 0, until: 0 }
+const FOCUS_MS = 1500
+function focusCamera(x: number, z: number) {
+  const now = performance.now()
+  Object.assign(cameraFocus, { x, z, start: now, until: now + FOCUS_MS })
+}
+const CELEBRATE_MS = 2800
 
 // Start the character downloads as soon as this module loads.
 preloadCharacters()
@@ -87,138 +132,172 @@ function fitPoints(board: LudoBoard): THREE.Vector3[] {
   return out
 }
 
-/**
- * Frames the whole board inside the DOM slot between the player cards: picks a tilt from the slot's
- * aspect, binary-searches the camera distance until every board corner fits, then lens-shifts the
- * projection so the board sits centered in the slot rather than in the middle of the full-screen canvas.
- */
-const HEAD_BLEED = 34
-/** The near rim may slide a little under the dice row, as the table does in front of the players. */
-const BOTTOM_BLEED = 24
+/** How far the orthographic camera sits from the board centre (only its direction matters for the picture). */
+const CAM_RANGE = 60
 
+/**
+ * Frames the whole board inside the DOM slot between the player cards.
+ *
+ * The camera is orthographic: a tilted square board then projects to a true rectangle, so every corner
+ * stays a sharp 90 degrees and the far edge is exactly as wide as the near one (a perspective lens turned
+ * the board into a trapezoid that looked slightly skewed). For each candidate tilt it binary-searches the
+ * zoom until every board point fits the slot, then lens-shifts the view so the board is centred in it.
+ */
 function CameraRig({ slot }: { slot: BoardSlot | null }) {
   const board = useBoard()
   const FIT_CORNERS = useMemo(() => fitPoints(board), [board])
-  const camera = useThree((s) => s.camera) as THREE.PerspectiveCamera
+  const camRef = useRef<THREE.OrthographicCamera>(null)
   const width = useThree((s) => s.size.width)
   const height = useThree((s) => s.size.height)
-  const fit = useRef({ distance: 16, elevation: 0.9 })
+  const fit = useRef({ elevation: 0.9, zoom: 40 })
+  const setStretch = useBoardView((s) => s.setStretch)
 
   const left = slot?.left ?? 0
   const top = slot?.top ?? 0
   const slotW = slot?.width ?? width
   const slotH = slot?.height ?? height
-  // Use the device orientation for the board camera. On a portrait tablet the UI controls can
-  // make the board slot shorter than it is wide, but the Ludo board should still read as a square.
   const portraitStage = height / Math.max(width, 1) > 0.9
-  const bottomBleed = portraitStage ? 0 : BOTTOM_BLEED
 
   useLayoutEffect(() => {
-    if (width < 2 || height < 2 || slotW < 2 || slotH < 2) return
-    const pad = 6
-    // the whole board, frame included, stays on screen with a little air at the sides
-    const padX = portraitStage ? 3 : pad
-    // phones use a longer lens: the tilt still shows the frame's front face and standing warriors, but
-    // the far rim stays nearly as wide as the near one, so the board reads square and fills the width
-    // (a wide lens made the far half shrink into a small wedge)
-    camera.fov = portraitStage ? 30 : 46
+    const camera = camRef.current
+    if (!camera || width < 2 || height < 2 || slotW < 2 || slotH < 2) return
+    const padX = portraitStage ? 4 : 8
+    const padY = 4
+    // portrait layouts hang the turn ribbon below the top player cards; keep the board clear of it
+    const padTop = portraitStage ? 22 : padY
     const v = new THREE.Vector3()
+    /** Fit points with the board's depth stretched by k. */
+    let pts = FIT_CORNERS
+    const stretchPoints = (k: number) => {
+      pts = FIT_CORNERS.map((c) => new THREE.Vector3(c.x, c.y, c.z * k))
+    }
     let elevation = 0
     let shiftX = 0
     let shiftY = 0
 
-    const place = (d: number) => {
-      camera.position.set(0, d * Math.sin(elevation), d * Math.cos(elevation))
+    camera.left = -width / 2
+    camera.right = width / 2
+    camera.top = height / 2
+    camera.bottom = -height / 2
+    camera.near = 0.1
+    camera.far = 2000
+
+    /** `zoom` is pixels per world unit. */
+    const place = (zoom: number) => {
+      camera.position.set(0, CAM_RANGE * Math.sin(elevation), CAM_RANGE * Math.cos(elevation))
       camera.lookAt(0, 0, 0)
+      camera.zoom = zoom
       camera.setViewOffset(width, height, -shiftX, -shiftY, width, height)
       camera.updateProjectionMatrix()
       camera.updateMatrixWorld()
     }
     const bounds = () => {
       let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, headY = Infinity
-      for (const c of FIT_CORNERS) {
+      for (const c of pts) {
         v.copy(c).project(camera)
         const px = ((v.x + 1) / 2) * width
         const py = ((1 - v.y) / 2) * height
         minX = Math.min(minX, px)
         maxX = Math.max(maxX, px)
         maxY = Math.max(maxY, py)
-        // the far characters' heads may rise into the gap below the player cards; the board itself may not
         if (c.y > 0.5) headY = Math.min(headY, py)
         else minY = Math.min(minY, py)
       }
       return { minX, maxX, minY, maxY, headY }
     }
-    /** Largest board that fits the slot at this tilt, sitting low in the slot just above the dice. */
+    /** Largest board that fits the slot at this tilt, centred in it. */
     const fitAt = (deg: number) => {
       elevation = THREE.MathUtils.degToRad(deg)
       shiftX = left + slotW / 2 - width / 2
       shiftY = top + slotH / 2 - height / 2
-      let distance = 16
+      let zoom = 40
       for (let pass = 0; pass < 3; pass++) {
-        let lo = 3
-        let hi = 120
-        for (let i = 0; i < 26; i++) {
+        let lo = 2
+        let hi = 2000
+        for (let i = 0; i < 30; i++) {
           const mid = (lo + hi) / 2
           place(mid)
           const b = bounds()
-          // the far rim may tuck under the player cards, like a table seen past the players' shoulders
-          const fits = b.minX >= left + padX && b.maxX <= left + slotW - padX && b.minY >= top - HEAD_BLEED && b.headY >= top - HEAD_BLEED * 2.5 && b.maxY <= top + slotH + bottomBleed
-          if (fits) hi = mid
-          else lo = mid
+          // portrait screens are width-bound: let the outer glass frame (~0.24 units past the gold bezel)
+          // run off the screen edges, so the playing squares themselves fill the width
+          const bleed = portraitStage ? 0.24 * mid : 0
+          const fits = b.minX >= left + padX - bleed && b.maxX <= left + slotW - padX + bleed && b.minY >= top + padTop && b.headY >= top + padTop && b.maxY <= top + slotH - padY
+          if (fits) lo = mid
+          else hi = mid
         }
-        distance = hi
-        place(distance)
+        zoom = lo
+        place(zoom)
         const b = bounds()
         shiftX += left + slotW / 2 - (b.minX + b.maxX) / 2
-        // tall (phone) slots: centre the board between the player cards; wide slots: sit it low, just above the dice
-        shiftY += portraitStage
-          ? top + slotH / 2 - (Math.min(b.minY, b.headY) + b.maxY) / 2 - slotH * 0.013
-          : top + slotH + bottomBleed - b.maxY
+        // centre in the free part of the slot (below the turn ribbon on portrait screens)
+        // centre board and warriors together, so far-row heads never slide up under the player cards
+        shiftY += top + (padTop + slotH - padY) / 2 - (Math.min(b.minY, b.headY) + b.maxY) / 2
       }
-      place(distance)
-      const b = bounds()
-      return { deg, distance, shiftX, shiftY, area: (b.maxX - b.minX) * (b.maxY - b.minY), tall: b.maxY - b.minY }
+      place(zoom)
+      return { deg, zoom, shiftX, shiftY }
     }
 
-    // Use the lower, table-facing view from the target game screen: the far edge recedes,
-    // characters read as figures, and the near glass bevel gives the board visible depth.
+    // Steep enough that the grid reads clearly and the board fills the slot, low enough that the frame's
+    // front face and the standing warriors still show depth. Of the tilts that give (nearly) the biggest
+    // board, take the steepest: the board then looks closest to a true square.
+    // (a steeper portrait view was tried to stretch the board toward the name cards, but it flattened the
+    // warriors into top-down silhouettes and could not make a width-bound board any bigger)
+    const [lowDeg, highDeg] = portraitStage ? [52, 68] : [40, 60]
     const tries = []
-    // Portrait slots use a higher camera so the board fills more of the vertical stage; landscape
-    // keeps the lower angle that gives the table more depth across the wide viewport.
-    // Portrait phones previously used a near-overhead camera, which made the whole scene feel
-    // like a flat board screenshot. A ~55 degree elevation keeps the square track legible while
-    // bringing back the perspective and raised near edge visible in the reference.
-    // Portrait screens use a three-quarter view: steep enough that the grid reads clearly and the board
-    // fills the width, low enough that the frame's front face, the raised tiles and the standing warriors
-    // show real depth (a near-overhead camera flattened the whole table into a 2D board).
-    const [lowDeg, highDeg] = portraitStage ? [50, 60] : [36, 46]
     for (let deg = lowDeg; deg <= highDeg; deg += 2) tries.push(fitAt(deg))
-    const best = tries.reduce((a, t) => (t.area > a.area * 1.03 ? t : a))
+    const maxZoom = Math.max(...tries.map((t) => t.zoom))
+    let best = tries.filter((t) => t.zoom >= maxZoom * 0.99).pop()!
+    // Portrait: stretch the board's depth as far as the free height allows without shrinking it.
+    let stretch = 1
+    if (portraitStage) {
+      let lo = 1
+      let hi = MAX_STRETCH
+      for (let i = 0; i < 10; i++) {
+        const mid = (lo + hi) / 2
+        stretchPoints(mid)
+        if (fitAt(best.deg).zoom >= best.zoom * 0.995) lo = mid
+        else hi = mid
+      }
+      stretch = lo
+      stretchPoints(stretch)
+      best = fitAt(best.deg)
+    }
+    setStretch(stretch)
     elevation = THREE.MathUtils.degToRad(best.deg)
     shiftX = best.shiftX
     shiftY = best.shiftY
-    place(best.distance)
-    fit.current = { distance: best.distance, elevation }
-  }, [camera, width, height, left, top, slotW, slotH, portraitStage, FIT_CORNERS])
+    place(best.zoom)
+    fit.current = { elevation, zoom: best.zoom }
+  }, [width, height, left, top, slotW, slotH, portraitStage, FIT_CORNERS, setStretch])
 
-  useFrame((state) => {
-    // barely-there orbit sway so the scene breathes like a live camera
-    const { distance, elevation } = fit.current
-    const yaw = Math.sin(state.clock.elapsedTime * 0.22) * 0.012
-    const flat = distance * Math.cos(elevation)
-    camera.position.set(Math.sin(yaw) * flat, distance * Math.sin(elevation), Math.cos(yaw) * flat)
-    camera.lookAt(0, 0, 0)
-    const left = cameraShake.until - performance.now()
-    if (left > 0) {
-      const k = cameraShake.strength * (left / 420) * distance * 0.004
-      const t = state.clock.elapsedTime
+  useFrame(() => {
+    // no idle sway: the board stays perfectly square to the screen; only a capture impact shakes it
+    const camera = camRef.current
+    if (!camera) return
+    const { elevation, zoom } = fit.current
+    // cinematic push-in: ease toward the focus point and back over FOCUS_MS
+    const fNow = performance.now()
+    const f = fNow < cameraFocus.until ? Math.sin(((fNow - cameraFocus.start) / FOCUS_MS) * Math.PI) : 0
+    const stretch = useBoardView.getState().stretch
+    const ox = cameraFocus.x * f * 0.45
+    const oz = cameraFocus.z * stretch * f * 0.45
+    camera.position.set(ox, CAM_RANGE * Math.sin(elevation), CAM_RANGE * Math.cos(elevation) + oz)
+    camera.lookAt(ox, 0, oz)
+    const wantZoom = zoom * (1 + f * 0.16)
+    if (Math.abs(camera.zoom - wantZoom) > 1e-3) {
+      camera.zoom = wantZoom
+      camera.updateProjectionMatrix()
+    }
+    const remaining = cameraShake.until - performance.now()
+    if (remaining > 0) {
+      const k = cameraShake.strength * (remaining / 420) * 0.06
+      const t = performance.now() / 1000
       camera.position.x += Math.sin(t * 71) * k
       camera.position.y += Math.cos(t * 53) * k
     }
   })
 
-  return null
+  return <OrthographicCamera ref={camRef} makeDefault manual position={[0, CAM_RANGE * 0.8, CAM_RANGE * 0.6]} />
 }
 
 /* ------------------------------------------------------------------ board */
@@ -237,6 +316,9 @@ const EDGE_STRIPS: { color: ClassicColor; pos: [number, number, number]; along: 
 
 /** Beveled dark-glass board body whose rim glows in each adjacent team's color (the active team pulses). */
 function BoardFrame() {
+  const theme = BOARD_THEMES[useBoardTheme((s) => s.themeId)]
+  const slab = theme.slab
+  const neonTheme = !!theme.neon
   const activeColor = useLudoStore((s) => s.players[s.currentPlayerIndex]?.color)
   const stripMats = useRef<(THREE.MeshBasicMaterial | null)[]>([])
 
@@ -252,24 +334,24 @@ function BoardFrame() {
 
   return (
     <group>
-      <RoundedBox args={[SLAB_HALF * 2, SLAB_THICK, SLAB_HALF * 2]} radius={0.2} smoothness={6} position={[0, -0.02 - SLAB_THICK / 2, 0]} castShadow receiveShadow>
+      <RoundedBox args={[SLAB_HALF * 2, SLAB_THICK, SLAB_HALF * 2]} radius={0.012} smoothness={2} position={[0, -0.02 - SLAB_THICK / 2, 0]} castShadow receiveShadow>
         <meshPhysicalMaterial
-          color="#141a31"
-          emissive="#18213f"
-          emissiveIntensity={0.3}
+          color={slab.color}
+          emissive={slab.emissive}
+          emissiveIntensity={slab.emissiveIntensity}
           roughness={0.14}
           metalness={0.52}
           clearcoat={1}
           clearcoatRoughness={0.02}
-          envMapIntensity={2.6}
+          envMapIntensity={neonTheme ? 1.1 : 2.6}
         />
       </RoundedBox>
       {/* clear glass skin over the slab: its bright edges and reflections read as a thick glass block */}
-      <RoundedBox args={[SLAB_HALF * 2 + 0.1, SLAB_THICK + 0.03, SLAB_HALF * 2 + 0.1]} radius={0.24} smoothness={6} position={[0, -0.02 - SLAB_THICK / 2 - 0.005, 0]}>
-        <meshPhysicalMaterial color="#7284b1" transparent opacity={0.12} roughness={0.035} metalness={0.28} clearcoat={1} clearcoatRoughness={0} envMapIntensity={2.4} depthWrite={false} />
+      <RoundedBox args={[SLAB_HALF * 2 + 0.1, SLAB_THICK + 0.03, SLAB_HALF * 2 + 0.1]} radius={0.012} smoothness={2} position={[0, -0.02 - SLAB_THICK / 2 - 0.005, 0]}>
+        <meshPhysicalMaterial color={neonTheme ? "#20222c" : "#7284b1"} transparent opacity={neonTheme ? 0.06 : 0.12} roughness={0.035} metalness={0.28} clearcoat={1} clearcoatRoughness={0} envMapIntensity={2.4} depthWrite={false} />
       </RoundedBox>
       {/* darker underplate gives the board visible, layered thickness */}
-      <RoundedBox args={[SLAB_HALF * 2 - 0.3, 0.12, SLAB_HALF * 2 - 0.3]} radius={0.05} smoothness={3} position={[0, SLAB_BOTTOM + 0.04, 0]} castShadow>
+      <RoundedBox args={[SLAB_HALF * 2 - 0.3, 0.12, SLAB_HALF * 2 - 0.3]} radius={0.01} smoothness={2} position={[0, SLAB_BOTTOM + 0.04, 0]} castShadow>
         <meshStandardMaterial color="#05060f" roughness={0.4} metalness={0.6} />
       </RoundedBox>
       <RimLeds />
@@ -287,9 +369,13 @@ function BoardFrame() {
           </mesh>
         </group>
       ))}
-      {/* thin polished gold bezel framing the playing surface */}
-      <RoundedBox args={[GRID * CELL + 0.16, 0.05, GRID * CELL + 0.16]} radius={0.02} smoothness={3} position={[0, TILE_TOP - TILE_RELIEF * 0.9 - 0.03, 0]} receiveShadow>
-        <meshPhysicalMaterial color="#e9b949" roughness={0.18} metalness={1} clearcoat={0.8} clearcoatRoughness={0.1} envMapIntensity={1.8} />
+      {/* thin polished bezel framing the playing surface: gold, or black chrome for Neon Noir */}
+      <RoundedBox args={[CLASSIC_TOTAL + 0.16, 0.05, CLASSIC_TOTAL + 0.16]} radius={0.005} smoothness={2} position={[0, TILE_TOP - TILE_RELIEF * 0.9 - 0.03, 0]} receiveShadow>
+        {neonTheme ? (
+          <meshPhysicalMaterial color="#15161c" roughness={0.12} metalness={1} clearcoat={1} clearcoatRoughness={0.04} envMapIntensity={2.2} />
+        ) : (
+          <meshPhysicalMaterial color="#e9b949" roughness={0.18} metalness={1} clearcoat={0.8} clearcoatRoughness={0.1} envMapIntensity={1.8} />
+        )}
       </RoundedBox>
     </group>
   )
@@ -306,17 +392,32 @@ function Table({ radius }: { radius: number }) {
  * with a bump map for tile relief, an emissive map for the neon borders, and a clear-coat for gloss.
  */
 function BoardSurface() {
-  const maps = useMemo(() => (classicMaps ??= paintBoard(2048)), [])
+  const themeId = useBoardTheme((s) => s.themeId)
+  const surfMat = useRef<THREE.MeshPhysicalMaterial>(null)
+  const power = useNeonClock()
+  const neonTheme = !!BOARD_THEMES[themeId].neon
+  useFrame((state) => {
+    if (surfMat.current) surfMat.current.emissiveIntensity = (neonTheme ? 1.25 : 0.82) * power(state.clock.elapsedTime)
+  })
+  const maps = useMemo(() => {
+    let hit = classicMaps.get(themeId)
+    if (!hit) {
+      hit = paintBoard(BOARD_TEXTURE_SIZE, BOARD_THEMES[themeId])
+      classicMaps.set(themeId, hit)
+    }
+    return hit
+  }, [themeId])
   return (
     <group>
       <mesh position={[0, TILE_TOP - TILE_RELIEF * 0.9 - 0.03, 0]} receiveShadow>
-        <boxGeometry args={[GRID * CELL, 0.05, GRID * CELL]} />
+        <boxGeometry args={[CLASSIC_TOTAL, 0.05, CLASSIC_TOTAL]} />
         <meshStandardMaterial color="#0c0e1f" roughness={0.5} />
       </mesh>
       {/* the tile relief is real geometry: the bump map lifts each tile into a raised, beveled block */}
       <mesh position={[0, TILE_TOP - TILE_RELIEF * 0.9, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <planeGeometry args={[GRID * CELL, GRID * CELL, 360, 360]} />
+        <planeGeometry args={[CLASSIC_TOTAL, CLASSIC_TOTAL, 360, 360]} />
         <meshPhysicalMaterial
+          ref={surfMat}
           map={maps.map}
           bumpMap={maps.bumpMap}
           bumpScale={2.6}
@@ -324,13 +425,17 @@ function BoardSurface() {
           displacementScale={TILE_RELIEF}
           emissive="#ffffff"
           emissiveMap={maps.emissiveMap}
-          color="#e0e5f1"
+          color="#ffffff"
           emissiveIntensity={0.82}
-          roughness={0.24}
-          metalness={0.16}
-          clearcoat={0.9}
-          clearcoatRoughness={0.12}
-          envMapIntensity={0.45}
+          roughness={neonTheme ? 0.2 : 0.42}
+          metalness={0}
+          // the overhead key light sits near the camera's mirror angle; strong specular spread a grey sheen
+          // over the whole board, so keep only a faint polish
+          specularIntensity={0.25}
+          clearcoat={neonTheme ? 0.4 : 0.2}
+          clearcoatRoughness={neonTheme ? 0.06 : 0.25}
+          // a strong environment reflection laid a milky haze over the dark stone and jewel colours
+          envMapIntensity={0.12}
         />
       </mesh>
     </group>
@@ -340,8 +445,8 @@ function BoardSurface() {
 /** Small gold-rimmed crown medallion set into the middle of the home, where the four lanes meet. */
 /** Which team's home column meets each side of the classic centre square (board space). */
 const PYRAMID_SIDES: { color: ClassicColor; base: [number, number][]; top: [number, number][] }[] = (() => {
-  const h = CELL * 1.5
-  const t = CELL * 0.56
+  const h = CLASSIC_LANE * 1.5
+  const t = CLASSIC_LANE * 0.56
   return [
     { color: 'RED', base: [[-h, h], [-h, -h]], top: [[-t, t], [-t, -t]] },
     { color: 'GREEN', base: [[-h, -h], [h, -h]], top: [[-t, -t], [t, -t]] },
@@ -353,8 +458,8 @@ const PYRAMID_RISE = 0.42
 
 /** Height of the centre pyramid's surface at (x, z), so finished warriors stand on its slope. */
 function pyramidLift(x: number, z: number) {
-  const h = CELL * 1.5
-  const t = CELL * 0.56
+  const h = CLASSIC_LANE * 1.5
+  const t = CLASSIC_LANE * 0.56
   const d = Math.max(Math.abs(x), Math.abs(z))
   return d >= h ? 0 : PYRAMID_RISE * Math.min(1, (h - d) / (h - t))
 }
@@ -364,6 +469,7 @@ function pyramidLift(x: number, z: number) {
  * colours, rising from the board to a gold plinth that holds the crown emblem.
  */
 function CenterPyramid() {
+  const neonTheme = !!BOARD_THEMES[useBoardTheme((s) => s.themeId)].neon
   const faces = useMemo(
     () =>
       PYRAMID_SIDES.map(({ color, base, top }) => {
@@ -380,8 +486,8 @@ function CenterPyramid() {
       }),
     [],
   )
-  const t = CELL * 0.56
-  const h = CELL * 1.5
+  const t = CLASSIC_LANE * 0.56
+  const h = CLASSIC_LANE * 1.5
   // gold ridges up the four corner edges make the pyramid read as raised, not as a sunken well
   const ridges = useMemo(
     () =>
@@ -403,25 +509,108 @@ function CenterPyramid() {
     <group>
       {ridges.map((r, i) => (
         <mesh key={i} position={r.mid} quaternion={r.q} castShadow>
-          <cylinderGeometry args={[0.028, 0.028, r.len, 8]} />
-          <meshPhysicalMaterial color="#f3c552" roughness={0.22} metalness={0.6} clearcoat={1} emissive="#7a5208" emissiveIntensity={0.4} />
+          <cylinderGeometry args={[neonTheme ? 0.018 : 0.028, neonTheme ? 0.018 : 0.028, r.len, 8]} />
+          {neonTheme ? (
+            <meshBasicMaterial color={hdr('#ffffff', 2.2)} toneMapped={false} />
+          ) : (
+            <meshPhysicalMaterial color="#f3c552" roughness={0.22} metalness={0.6} clearcoat={1} emissive="#7a5208" emissiveIntensity={0.4} />
+          )}
         </mesh>
       ))}
       {faces.map(({ color, g }) => (
         <mesh key={color} geometry={g} castShadow receiveShadow>
-          <meshPhysicalMaterial color={COLOR_DEEP[color]} emissive={COLOR_GLOW[color]} emissiveIntensity={0.18} roughness={0.28} metalness={0.25} clearcoat={1} clearcoatRoughness={0.08} side={THREE.DoubleSide} />
+          {neonTheme ? (
+            // smoked black glass: each face only tinted by its team, so the neon base line pops
+            <meshStandardMaterial color="#030305" emissive={COLOR_GLOW[color]} emissiveIntensity={0.1} roughness={0.75} metalness={0} envMapIntensity={0.15} side={THREE.DoubleSide} />
+          ) : (
+            <meshPhysicalMaterial color={COLOR_DEEP[color]} emissive={COLOR_GLOW[color]} emissiveIntensity={0.18} roughness={0.28} metalness={0.25} clearcoat={1} clearcoatRoughness={0.08} side={THREE.DoubleSide} />
+          )}
         </mesh>
       ))}
-      {/* gold plinth on top of the pyramid */}
+      {/* Neon Noir: a team-coloured neon tube along the foot of each face */}
+      {neonTheme &&
+        PYRAMID_SIDES.map(({ color, base }) => {
+          const [a, b] = base
+          const len = Math.hypot(b[0] - a[0], b[1] - a[1])
+          return (
+            <mesh key={color} position={[(a[0] + b[0]) / 2, TILE_TOP + 0.01, (a[1] + b[1]) / 2]} rotation={[0, -Math.atan2(b[1] - a[1], b[0] - a[0]), 0]}>
+              <boxGeometry args={[len - 0.04, 0.03, 0.03]} />
+              <meshBasicMaterial color={hdr(COLOR_GLOW[color], 2.4)} toneMapped={false} />
+            </mesh>
+          )
+        })}
+      {/* plinth on top of the pyramid: gold, or black chrome for Neon Noir */}
       <mesh position={[0, TILE_TOP + PYRAMID_RISE + 0.02, 0]} castShadow receiveShadow>
         <boxGeometry args={[t * 2 + 0.04, 0.05, t * 2 + 0.04]} />
-        <meshPhysicalMaterial color="#e9b949" roughness={0.25} metalness={0.6} clearcoat={0.8} />
+        {neonTheme ? (
+          <meshPhysicalMaterial color="#111217" roughness={0.1} metalness={1} clearcoat={1} envMapIntensity={2} />
+        ) : (
+          <meshPhysicalMaterial color="#e9b949" roughness={0.25} metalness={0.6} clearcoat={0.8} />
+        )}
       </mesh>
     </group>
   )
 }
 
+/**
+ * Neon Noir's finish marker: a faceted crystal hovering over the centre, slowly turning, its light
+ * cycling through the pop palette, with a neon ring on the plinth below.
+ */
+function CenterCrystal({ radius, raised }: { radius: number; raised: number }) {
+  const gem = useRef<THREE.Mesh>(null)
+  const core = useRef<THREE.MeshBasicMaterial>(null)
+  const ring = useRef<THREE.MeshBasicMaterial>(null)
+  const light = useRef<THREE.PointLight>(null)
+  const glowTex = useMemo(() => makeSoftGlowTexture(), [])
+  const power = useNeonClock()
+  const col = useMemo(() => new THREE.Color(), [])
+  useFrame((state) => {
+    const t = state.clock.elapsedTime
+    const p = power(t)
+    const h = (t * 0.25) % POP.length
+    col.copy(POP[Math.floor(h)]).lerp(POP[(Math.floor(h) + 1) % POP.length], h % 1)
+    if (gem.current) {
+      gem.current.rotation.y = t * 0.6
+      gem.current.position.y = radius * 1.35 + Math.sin(t * 1.4) * radius * 0.12
+    }
+    if (core.current) core.current.color.copy(col).multiplyScalar(1.6 * p)
+    if (ring.current) ring.current.color.copy(col).multiplyScalar(2.2 * p)
+    if (light.current) {
+      light.current.color.copy(col)
+      light.current.intensity = 1.6 * p
+    }
+  })
+  const R = radius
+  return (
+    <group position={[0, TILE_TOP + raised, 0]}>
+      <mesh ref={gem} castShadow>
+        <octahedronGeometry args={[R * 0.8, 0]} />
+        <meshPhysicalMaterial color="#ffffff" metalness={0} roughness={0.02} transmission={0.6} thickness={0.4} ior={2.2} clearcoat={1} envMapIntensity={3} flatShading />
+        <mesh scale={0.55}>
+          <octahedronGeometry args={[R * 0.8, 0]} />
+          <meshBasicMaterial ref={core} color="#ffffff" toneMapped={false} />
+        </mesh>
+      </mesh>
+      <mesh position={[0, 0.006, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[R * 0.78, R * 0.86, 64]} />
+        <meshBasicMaterial ref={ring} color="#ffffff" toneMapped={false} />
+      </mesh>
+      <mesh position={[0, 0.004, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[R * 3.2, R * 3.2]} />
+        <meshBasicMaterial map={glowTex} color="#ffffff" transparent opacity={0.22} blending={THREE.AdditiveBlending} depthWrite={false} />
+      </mesh>
+      <pointLight ref={light} position={[0, R * 1.4, 0]} distance={3} decay={2} intensity={1.6} />
+    </group>
+  )
+}
+
 function CenterEmblem({ radius = CELL * 0.5, raised = 0 }: { radius?: number; raised?: number }) {
+  const neonTheme = !!BOARD_THEMES[useBoardTheme((s) => s.themeId)].neon
+  if (neonTheme) return <CenterCrystal radius={radius * 1.5} raised={raised} />
+  return <CenterEmblemClassic radius={radius} raised={raised} />
+}
+
+function CenterEmblemClassic({ radius = CELL * 0.5, raised = 0 }: { radius?: number; raised?: number }) {
   const face = useMemo(() => makeEmblemTexture(), [])
   const glowTex = useMemo(() => makeSoftGlowTexture(), [])
   const faceMat = useRef<THREE.MeshPhysicalMaterial>(null)
@@ -542,36 +731,6 @@ export function AmbientDust() {
   return (
     <points ref={pointsRef} geometry={geo}>
       <pointsMaterial map={tex} size={0.09} color={hdr('#ffe2c2', 1.6)} transparent opacity={0.7} depthWrite={false} blending={THREE.AdditiveBlending} sizeAttenuation toneMapped={false} />
-    </points>
-  )
-}
-
-/** Sparkles rising gently out of the active player's home zone. */
-export function ActiveTeamAura() {
-  const activeColor = useLudoStore((s) => s.players[s.currentPlayerIndex]?.color)
-  const phase = useLudoStore((s) => s.phase)
-  const tex = useMemo(() => makeSoftGlowTexture(), [])
-  const COUNT = 26
-  const seeds = useMemo(() => Array.from({ length: COUNT }, (_, i) => [hash01(i + 7) * 3.3 - 1.65, hash01(i + 77) * 3.3 - 1.65, hash01(i + 777)]), [])
-  const geo = useMemo(() => makePointCloud(COUNT), [])
-  const pointsRef = useRef<THREE.Points>(null)
-  const board = useBoard()
-  const [cx, cz] = board.yardCenter(activeColor ?? 'RED')
-  useFrame((state) => {
-    const t = state.clock.elapsedTime
-    if (!pointsRef.current) return
-    const pos = pointsRef.current.geometry.attributes.position as THREE.BufferAttribute
-    for (let i = 0; i < COUNT; i++) {
-      const [x, z, p] = seeds[i]
-      const life = (t * 0.35 + p) % 1
-      pos.setXYZ(i, cx + x + Math.sin(t + p * 6) * 0.08, TILE_TOP + life * 1.6, cz + z)
-    }
-    pos.needsUpdate = true
-  })
-  if (!activeColor || phase === 'gameOver') return null
-  return (
-    <points ref={pointsRef} geometry={geo}>
-      <pointsMaterial map={tex} size={0.09} color={COLOR_GLOW[activeColor]} transparent opacity={0.75} depthWrite={false} blending={THREE.AdditiveBlending} sizeAttenuation />
     </points>
   )
 }
@@ -709,26 +868,62 @@ export function BoardGlints() {
 }
 
 /** Tiny warm LEDs set along the top edge of the glass rim. */
+/**
+ * LED bulbs around the board's edge. Light runs around the rim like a marquee, a bright head with a
+ * fading tail whose colour slowly cycles through the pop palette.
+ */
 function RimLeds() {
   const ref = useRef<THREE.InstancedMesh>(null)
+  const power = useNeonClock()
+  // bulbs in order around the perimeter (clockwise from the top-left corner), so a chase reads as motion
   const spots = useMemo(() => {
     const out: [number, number][] = []
     const e = SLAB_HALF - 0.1
-    for (let i = 0; i <= 18; i++) {
-      const t = -e + (i / 18) * e * 2
-      out.push([t, -e], [t, e], [-e, t], [e, t])
-    }
+    const n = 30
+    for (let i = 0; i < n; i++) out.push([-e + (i / n) * e * 2, -e])
+    for (let i = 0; i < n; i++) out.push([e, -e + (i / n) * e * 2])
+    for (let i = 0; i < n; i++) out.push([e - (i / n) * e * 2, e])
+    for (let i = 0; i < n; i++) out.push([-e, e - (i / n) * e * 2])
     return out
   }, [])
   useLayoutEffect(() => {
     const m = new THREE.Matrix4()
-    spots.forEach(([x, z], i) => ref.current?.setMatrixAt(i, m.makeTranslation(x, -0.015, z)))
-    if (ref.current) ref.current.instanceMatrix.needsUpdate = true
+    const white = new THREE.Color('#ffffff')
+    spots.forEach(([x, z], i) => {
+      ref.current?.setMatrixAt(i, m.makeTranslation(x, -0.015, z))
+      ref.current?.setColorAt(i, white)
+    })
+    if (ref.current) {
+      ref.current.instanceMatrix.needsUpdate = true
+      if (ref.current.instanceColor) ref.current.instanceColor.needsUpdate = true
+    }
   }, [spots])
+  const tmp = useMemo(() => new THREE.Color(), [])
+  useFrame((state) => {
+    const mesh = ref.current
+    if (!mesh) return
+    const t = state.clock.elapsedTime
+    const p = power(t)
+    const n = spots.length
+    const head = (t * 26) % n
+    const hue = (t * 0.18) % POP.length
+    const a = POP[Math.floor(hue)]
+    const b2 = POP[(Math.floor(hue) + 1) % POP.length]
+    for (let i = 0; i < n; i++) {
+      // four heads chase around at once; each bulb lights by its distance behind the nearest head
+      const d = (((head - i) % (n / 4)) + n / 4) % (n / 4)
+      const lit = Math.max(0.1, 1 - d / 9)
+      tmp.copy(a).lerp(b2, hue % 1)
+      if (d < 1) tmp.offsetHSL(0, 0, 0.25) // the head bulb burns white-hot
+      tmp.multiplyScalar(lit * 2.4 * p)
+      mesh.setColorAt(i, tmp)
+    }
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+  })
   return (
     <instancedMesh ref={ref} args={[undefined, undefined, spots.length]}>
-      <sphereGeometry args={[0.022, 8, 8]} />
-      <meshBasicMaterial color={hdr('#ffe0b0', 2.2)} toneMapped={false} />
+      <sphereGeometry args={[0.03, 10, 10]} />
+      <meshBasicMaterial color="#ffffff" toneMapped={false} />
     </instancedMesh>
   )
 }
@@ -792,17 +987,16 @@ interface TokenPieceProps {
   scale: number
   pose: CharacterPose
   selectable: boolean
-  active: boolean
   puddle: THREE.Texture
   /** Facing at rest (cancels the board's turn so the character looks into the board, back to the camera). */
   restYaw: number
+  /** True while the warrior waits in its home yard: only then does it stand on the glowing ring base. */
+  inYard: boolean
+  /** The board's depth stretch, undone on the warrior so it keeps its true shape. */
+  stretch: number
   /** Overrides the facing, e.g. an attacker turned toward the character it is slashing. */
   faceYaw?: number
   onSelect?: () => void
-  /** Protected by a Shield power-up. */
-  shielded?: boolean
-  /** Highlight colour while the token is a power-up target (overrides the team glow on the pick ring). */
-  aimColor?: string
 }
 
 /** A team character on a glass base; glides and hops between cells, faces into the board at rest. */
@@ -812,19 +1006,25 @@ function contactShadowTexture() {
   return blobTexture
 }
 
-const TRAIL = 16
+const TRAIL = 24
+/** Sparkles thrown off a character while it walks from square to square. */
+const MOVE_SPARKS = 28
 /** Height of the glass base the characters stand on. */
 const BASE_H = 0.2
 
-function TokenPiece({ color, variant, target, scale, pose, selectable, active, puddle, restYaw, faceYaw, onSelect, shielded, aimColor }: TokenPieceProps) {
+function TokenPiece({ color, variant, target, scale, pose, selectable, puddle, restYaw, inYard, stretch, faceYaw, onSelect }: TokenPieceProps) {
+  const pickRingRef = useRef<THREE.Mesh>(null)
+  // out on the board the warrior stands straight on the tile; the base and its ring belong to the yard
+  const standY = inYard ? BASE_H : 0
   const baseMaterialRef = useRef<THREE.MeshPhysicalMaterial>(null)
-  const shieldRef = useRef<THREE.Mesh>(null)
   const trailRefs = useRef<(THREE.Sprite | null)[]>([])
   const trailState = useRef({ next: 0, last: 0 })
+  const sparkRefs = useRef<(THREE.Sprite | null)[]>([])
+  const sparkState = useRef({ next: 0, last: 0 })
+  const puddleMatRef = useRef<THREE.MeshBasicMaterial>(null)
+  const moveGlowRef = useRef<THREE.Sprite>(null)
   const groupRef = useRef<THREE.Group>(null)
   const facingRef = useRef<THREE.Group>(null)
-  const pulseRef = useRef<THREE.Mesh>(null)
-  const arrowRef = useRef<THREE.Group>(null)
   const motion = useRef({ from: new THREE.Vector3(), to: new THREE.Vector3(), start: 0, dur: 1, hop: 0, heading: 0, ready: false })
   const [tx, ty, tz] = target
 
@@ -845,8 +1045,9 @@ function TokenPiece({ color, variant, target, scale, pose, selectable, active, p
     m.to.copy(to)
     const dist = m.from.distanceTo(to)
     const long = dist > 1.3
-    m.dur = long ? 560 : 200
+    m.dur = long ? 520 : 170
     m.hop = long ? 1.1 : 0.16
+    if (!long) ludoSfx.step()
     m.start = performance.now()
     if (dist > 0.05) m.heading = Math.atan2(to.x - m.from.x, to.z - m.from.z)
   }, [tx, ty, tz])
@@ -861,8 +1062,10 @@ function TokenPiece({ color, variant, target, scale, pose, selectable, active, p
     g.position.y += Math.sin(Math.PI * t) * m.hop
     // drop a fading light mote behind the character while it travels
     const now = performance.now()
+    const time0 = state.clock.elapsedTime
     const ts = trailState.current
-    if (t < 1 && now - ts.last > 30) {
+    const moving = t < 1
+    if (moving && now - ts.last > 22) {
       const sp = trailRefs.current[ts.next]
       if (sp) {
         sp.position.set(g.position.x, g.position.y + 0.35, g.position.z)
@@ -876,12 +1079,58 @@ function TokenPiece({ color, variant, target, scale, pose, selectable, active, p
       // a bright comet tail behind a moving character, like a streak of light across the board
       const age = (now - (sp.userData.born ?? -1e9)) / 900
       sp.material.opacity = age < 1 ? (1 - age) : 0
-      sp.scale.setScalar(0.75 * (1 - Math.min(1, age) * 0.7))
+      sp.scale.setScalar(1.0 * (1 - Math.min(1, age) * 0.7))
+    }
+    // sparkles: thrown off the character in every direction while it travels, then fall and twinkle out
+    const ss = sparkState.current
+    if (moving && now - ss.last > 18) {
+      for (let k = 0; k < 2; k++) {
+        const sp = sparkRefs.current[ss.next]
+        if (sp) {
+          const a = Math.random() * Math.PI * 2
+          const v = 0.6 + Math.random() * 0.9
+          sp.position.set(g.position.x, g.position.y + 0.15 + Math.random() * 0.5, g.position.z)
+          sp.userData.born = now
+          sp.userData.v = [Math.cos(a) * v, 1.2 + Math.random() * 1.4, Math.sin(a) * v]
+        }
+        ss.next = (ss.next + 1) % MOVE_SPARKS
+      }
+      ss.last = now
+    }
+    for (const sp of sparkRefs.current) {
+      if (!sp) continue
+      const age = (now - (sp.userData.born ?? -1e9)) / 700
+      if (age >= 1) {
+        sp.material.opacity = 0
+        continue
+      }
+      const v = sp.userData.v as [number, number, number]
+      sp.position.x += v[0] * delta
+      sp.position.y += v[1] * delta
+      sp.position.z += v[2] * delta
+      v[1] -= 4.5 * delta
+      sp.material.opacity = (1 - age) * (0.55 + Math.random() * 0.45)
+      sp.scale.setScalar(0.16 * (1 - age * 0.6))
+    }
+    // the floor glow and halo light up only while the character is on the move
+    const glowTarget = moving ? 1 : 0
+    if (puddleMatRef.current) puddleMatRef.current.opacity = THREE.MathUtils.damp(puddleMatRef.current.opacity, 0.45 + glowTarget * 0.55, 10, delta)
+    if (moveGlowRef.current) {
+      const o = THREE.MathUtils.damp(moveGlowRef.current.material.opacity, glowTarget * (0.75 + Math.sin(time0 * 18) * 0.2), 12, delta)
+      moveGlowRef.current.material.opacity = o
+      moveGlowRef.current.visible = o > 0.01
     }
     // a selectable character hops lightly on its base to invite a tap
     if (selectable) g.position.y += Math.abs(Math.sin(state.clock.elapsedTime * 5)) * 0.05
     const s = THREE.MathUtils.damp(g.scale.x, scale, 12, delta)
-    g.scale.setScalar(s)
+    g.scale.set(s, s, s / stretch)
+    // a pulsing ring under a warrior you can move, so the choice is obvious at a glance
+    const ring = pickRingRef.current
+    if (ring) {
+      const k = 1 + ((state.clock.elapsedTime * 1.6) % 1) * 0.35
+      ring.scale.set(k, k, 1)
+      ;(ring.material as THREE.MeshBasicMaterial).opacity = (0.9 * (1.35 - k)) / 0.35
+    }
 
     const face = facingRef.current
     // at rest a character faces into the board, away from the camera, undoing the board's own turn
@@ -890,24 +1139,11 @@ function TokenPiece({ color, variant, target, scale, pose, selectable, active, p
     const time = state.clock.elapsedTime
     if (baseMaterialRef.current) {
       const pulse = (Math.sin(time * 3.4 + color.charCodeAt(0)) + 1) * 0.5
-      baseMaterialRef.current.emissiveIntensity = selectable ? 0.48 + pulse * 0.3 : active ? 0.3 + pulse * 0.18 : 0.16 + pulse * 0.1
-    }
-    if (pulseRef.current) {
-      const k = 1 + ((time * 1.6) % 1) * 0.9
-      pulseRef.current.scale.set(k, k, k)
-      ;(pulseRef.current.material as THREE.MeshBasicMaterial).opacity = 1 - ((time * 1.6) % 1)
-    }
-    if (arrowRef.current) {
-      arrowRef.current.position.y = CHARACTER_HEIGHT + 0.36 + Math.sin(time * 6) * 0.07
-      arrowRef.current.rotation.y = time * 2.2
-    }
-    if (shieldRef.current) {
-      shieldRef.current.rotation.y = time * 0.8
-      ;(shieldRef.current.material as THREE.MeshPhysicalMaterial).opacity = 0.2 + Math.sin(time * 3) * 0.05
+      baseMaterialRef.current.emissiveIntensity = moving ? 0.6 + pulse * 0.3 : 0.16 + pulse * 0.1
     }
   })
 
-  const glow = aimColor ?? COLOR_GLOW[color]
+  const glow = COLOR_GLOW[color]
   const baseTint = useMemo(() => new THREE.Color(COLOR_DEEP[color]).multiplyScalar(0.35), [color])
   const neonCore = useMemo(() => new THREE.Color(glow).lerp(new THREE.Color('#ffffff'), 0.15), [glow])
   const handleClick = onSelect
@@ -924,20 +1160,29 @@ function TokenPiece({ color, variant, target, scale, pose, selectable, active, p
         <spriteMaterial map={contactShadowTexture()} color={hdr(glow, 2.2)} transparent opacity={0} depthWrite={false} blending={THREE.AdditiveBlending} toneMapped={false} />
       </sprite>
     ))}
+    {Array.from({ length: MOVE_SPARKS }, (_, i) => (
+      <sprite key={`s${i}`} ref={(sp) => { sparkRefs.current[i] = sp }} scale={[0.01, 0.01, 1]}>
+        <spriteMaterial map={contactShadowTexture()} color={hdr(i % 3 === 0 ? '#fff4c2' : glow, 3)} transparent opacity={0} depthWrite={false} blending={THREE.AdditiveBlending} toneMapped={false} />
+      </sprite>
+    ))}
     <group ref={groupRef}>
+      <sprite ref={moveGlowRef} position={[0, 0.45, 0]} scale={[1.5, 1.5, 1]} visible={false}>
+        <spriteMaterial map={contactShadowTexture()} color={hdr(glow, 2)} transparent opacity={0} depthWrite={false} blending={THREE.AdditiveBlending} toneMapped={false} />
+      </sprite>
+      {inYard && (
+      <>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.004, 0]}>
-        <planeGeometry args={[selectable ? 1.2 : 1.0, selectable ? 1.2 : 1.0]} />
-        <meshBasicMaterial map={puddle} transparent opacity={selectable ? 1 : active ? 0.84 : 0.62} blending={THREE.AdditiveBlending} depthWrite={false} />
+        <planeGeometry args={[1.0, 1.0]} />
+        <meshBasicMaterial ref={puddleMatRef} map={puddle} transparent opacity={0.45} blending={THREE.AdditiveBlending} depthWrite={false} />
       </mesh>
-      {active && <pointLight position={[0, 0.32, 0]} color={glow} intensity={0.32} distance={1.2} decay={2.2} />}
-      {/* glass base: dark tinted glass between two neon tubes, each a hot core inside a clear glass sleeve */}
+      {/* glass base: dark tinted glass ringed by a single neon tube, a hot core inside a clear glass sleeve */}
       <mesh position={[0, BASE_H / 2, 0]} castShadow receiveShadow>
         <cylinderGeometry args={[0.29, 0.3, BASE_H, 48]} />
         <meshPhysicalMaterial
           ref={baseMaterialRef}
           color={baseTint}
           emissive={glow}
-          emissiveIntensity={selectable ? 0.35 : active ? 0.22 : 0.12}
+          emissiveIntensity={0.12}
           transparent
           opacity={0.72}
           roughness={0.04}
@@ -947,11 +1192,11 @@ function TokenPiece({ color, variant, target, scale, pose, selectable, active, p
           envMapIntensity={2}
         />
       </mesh>
-      {[0.03, BASE_H].map((y) => (
+      {[BASE_H].map((y) => (
         <group key={y} position={[0, y, 0]} rotation={[-Math.PI / 2, 0, 0]}>
           <mesh>
             <torusGeometry args={[0.305, 0.022, 14, 64]} />
-            <meshBasicMaterial color={neonCore.clone().multiplyScalar(selectable ? 3.5 : active ? 3 : 2.5)} toneMapped={false} />
+            <meshBasicMaterial color={neonCore.clone().multiplyScalar(2.5)} toneMapped={false} />
           </mesh>
           <mesh>
             <torusGeometry args={[0.305, 0.06, 18, 64]} />
@@ -959,38 +1204,30 @@ function TokenPiece({ color, variant, target, scale, pose, selectable, active, p
           </mesh>
         </group>
       ))}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, BASE_H + 0.0015, 0]}>
+      </>
+      )}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, standY + 0.0015, 0]}>
         <planeGeometry args={[0.44, 0.44]} />
         <meshBasicMaterial map={contactShadowTexture()} color="#000000" transparent opacity={0.45} depthWrite={false} />
       </mesh>
+      {selectable && !inYard && (
+        <mesh ref={pickRingRef} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
+          <ringGeometry args={[0.3, 0.36, 48]} />
+          <meshBasicMaterial color={hdr(glow, 2.2)} transparent opacity={0.8} depthWrite={false} blending={THREE.AdditiveBlending} toneMapped={false} />
+        </mesh>
+      )}
       {selectable && (
         <>
-          <mesh ref={pulseRef} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.008, 0]}>
-            <ringGeometry args={[0.39, 0.46, 48]} />
-            <meshBasicMaterial color={hdr(glow, 3.2)} transparent toneMapped={false} depthWrite={false} />
-          </mesh>
-          <group ref={arrowRef} position={[0, CHARACTER_HEIGHT + 0.36, 0]}>
-            <mesh rotation={[Math.PI, 0, 0]}>
-              <coneGeometry args={[0.11, 0.22, 4]} />
-              <meshBasicMaterial color={hdr(glow, 2.6)} toneMapped={false} />
-            </mesh>
-          </group>
           {/* generous invisible tap target — the character mesh alone is too small on a phone */}
-          <mesh position={[0, CHARACTER_HEIGHT / 2, 0]} onClick={handleClick}>
-            <cylinderGeometry args={[0.34, 0.34, CHARACTER_HEIGHT, 12]} />
+          <mesh position={[0, (CHARACTER_HEIGHT + standY) / 2, 0]} onClick={handleClick}>
+            <cylinderGeometry args={[0.34, 0.34, CHARACTER_HEIGHT + standY, 12]} />
             <meshBasicMaterial transparent opacity={0} depthWrite={false} />
           </mesh>
         </>
       )}
-      <group ref={facingRef} position={[0, BASE_H, 0]} rotation={[0, restYaw + MODEL_YAW, 0]}>
+      <group ref={facingRef} position={[0, standY, 0]} rotation={[0, restYaw + MODEL_YAW, 0]}>
         <LudoCharacter color={color} pose={pose} variant={variant} onClick={handleClick} />
       </group>
-      {shielded && (
-        <mesh ref={shieldRef} position={[0, BASE_H + CHARACTER_HEIGHT * 0.42, 0]}>
-          <sphereGeometry args={[0.52, 32, 20, 0, Math.PI * 2, 0, Math.PI * 0.62]} />
-          <meshPhysicalMaterial color="#7fdcff" emissive="#3fb8ff" emissiveIntensity={0.9} transparent opacity={0.22} roughness={0.05} clearcoat={1} depthWrite={false} side={THREE.DoubleSide} />
-        </mesh>
-      )}
     </group>
     </>
   )
@@ -999,76 +1236,6 @@ function TokenPiece({ color, variant, target, scale, pose, selectable, active, p
 interface FxEntry {
   pos: Vec2
   expiresAt: number
-}
-
-const BEAM_DOTS = 5
-
-/**
- * A glowing arc of light from a token that can move to the square it would land on: hot core, soft
- * halo, light motes streaming along it and a pulsing target ring.
- */
-function MoveBeam({ from, to, color }: { from: Vec2; to: Vec2; color: string }) {
-  const glowTex = useMemo(() => makeSoftGlowTexture(), [])
-  const curve = useMemo(() => {
-    const a = new THREE.Vector3(from[0], TILE_TOP + 0.12, from[1])
-    const b = new THREE.Vector3(to[0], TILE_TOP + 0.06, to[1])
-    const lift = 0.35 + a.distanceTo(b) * 0.18
-    const mid = a.clone().lerp(b, 0.5).setY(TILE_TOP + lift)
-    return new THREE.QuadraticBezierCurve3(a, mid, b)
-  }, [from, to])
-  const core = useMemo(() => new THREE.TubeGeometry(curve, 48, 0.022, 8, false), [curve])
-  const halo = useMemo(() => new THREE.TubeGeometry(curve, 48, 0.075, 10, false), [curve])
-  const haloMat = useRef<THREE.MeshBasicMaterial>(null)
-  const ringRef = useRef<THREE.Mesh>(null)
-  const dots = useRef<(THREE.Sprite | null)[]>([])
-  useEffect(
-    () => () => {
-      core.dispose()
-      halo.dispose()
-    },
-    [core, halo],
-  )
-  useFrame((state) => {
-    const t = state.clock.elapsedTime
-    if (haloMat.current) haloMat.current.opacity = 0.3 + Math.sin(t * 5) * 0.08
-    dots.current.forEach((sp, i) => {
-      if (!sp) return
-      const u = (t * 0.7 + i / BEAM_DOTS) % 1
-      sp.position.copy(curve.getPoint(u))
-      sp.scale.setScalar(0.22 * Math.sin(Math.PI * u) + 0.04)
-    })
-    if (ringRef.current) {
-      const k = 1 + ((t * 1.4) % 1) * 0.8
-      ringRef.current.scale.set(k, k, k)
-      ;(ringRef.current.material as THREE.MeshBasicMaterial).opacity = 1 - ((t * 1.4) % 1)
-    }
-  })
-  return (
-    <group>
-      <mesh geometry={core}>
-        <meshBasicMaterial color={hdr(color, 3)} toneMapped={false} />
-      </mesh>
-      <mesh geometry={halo}>
-        <meshBasicMaterial ref={haloMat} color={hdr(color, 1.4)} transparent opacity={0.3} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} />
-      </mesh>
-      {Array.from({ length: BEAM_DOTS }, (_, i) => (
-        <sprite key={i} ref={(s) => { dots.current[i] = s }}>
-          <spriteMaterial map={glowTex} color={hdr('#ffffff', 2.4)} transparent blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} />
-        </sprite>
-      ))}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[to[0], TILE_TOP + 0.02, to[1]]}>
-        <ringGeometry args={[0.22, 0.27, 48]} />
-        <meshBasicMaterial color={hdr(color, 2.6)} toneMapped={false} transparent depthWrite={false} />
-      </mesh>
-      <mesh ref={ringRef} rotation={[-Math.PI / 2, 0, 0]} position={[to[0], TILE_TOP + 0.015, to[1]]}>
-        <ringGeometry args={[0.26, 0.3, 48]} />
-        <meshBasicMaterial color={hdr(color, 2.2)} toneMapped={false} transparent depthWrite={false} />
-      </mesh>
-      <sprite position={[to[0], TILE_TOP + 0.1, to[1]]} scale={[0.9, 0.9, 1]}>
-        <spriteMaterial map={glowTex} color={hdr(color, 1.3)} transparent opacity={0.8} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} />
-      </sprite>
-    </group>
-  )
 }
 
 function PawnLayer({
@@ -1087,14 +1254,12 @@ function PawnLayer({
   const lastEvent = useLudoStore((s) => s.lastEvent)
   const legalMoves = useLudoStore((s) => s.legalMoves)
   const completeMove = useLudoStore((s) => s.completeMove)
-  const aimMode = useLudoAim((s) => s.mode)
-  const aimTargets = useLudoAim((s) => s.targets)
-  const aimPick = useLudoAim((s) => s.onPick)
 
   const rollCount = useLudoStore((s) => s.rollCount)
   const lastRoll = useLudoStore((s) => s.lastRoll)
   const winnerId = useLudoStore((s) => s.winnerId)
   const board = useBoard()
+  const stretch = useBoardView((s) => s.stretch)
   const [cheerColor, setCheerColor] = useState<LudoColor | null>(null)
 
   // rolling a six makes that team wave for a moment
@@ -1156,7 +1321,7 @@ function PawnLayer({
         // only the device running the game resolves moves; guests just animate what the host sends
         if (authoritative) completeMove()
       }
-    }, 220)
+    }, 150)
     return () => clearInterval(interval)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingMove, phase])
@@ -1167,6 +1332,8 @@ function PawnLayer({
     const fxId = lastEvent.effectId
     if (lastEvent.type === 'capture' && lastEvent.effectPos && lastEvent.tokenIds) {
       const pos = lastEvent.effectPos
+      ludoSfx.capture()
+      focusCamera(pos[0], pos[1])
       setBursts((prev) => [...prev, { id: fxId, kind: 'capture', pos }])
       setTimeout(() => setBursts((prev) => prev.filter((b) => b.id !== fxId)), 2800)
       setVictimFx((prev) => {
@@ -1187,9 +1354,11 @@ function PawnLayer({
         })
       }, FX_MS)
     }
-    if (lastEvent.type === 'finish' && lastEvent.tokenIds) {
+    if ((lastEvent.type === 'finish' || lastEvent.type === 'win') && lastEvent.tokenIds) {
+      ludoSfx.home()
+      focusCamera(0, 0)
       setBursts((prev) => [...prev, { id: fxId, kind: 'finish', pos: [0, 0] }])
-      setTimeout(() => setBursts((prev) => prev.filter((b) => b.id !== fxId)), 1600)
+      setTimeout(() => setBursts((prev) => prev.filter((b) => b.id !== fxId)), 2600)
       const expiresAt = now + CELEBRATE_MS
       setCelebrating((prev) => {
         const next = { ...prev }
@@ -1214,6 +1383,7 @@ function PawnLayer({
         if (prev[t.id] === -1 && t.distance === 0) {
           const id = `enter-${t.id}-${performance.now()}`
           const pos = tokenPos(getBoard(useLudoStore.getState().arms), t.color, 0, t.tokenIndex)
+          ludoSfx.enter()
           setBursts((b) => [...b, { id, kind: 'enter', pos, color: COLOR_GLOW[t.color] }])
           setTimeout(() => setBursts((b) => b.filter((x) => x.id !== id)), 1300)
         }
@@ -1224,10 +1394,10 @@ function PawnLayer({
 
   const currentId = players[currentPlayerIndex]?.id
   const canPickHere = !!currentId && (localIds ? localIds.includes(currentId) : !players[currentPlayerIndex]?.isBot)
-  const aimIds = new Set(aimMode && canPickHere ? aimTargets : [])
-  const selectableIds = new Set(aimMode ? [] : phase === 'selecting' && canPickHere ? legalMoves.map((m) => m.tokenId) : [])
-  const activeColor = players[currentPlayerIndex]?.color
+  const selectableIds = new Set(phase === 'selecting' && canPickHere ? legalMoves.map((m) => m.tokenId) : [])
   const winnerColor = phase === 'gameOver' ? players.find((p) => p.id === winnerId)?.color : undefined
+  // teams that have brought everyone home keep dancing on the pyramid while the rest play on
+  const doneColors = new Set(players.filter((p) => p.finishedCount >= 4).map((p) => p.color))
 
   // Resolve each token's displayed cell first, so tokens sharing a cell can be fanned out.
   const placed = players.flatMap((player) =>
@@ -1276,9 +1446,8 @@ function PawnLayer({
         else if (attackerFx[token.id]) pose = 'attack'
         else if (celebrating[token.id]) pose = 'celebrate'
         else if (p.isAnimatingMove) pose = 'walk'
-        else if (token.color === winnerColor || token.color === cheerColor) pose = 'celebrate'
-        const aimed = aimIds.has(token.id)
-        const selectable = selectableIds.has(token.id) || aimed
+        else if (token.color === winnerColor || token.color === cheerColor || doneColors.has(token.color)) pose = 'celebrate'
+        const selectable = selectableIds.has(token.id)
         const { pos, scale } = targetFor(p)
         return (
           <TokenPiece
@@ -1289,34 +1458,56 @@ function PawnLayer({
             scale={scale}
             pose={pose}
             selectable={selectable}
-            active={token.color === activeColor}
             puddle={puddles[token.color]}
             restYaw={-boardYaw(board)}
+            inYard={p.distance === -1 && !p.victim}
+            stretch={stretch}
             faceYaw={pose === 'attack' ? Math.atan2(mdx, mdz) : pose === 'die' ? Math.atan2(-mdx, -mdz) : undefined}
-            onSelect={aimed ? () => aimPick?.(token.id) : selectable ? () => onSelectToken(token.id) : undefined}
-            shielded={(token.shieldTurns ?? 0) > 0 && token.distance >= 0}
-            aimColor={aimed && aimMode ? AIM_COLOR[aimMode] : undefined}
+            onSelect={selectable ? () => onSelectToken(token.id) : undefined}
           />
         )
       })}
+      {/* where each possible move would land: a glowing target and a dotted path, before you commit */}
       {phase === 'selecting' &&
-        !aimMode &&
+        canPickHere &&
         legalMoves.map((m) => {
-          const token = players.flatMap((p) => p.tokens).find((t) => t.id === m.tokenId)
+          const token = players.flatMap((pl) => pl.tokens).find((t) => t.id === m.tokenId)
           if (!token) return null
-          return (
-            <MoveBeam
-              key={`${m.tokenId}-${m.to}`}
-              from={tokenPos(board, token.color, token.distance, token.tokenIndex)}
-              to={tokenPos(board, token.color, m.to, token.tokenIndex)}
-              color={COLOR_GLOW[token.color]}
-            />
-          )
+          const dest = tokenPos(board, token.color, m.to, token.tokenIndex)
+          const trail = m.path.slice(0, -1).map((d) => tokenPos(board, token.color, d, token.tokenIndex))
+          // would this move capture? (an opponent on the landing square, and the square is not safe)
+          const abs = tokenAbs(board, token.color, m.to)
+          const capture =
+            abs !== null &&
+            !board.isSafe(abs) &&
+            players.some((pl) => pl.color !== token.color && pl.tokens.some((t) => tokenAbs(board, t.color, t.distance) === abs))
+          // would the warrior be exposed there? an opponent 1–6 squares behind could hit it next turn
+          const danger =
+            !capture &&
+            abs !== null &&
+            !board.isSafe(abs) &&
+            players.some(
+              (pl) =>
+                pl.color !== token.color &&
+                pl.tokens.some((t) => {
+                  const a = tokenAbs(board, t.color, t.distance)
+                  if (a === null) return false
+                  const gap = (abs - a + board.ringSize) % board.ringSize
+                  return gap >= 1 && gap <= 6 && t.distance + gap <= board.ringSpan
+                }),
+            )
+          return <MovePreview key={m.tokenId} dest={dest} trail={trail} color={token.color} home={m.to >= board.finish} capture={capture} danger={danger} />
         })}
       {bursts.map((b) => {
         if (b.kind === 'capture') return <CaptureBurst key={b.id} pos={b.pos} />
         if (b.kind === 'enter') return <RingBurst key={b.id} position={[b.pos[0], TILE_TOP + 0.03, b.pos[1]]} color={b.color ?? '#ffffff'} scale={0.7} />
-        return <RingBurst key={b.id} position={[0, TILE_TOP + 0.05, 0]} color="#ffd24a" />
+        // a token home: a big double burst of gold and white over the centre
+        return (
+          <group key={b.id}>
+            <RingBurst position={[0, TILE_TOP + 0.05, 0]} color="#ffd24a" scale={1.9} />
+            <RingBurst position={[0, TILE_TOP + 0.4, 0]} color="#fff4c2" scale={1.2} />
+          </group>
+        )
       })}
     </group>
   )
@@ -1324,15 +1515,104 @@ function PawnLayer({
 
 /* ------------------------------------------------------------------ effects */
 
+/** Landing target for a possible move: a pulsing team-coloured ring, a soft light column, and path dots. */
+function MovePreview({ dest, trail, color, home, capture, danger }: { dest: Vec2; trail: Vec2[]; color: LudoColor; home: boolean; capture: boolean; danger: boolean }) {
+  const warnRef = useRef<THREE.Group>(null)
+  const ringRef = useRef<THREE.Mesh>(null)
+  const beamRef = useRef<THREE.Mesh>(null)
+  const dotsRef = useRef<THREE.Group>(null)
+  const swordsRef = useRef<THREE.Group>(null)
+  // a capture is flagged in red with crossed swords; reaching home in gold
+  // a risky landing (an opponent could hit it next turn) is flagged amber with a warning mark
+  const glow = capture ? '#ff3b3b' : home ? '#ffd24a' : danger ? '#ff9d1a' : COLOR_GLOW[color]
+  const y = TILE_TOP + (home ? PYRAMID_RISE * 0.6 : 0) + 0.02
+  useFrame((state) => {
+    const t = state.clock.elapsedTime
+    const ring = ringRef.current
+    if (ring) {
+      const k = 1 + Math.sin(t * 4) * 0.08
+      ring.scale.set(k, k, 1)
+    }
+    if (beamRef.current) (beamRef.current.material as THREE.MeshBasicMaterial).opacity = (capture ? 0.3 : 0.16) + Math.sin(t * (capture ? 7 : 4)) * 0.05
+    if (warnRef.current) {
+      warnRef.current.position.y = 0.85 + Math.sin(t * 5) * 0.05
+      warnRef.current.scale.setScalar(1 + Math.max(0, Math.sin(t * 5)) * 0.12)
+    }
+    if (swordsRef.current) {
+      swordsRef.current.rotation.y = t * 1.5
+      swordsRef.current.position.y = 0.95 + Math.sin(t * 3) * 0.05
+    }
+    // the dots light up in sequence toward the target
+    dotsRef.current?.children.forEach((d, i, all) => {
+      const phase = (t * 2.2 - i / Math.max(1, all.length)) % 1
+      ;((d as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 0.25 + Math.max(0, 1 - Math.abs(phase - 0.5) * 3) * 0.75
+    })
+  })
+  return (
+    <group>
+      <group position={[dest[0], y, dest[1]]}>
+        <mesh ref={ringRef} rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[0.2, 0.28, 48]} />
+          <meshBasicMaterial color={hdr(glow, 2.4)} transparent opacity={0.95} depthWrite={false} blending={THREE.AdditiveBlending} toneMapped={false} />
+        </mesh>
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.002, 0]}>
+          <circleGeometry args={[0.2, 40]} />
+          <meshBasicMaterial color={hdr(glow, 0.9)} transparent opacity={0.35} depthWrite={false} blending={THREE.AdditiveBlending} toneMapped={false} />
+        </mesh>
+        {danger && (
+          // an upright "!" warning mark floating over the square
+          <group ref={warnRef} position={[0, 0.85, 0]}>
+            <mesh position={[0, 0.07, 0]}>
+              <boxGeometry args={[0.05, 0.2, 0.02]} />
+              <meshBasicMaterial color={hdr('#ffb547', 2.4)} toneMapped={false} />
+            </mesh>
+            <mesh position={[0, -0.08, 0]}>
+              <boxGeometry args={[0.05, 0.05, 0.02]} />
+              <meshBasicMaterial color={hdr('#ffb547', 2.4)} toneMapped={false} />
+            </mesh>
+          </group>
+        )}
+        {capture && (
+          <group ref={swordsRef} position={[0, 0.95, 0]}>
+            {[1, -1].map((k) => (
+              <group key={k} rotation={[0, 0, k * 0.78]}>
+                <mesh position={[0, 0.06, 0]}>
+                  <boxGeometry args={[0.03, 0.34, 0.012]} />
+                  <meshBasicMaterial color={hdr('#ffe3e3', 2.2)} toneMapped={false} />
+                </mesh>
+                <mesh position={[0, -0.12, 0]}>
+                  <boxGeometry args={[0.11, 0.022, 0.02]} />
+                  <meshBasicMaterial color={hdr('#ffcf5a', 1.8)} toneMapped={false} />
+                </mesh>
+              </group>
+            ))}
+          </group>
+        )}
+        <mesh ref={beamRef} position={[0, 0.45, 0]}>
+          <cylinderGeometry args={[0.2, 0.24, 0.9, 24, 1, true]} />
+          <meshBasicMaterial color={hdr(glow, 1.4)} transparent opacity={0.18} side={THREE.DoubleSide} depthWrite={false} blending={THREE.AdditiveBlending} toneMapped={false} />
+        </mesh>
+      </group>
+      <group ref={dotsRef}>
+        {trail.map(([x, z], i) => (
+          <mesh key={i} position={[x, TILE_TOP + 0.02, z]} rotation={[-Math.PI / 2, 0, 0]}>
+            <circleGeometry args={[0.055, 16]} />
+            <meshBasicMaterial color={hdr(glow, 2)} transparent opacity={0.5} depthWrite={false} blending={THREE.AdditiveBlending} toneMapped={false} />
+          </mesh>
+        ))}
+      </group>
+    </group>
+  )
+}
+
 const SPARKS = Array.from({ length: 14 }, (_, i) => {
   const a = (i / 14) * Math.PI * 2
   return { dx: Math.cos(a), dz: Math.sin(a), up: 1.4 + ((i * 7) % 5) * 0.25, speed: 1.2 + ((i * 3) % 4) * 0.3 }
 })
 
-/** Shockwave ring, flash, flying sparks and a rising skull where a token was captured. */
+/** Shockwave ring, flash and flying sparks where a token was captured. */
 function CaptureBurst({ pos }: { pos: Vec2 }) {
   const [x, z] = pos
-  const skullTex = useMemo(() => makeEmojiTexture('💀', '#e8284f'), [])
   const glowTex = useMemo(() => makeSoftGlowTexture(), [])
   const start = useRef(0)
   useLayoutEffect(() => {
@@ -1342,7 +1622,6 @@ function CaptureBurst({ pos }: { pos: Vec2 }) {
   const ringRef = useRef<THREE.Mesh>(null)
   const ring2Ref = useRef<THREE.Mesh>(null)
   const flashRef = useRef<THREE.Sprite>(null)
-  const skullRef = useRef<THREE.Sprite>(null)
   const lightRef = useRef<THREE.PointLight>(null)
   const pillarRef = useRef<THREE.Mesh>(null)
   const burstRef = useRef<THREE.Sprite>(null)
@@ -1394,13 +1673,6 @@ function CaptureBurst({ pos }: { pos: Vec2 }) {
       flashRef.current.scale.set(k, k, 1)
       flashRef.current.material.opacity = Math.max(0, 1 - t * 1.8)
     }
-    if (skullRef.current) {
-      const pop = Math.min(1, t * 5)
-      const k = 1.25 * (pop < 1 ? pop * 1.25 : 1)
-      skullRef.current.scale.set(k, k, 1)
-      skullRef.current.position.y = 2.0 + t * 0.4
-      skullRef.current.material.opacity = t < 1.1 ? 1 : Math.max(0, 1 - (t - 1.1) * 2.5)
-    }
     SPARKS.forEach((s, i) => {
       const sp = sparkRefs.current[i]
       if (!sp) return
@@ -1441,9 +1713,6 @@ function CaptureBurst({ pos }: { pos: Vec2 }) {
           <spriteMaterial map={glowTex} color={i % 2 ? '#ffd166' : '#ff4f73'} transparent blending={THREE.AdditiveBlending} depthWrite={false} />
         </sprite>
       ))}
-      <sprite ref={skullRef} position={[0, 1.8, 0]} scale={[0.01, 0.01, 1]}>
-        <spriteMaterial map={skullTex} transparent depthWrite={false} depthTest={false} />
-      </sprite>
     </group>
   )
 }
@@ -1492,9 +1761,11 @@ function RingBurst({ position, color, scale = 1 }: { position: [number, number, 
 
 /** Faceted dark-glass polygon body for the star boards, with a glowing edge strip per team and rim LEDs. */
 function RadialFrame({ board }: { board: LudoBoard }) {
+  const slab = BOARD_THEMES[useBoardTheme((s) => s.themeId)].slab
   const g = useMemo(() => radialGeometry(board.arms), [board.arms])
   const n = board.arms
-  const bodyR = g.circumradius + 0.45
+  // same frame as the 4-player board: a slim dark-glass rim around the playing surface
+  const bodyR = g.circumradius + 0.3
   const apothem = bodyR * Math.cos(Math.PI / n)
   const edgeLen = 2 * bodyR * Math.sin(Math.PI / n)
   const activeColor = useLudoStore((s) => s.players[s.currentPlayerIndex]?.color)
@@ -1508,8 +1779,9 @@ function RadialFrame({ board }: { board: LudoBoard }) {
       const a1 = g.armAngle(k) + Math.PI / n
       const p0: Vec2 = [Math.cos(a0) * r, Math.sin(a0) * r]
       const p1: Vec2 = [Math.cos(a1) * r, Math.sin(a1) * r]
-      for (let i = 0; i < 9; i++) {
-        const t = i / 9
+      // LED spacing matches the 4-player rim
+      for (let i = 0; i < 14; i++) {
+        const t = i / 14
         out.push([p0[0] + (p1[0] - p0[0]) * t, p0[1] + (p1[1] - p0[1]) * t])
       }
     }
@@ -1527,7 +1799,7 @@ function RadialFrame({ board }: { board: LudoBoard }) {
     board.armColors.forEach((c, i) => {
       const mat = stripMats.current[i]
       if (!mat) return
-      mat.color.set(COLOR_GLOW[c]).multiplyScalar(c === activeColor ? 1 + pulse * 0.45 : 0.6)
+      mat.color.set(COLOR_GLOW[c]).multiplyScalar(c === activeColor ? 1.65 + pulse * 0.45 : 1.05)
     })
   })
 
@@ -1535,17 +1807,23 @@ function RadialFrame({ board }: { board: LudoBoard }) {
     <group>
       <mesh position={[0, -0.02 - SLAB_THICK / 2, 0]} castShadow receiveShadow>
         <cylinderGeometry args={[bodyR, bodyR, SLAB_THICK, n]} />
+        {/* the 4-player board's dark glass slab */}
         <meshPhysicalMaterial
-          color="#2c3a78"
-          emissive="#3445a8"
-          emissiveIntensity={0.55}
-          roughness={0.05}
-          metalness={0.25}
+          color={slab.color}
+          emissive={slab.emissive}
+          emissiveIntensity={slab.emissiveIntensity}
+          roughness={0.14}
+          metalness={0.52}
           clearcoat={1}
           clearcoatRoughness={0.02}
           envMapIntensity={2.6}
           flatShading
         />
+      </mesh>
+      {/* clear glass skin over the slab, as on the 4-player board */}
+      <mesh position={[0, -0.02 - SLAB_THICK / 2 - 0.005, 0]}>
+        <cylinderGeometry args={[bodyR + 0.05, bodyR + 0.05, SLAB_THICK + 0.03, n]} />
+        <meshPhysicalMaterial color="#7284b1" transparent opacity={0.12} roughness={0.035} metalness={0.28} clearcoat={1} clearcoatRoughness={0} envMapIntensity={2.4} depthWrite={false} flatShading />
       </mesh>
       <mesh position={[0, SLAB_BOTTOM + 0.04, 0]} castShadow>
         <cylinderGeometry args={[bodyR - 0.15, bodyR - 0.15, 0.12, n]} />
@@ -1559,16 +1837,23 @@ function RadialFrame({ board }: { board: LudoBoard }) {
       {board.armColors.map((color, k) => {
         const a = g.armAngle(k)
         return (
-          <mesh key={color} position={[Math.cos(a) * apothem, -0.02, Math.sin(a) * apothem]} rotation={[0, -a - Math.PI / 2, 0]}>
-            <boxGeometry args={[edgeLen * 0.86, 0.03, 0.035]} />
-            <meshBasicMaterial
-              ref={(m) => {
-                stripMats.current[k] = m
-              }}
-              color={hdr(COLOR_GLOW[color], 1.4)}
-              toneMapped={false}
-            />
-          </mesh>
+          <group key={color} position={[Math.cos(a) * apothem, -0.02, Math.sin(a) * apothem]} rotation={[0, -a - Math.PI / 2, 0]}>
+            {/* soft light band under the strip, as on the 4-player rim */}
+            <mesh position={[0, -0.012, 0]}>
+              <boxGeometry args={[edgeLen * 0.86, 0.025, 0.12]} />
+              <meshBasicMaterial color={hdr(COLOR_GLOW[color], 1.35)} transparent opacity={0.22} blending={THREE.AdditiveBlending} toneMapped={false} depthWrite={false} />
+            </mesh>
+            <mesh>
+              <boxGeometry args={[edgeLen * 0.86, 0.045, 0.055]} />
+              <meshBasicMaterial
+                ref={(m) => {
+                  stripMats.current[k] = m
+                }}
+                color={hdr(COLOR_GLOW[color], 1.4)}
+                toneMapped={false}
+              />
+            </mesh>
+          </group>
         )
       })}
       <instancedMesh ref={ledRef} args={[undefined, undefined, leds.length]}>
@@ -1579,20 +1864,23 @@ function RadialFrame({ board }: { board: LudoBoard }) {
   )
 }
 
-// Painting a 2048px board is slow; keep each board's canvases for the session (textures re-upload per renderer).
-let classicMaps: ReturnType<typeof paintBoard> | null = null
-const radialMaps = new Map<number, ReturnType<typeof paintRadialBoard>>()
+// Painting a big board is slow; keep each board's canvases for the session (textures re-upload per renderer).
+// one painted board per theme (and per arm count for the star boards)
+const classicMaps = new Map<BoardThemeId, ReturnType<typeof paintBoard>>()
+const radialMaps = new Map<string, ReturnType<typeof paintRadialBoard>>()
 
 /** The painted star-board surface; the polygon outline comes from the map's alpha. */
 function RadialSurface({ board }: { board: LudoBoard }) {
+  const themeId = useBoardTheme((s) => s.themeId)
   const maps = useMemo(() => {
-    let hit = radialMaps.get(board.arms)
+    const key = `${board.arms}:${themeId}`
+    let hit = radialMaps.get(key)
     if (!hit) {
-      hit = paintRadialBoard(board, radialGeometry(board.arms), 2048)
-      radialMaps.set(board.arms, hit)
+      hit = paintRadialBoard(board, radialGeometry(board.arms), BOARD_TEXTURE_SIZE, BOARD_THEMES[themeId])
+      radialMaps.set(key, hit)
     }
     return hit
-  }, [board])
+  }, [board, themeId])
   useEffect(
     () => () => {
       maps.map.dispose()
@@ -1647,21 +1935,22 @@ export function BoardNeon() {
     })
   })
   if (board.kind !== 'classic') return null
-  const half = 3 * CELL - 0.07
+  // on the edge of the painted home plate, inset HOME_INSET cells inside its quadrant
+  const half = (3 - HOME_INSET) * CLASSIC_HOME_STEP
   return (
     <group>
       {board.armColors.map((color) => {
         const [cx, cz] = board.yardCenter(color)
-        const w = 0.055
+        const w = 0.032
         return (
           <group key={color} position={[cx, TILE_TOP + 0.012, cz]}>
             <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.002, 0]}>
-              <planeGeometry args={[2.55, 2.55]} />
+              <planeGeometry args={[(6 - 2 * HOME_INSET) * CLASSIC_HOME_STEP, (6 - 2 * HOME_INSET) * CLASSIC_HOME_STEP]} />
               <meshBasicMaterial
                 map={zoneGlow}
                 color={hdr(COLOR_GLOW[color], color === activeColor ? 1.5 : 1.1)}
                 transparent
-                opacity={color === activeColor ? 0.48 : 0.3}
+                opacity={color === activeColor ? 0.3 : 0.1}
                 blending={THREE.AdditiveBlending}
                 depthWrite={false}
                 toneMapped={false}
@@ -1706,14 +1995,14 @@ function BoardBody() {
         <BoardFrame />
         <BoardSurface />
         <CenterPyramid />
-        <CenterEmblem radius={CELL * 0.46} raised={PYRAMID_RISE + 0.045} />
+        <CenterEmblem radius={CLASSIC_LANE * 0.46} raised={PYRAMID_RISE + 0.045} />
       </>
     )
   }
   const g = radialGeometry(board.arms)
   return (
     <>
-      <Table radius={g.circumradius + 0.45} />
+      <Table radius={g.circumradius + 0.3} />
       <RadialFrame board={board} />
       <RadialSurface board={board} />
       <CenterEmblem radius={Math.min(g.r0 * 0.42, CELL * 0.85)} />
@@ -1773,17 +2062,25 @@ export default function LudoScene3D({
       cameraPosition={[0, 13, 9]}
       fov={34}
       transparent
-      environment={false}
-      environmentIntensity={0}
+      // soft studio reflections: metal armour, gold trim and the glass board read as real materials
+      environment
+      environmentIntensity={0.45}
       keyLightColor="#fff1dc"
       fillLightColor="#8a7dff"
       // Keep bloom selective so the neon rims and token pedestals glow without
       // washing the board cells or player labels out on a phone display.
-      bloomIntensity={0.38}
+      bloomIntensity={0.5}
       bloomThreshold={0.94}
       bloomRadius={0.62}
-      vignetteDarkness={0}
+      vignetteDarkness={0.38}
       showLoader={showLoader}
+      // smooth tile, frame and warrior edges (without MSAA every edge stair-steps, worst on 1x screens)
+      multisampling={4}
+      // low flat fill: the dark stone board and metal armour get depth from the key lights and reflections
+      ambientIntensity={0.32}
+      // "ultra": render at up to 2.5x the screen's CSS pixels (retina phones and 4K monitors stay razor sharp)
+      maxDpr={2.5}
+      hemisphereIntensity={0.3}
     >
       <CameraRig slot={slot} />
       <LudoNeonCity />
@@ -1794,8 +2091,11 @@ export default function LudoScene3D({
         intensity={0.62}
         color="#fff1dc"
         castShadow
-        shadow-mapSize={[2048, 2048]}
+        shadow-mapSize={[4096, 4096]}
         shadow-bias={-0.0004}
+        // soft penumbra and a normal bias: natural-looking warrior shadows without acne speckle
+        shadow-radius={3}
+        shadow-normalBias={0.02}
         shadow-camera-left={-7}
         shadow-camera-right={7}
         shadow-camera-top={7}

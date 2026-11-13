@@ -7,8 +7,8 @@ android {
         applicationId "com.Vibo.myvibo"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 14
-        versionName "1.5"
+        versionCode 15
+        versionName "1.6"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -17,7 +17,9 @@ android {
         }
     }
     // The upload key lives outside the project; losing it means Google Play updates need a key reset.
-    def keystorePropsFile = file("D:/vgame-tools/keys/keystore.properties")
+    // This Mac: ~/vgame-tools/keys; the Windows PC: D:/vgame-tools/keys
+    def keystorePropsFile = file("${System.getProperty('user.home')}/vgame-tools/keys/keystore.properties")
+    if (!keystorePropsFile.exists()) keystorePropsFile = file("D:/vgame-tools/keys/keystore.properties")
     signingConfigs {
         release {
             if (keystorePropsFile.exists()) {

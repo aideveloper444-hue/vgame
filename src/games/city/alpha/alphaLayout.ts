@@ -11,41 +11,49 @@ export const BOARD_ART = { x: 0, y: 205, w: 900, h: 955 }
 export type Rect = [x0: number, y0: number, x1: number, y1: number]
 export type RowSide = 'bottom' | 'right' | 'top' | 'left'
 
-/** Tile rectangles by tile id (see buildBoard), measured on the reference. */
-export const TILE_RECTS: Rect[] = [
-  [18, 1008, 140, 1142], // 0 GO
-  [142, 1066, 232, 1150], // 1 Los Angeles
-  [234, 1066, 321, 1150], // 2 Las Vegas
-  [323, 1066, 410, 1150], // 3 Miami
-  [412, 1066, 497, 1150], // 4 Chance
-  [500, 1066, 587, 1150], // 5 Chicago
-  [589, 1066, 675, 1150], // 6 Mumbai
-  [677, 1066, 762, 1150], // 7 Sydney
-  [762, 1008, 884, 1142], // 8 Just Visiting
-  [762, 918, 884, 1005], // 9 Community Chest
-  [762, 818, 884, 915], // 10 Hong Kong
-  [762, 718, 884, 815], // 11 Bangkok
-  [762, 608, 884, 715], // 12 Singapore
-  [762, 482, 884, 605], // 13 Dubai
-  [754, 410, 884, 486], // 14 Free Parking
-  [650, 410, 746, 486], // 15 Tokyo
-  [553, 410, 646, 486], // 16 Berlin
-  [460, 410, 550, 486], // 17 Chance
-  [362, 410, 456, 486], // 18 Paris
-  [258, 410, 356, 486], // 19 London
-  [148, 410, 252, 486], // 20 New York
-  [18, 410, 140, 486], // 21 Go to Jail
-  [18, 488, 140, 605], // 22 Bali
-  [18, 607, 140, 717], // 23 Seoul
-  [18, 720, 140, 815], // 24 Community Chest
-  [18, 818, 140, 915], // 25 Shanghai
-  [18, 918, 140, 1005], // 26 Cairo
-]
+/**
+ * The tile ring sits exactly over the ring painted on the board art (outer edge 14..886 x 404..1152),
+ * so the skyline above and the city in the middle stay visible. 40 spaces: a corner, 9 cells per side.
+ */
+export const RING = { x0: 14, y0: 404, x1: 886, y1: 1152, colW: 126, rowH: 88 }
+const CELLS = 9
+const CELL_W = (RING.x1 - RING.x0 - 2 * RING.colW) / CELLS
+const CELL_H = (RING.y1 - RING.y0 - 2 * RING.rowH) / CELLS
 
+function rectFor(id: number): Rect {
+  const { x0, y0, x1, y1, colW, rowH } = RING
+  const side = Math.floor(id / (CELLS + 1))
+  const k = id % (CELLS + 1)
+  if (k === 0) {
+    // corners: Start bottom-left, Jail bottom-right, Free Parking top-right, Go to Jail top-left
+    return [
+      [x0, y1 - rowH, x0 + colW, y1],
+      [x1 - colW, y1 - rowH, x1, y1],
+      [x1 - colW, y0, x1, y0 + rowH],
+      [x0, y0, x0 + colW, y0 + rowH],
+    ][side] as Rect
+  }
+  const i = k - 1
+  switch (side) {
+    case 0: // bottom, left to right
+      return [x0 + colW + i * CELL_W, y1 - rowH, x0 + colW + (i + 1) * CELL_W, y1]
+    case 1: // right, bottom to top
+      return [x1 - colW, y1 - rowH - (i + 1) * CELL_H, x1, y1 - rowH - i * CELL_H]
+    case 2: // top, right to left
+      return [x1 - colW - (i + 1) * CELL_W, y0, x1 - colW - i * CELL_W, y0 + rowH]
+    default: // left, top to bottom
+      return [x0, y0 + rowH + i * CELL_H, x0 + colW, y0 + rowH + (i + 1) * CELL_H]
+  }
+}
+
+/** Tile rectangles by tile id (see buildBoard). */
+export const TILE_RECTS: Rect[] = Array.from({ length: 4 * (CELLS + 1) }, (_, id) => rectFor(id))
+
+/** Which side a tile sits on; each corner counts with the row or column it starts. */
 export function tileSide(id: number): RowSide {
-  if (id >= 1 && id <= 7) return 'bottom'
-  if (id >= 8 && id <= 13) return 'right'
-  if (id >= 14 && id <= 21) return 'top'
+  if (id >= 1 && id <= 9) return 'bottom'
+  if (id >= 10 && id <= 19) return 'right'
+  if (id >= 20 && id <= 30) return 'top'
   return 'left'
 }
 
@@ -64,9 +72,9 @@ export function tokenAnchor(id: number): [number, number] {
     case 'bottom':
       return [cx, y0 + 6]
     case 'right':
-      return [716, Math.min(cy + 40, 1062)]
+      return [716, Math.min(cy + 34, 1062)]
     default:
-      return [186, Math.min(cy + 40, 1062)]
+      return [186, Math.min(cy + 34, 1062)]
   }
 }
 

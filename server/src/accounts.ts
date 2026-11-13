@@ -27,6 +27,8 @@ export interface UserRow {
   muted_until: number
   suspended_until: number
   age_confirmed_at: number | null
+  facebook_id: string | null
+  net_id: string | null
   invite_code: string
   totp_secret: string | null
   created_at: number

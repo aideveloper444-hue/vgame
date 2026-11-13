@@ -1,4 +1,4 @@
-import { ANIMALS, type AnimalId } from './content'
+import { ANIMALS, ROSTER, type AnimalId } from './content'
 import { BotBrain, type BotLevel } from './autopilot'
 import { RunSim, raceStartZone, type Pose } from './run'
 
@@ -190,7 +190,7 @@ export class RaceSession {
 
 /** Animals for computer rivals: different from the player's and from each other where possible. */
 export function pickBotAnimals(n: number, mine: AnimalId, rnd: () => number = Math.random): AnimalId[] {
-  const pool = ANIMALS.map((a) => a.id).filter((id) => id !== mine)
+  const pool = ROSTER.map((a) => a.id).filter((id) => id !== mine)
   const out: AnimalId[] = []
   for (let i = 0; i < n; i++) out.push(pool.splice(Math.floor(rnd() * pool.length), 1)[0] ?? mine)
   return out

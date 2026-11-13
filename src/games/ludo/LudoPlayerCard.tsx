@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { Crown } from 'lucide-react'
 import { COLOR_DEEP, COLOR_GLOW, COLOR_HEX, type LudoColor } from './ludoBoardLayout'
 import { getBoard } from './ludoBoards'
-import { useLudoStore, type LudoPlayer, type LudoPhase, type LudoToken } from './ludoStore'
+import { ordinal, rankEmoji, useLudoStore, type LudoPlayer, type LudoPhase, type LudoToken } from './ludoStore'
 import LudoAvatar from './LudoAvatar'
 import { useLudoPortraits } from './ludoPortraits'
 
@@ -133,6 +133,19 @@ export default function LudoPlayerCard({
   const accent = COLOR_HEX[player.color]
   const glow = COLOR_GLOW[player.color]
   const finished = player.finishedCount >= 4
+  const progress = Math.round((player.tokens.reduce((sum, t) => sum + Math.max(0, Math.min(t.distance, finish)), 0) / (4 * finish)) * 100)
+  // place this player finished in (1 = first), once all four warriors are home
+  const rank = useLudoStore((s) => s.rankings.indexOf(player.id)) + 1
+  const rankTone = rank === 1 ? 'from-[#fff3b0] via-[#f5c542] to-[#b8860b] text-[#3b2600]' : rank === 2 ? 'from-[#f4f7fb] via-[#c4ccd8] to-[#7d8797] text-[#1f2533]' : rank === 3 ? 'from-[#ffcf9e] via-[#d98a4a] to-[#8a4a1c] text-[#3a1a04]' : 'from-[#c9b8ff] via-[#8b6cf0] to-[#4a2fa8] text-white'
+  const rankBadge = (small: boolean) =>
+    rank > 0 ? (
+      <span
+        className={`ludo-chip-in inline-flex shrink-0 items-center gap-0.5 rounded-full bg-gradient-to-b ${rankTone} font-black uppercase leading-none shadow-[0_0_10px_rgba(251,191,36,0.55),inset_0_1px_0_rgba(255,255,255,0.6)] ring-1 ring-black/30 ${small ? 'px-1 py-[2px] text-[7px]' : 'ml-1 px-1.5 py-[3px] text-[10px] @min-[56rem]:text-[15px]'}`}
+      >
+        <span className={small ? 'text-[8px]' : 'text-[11px] @min-[56rem]:text-[16px]'}>{rankEmoji(rank)}</span>
+        {ordinal(rank)}
+      </span>
+    ) : null
   const tag = player.isBot ? 'Bot' : controlledHere ? null : 'Online'
 
   const bubbleEl = speech ? (
@@ -208,8 +221,9 @@ export default function LudoPlayerCard({
               <MiniToken key={token.id} token={token} color={player.color} finish={finish} />
             ))}
             <span className="ml-1 truncate text-[7px] font-black uppercase tracking-[0.12em] text-white/55">
-              {isActive ? (controlledHere ? 'Your turn' : 'Thinking') : finished ? 'Finished' : 'Playing'}
+              {isActive ? (controlledHere ? 'Your turn' : 'Thinking') : finished ? '' : 'Playing'}
             </span>
+            {finished && rankBadge(true)}
           </div>
         </div>
         {bubbleEl}
@@ -248,13 +262,13 @@ export default function LudoPlayerCard({
         >
           <LudoAvatar name={player.name} color={player.color} className="h-full w-full" />
         </span>
-        {/* every seat wears the lounge crown; the leader's shines */}
-        <span
-          className={`absolute -bottom-2 left-1/2 flex h-[22px] w-[26px] -translate-x-1/2 items-center justify-center rounded-[7px] bg-gradient-to-b from-[#fff3b0] via-[#f5c542] to-[#b8860b] text-[#3b2600] ring-[1.5px] ring-[#2a1a00] @min-[56rem]:h-9 @min-[56rem]:w-11 ${isLeading ? 'shadow-[0_0_12px_rgba(251,191,36,1)]' : 'shadow-[0_0_6px_rgba(251,191,36,0.6)]'}`}
-          style={{ clipPath: 'polygon(0 0, 100% 0, 100% 62%, 50% 100%, 0 62%)' }}
-        >
-          <Crown size={13} fill="currentColor" strokeWidth={2.4} className="-mt-1 @min-[56rem]:scale-150" />
-        </span>
+        {/* only the race leader carries a mark: a slim black tag with an amber neon edge */}
+        {isLeading && (
+          <span className="absolute -bottom-1.5 left-1/2 flex -translate-x-1/2 items-center gap-0.5 rounded-full bg-black/90 px-1.5 py-[2px] text-[7px] font-extrabold uppercase tracking-[0.16em] text-amber-200 ring-1 ring-amber-300/80 shadow-[0_0_10px_rgba(251,191,36,0.7)] @min-[56rem]:px-3 @min-[56rem]:py-1 @min-[56rem]:text-[12px]">
+            <Crown size={8} strokeWidth={2.6} className="@min-[56rem]:scale-150" />
+            Lead
+          </span>
+        )}
       </div>
 
       {/* glass plate with a thin neon edge in the team colour */}
@@ -280,15 +294,28 @@ export default function LudoPlayerCard({
           {player.tokens.map((t) => (
             <HeroFigure key={t.id} token={t} color={player.color} finish={finish} />
           ))}
-          {finished && <span className="ml-1 text-[10px] font-black uppercase text-amber-300">Done</span>}
+          {finished && rankBadge(false)}
         </div>
+        {/* race progress: how far this player's four warriors have come, out of the whole journey home */}
+        {!compact && (
+          <div className={`mt-1.5 flex items-center gap-1.5 @min-[56rem]:mt-2 ${side === 'right' ? 'flex-row-reverse' : ''}`}>
+            <div className="h-[5px] min-w-0 flex-1 overflow-hidden rounded-full bg-white/10 @min-[56rem]:h-[8px]">
+              <div
+                className="h-full rounded-full transition-[width] duration-700 ease-out"
+                style={{ width: `${progress}%`, background: `linear-gradient(90deg, ${COLOR_DEEP[player.color]}, ${glow})`, boxShadow: `0 0 8px ${glow}` }}
+              />
+            </div>
+            <span className="shrink-0 text-[10px] font-black tabular-nums text-white/75 @min-[56rem]:text-[15px]">{progress}%</span>
+          </div>
+        )}
       </div>
 
       {dice && <div className="relative z-20 -ml-3 shrink-0">{dice}</div>}
 
       {ribbon && (
         <span
-          className="ludo-ribbon absolute -bottom-[18px] left-[2.6rem] z-20 whitespace-nowrap rounded-b-xl rounded-t-md px-4 py-[3px] text-[13px] font-black uppercase tracking-wide text-white @min-[56rem]:left-[5rem] @min-[56rem]:text-[20px]"
+          // cards below the board carry their ribbon on top, so it never slides under the chat bar
+          className={`ludo-ribbon absolute z-20 whitespace-nowrap px-4 py-[3px] text-[13px] font-black uppercase tracking-wide text-white @min-[56rem]:text-[20px] ${side === 'right' ? 'right-[2.6rem] @min-[56rem]:right-[5rem]' : 'left-[2.6rem] @min-[56rem]:left-[5rem]'} ${bubble === 'above' ? '-top-[18px] rounded-t-xl rounded-b-md' : '-bottom-[18px] rounded-b-xl rounded-t-md'}`}
           style={{
             background: `linear-gradient(180deg, ${glow}, ${COLOR_DEEP[player.color]})`,
             boxShadow: `0 0 14px ${glow}, inset 0 1px 0 rgba(255,255,255,0.5)`,

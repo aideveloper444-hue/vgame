@@ -219,3 +219,54 @@ surface grip (snow/ice/mud), accessibility options (text size, simplified contro
 - Sky: real photographed clouds (tex/clouds.webp, upper half of Poly Haven kloofendal_48d_partly_cloudy_puresky) composited in SkyDome, lit by the zone sky colours, greyer in rain/storm/mist, slow drift.
 - Conifers: pine/pineSnow rebuilt as a tapering bark-textured trunk + 14 tiers of drooping alpha-cut needle sprays (canvas-drawn), crown normals; snowy variant has snow on the sprays.
 - SunBeams: 14 additive light shafts beside the trail in wooded kits (BEAM_KIT x BEAM_VAR), wrapped into the 78 m window around the runner.
+
+## 2026-11-09 premium look pass
+- UI restyled from comic to premium (ui/wildbound.css): smoked-glass panels, hairline borders, one champagne-gold accent, ivory text, tracked Barlow Condensed capitals instead of Bangers, no outlines or candy-gloss buttons, calmer motion (no bounces). Neon greens/yellows/reds in components mapped to the new palette.
+- Logo: Cinzel serif wordmark in brushed gold (ui/Logo.tsx); home menu icons are thin line icons.
+- Grade (scene/grade.ts): vibrance cut from 0.42 to 0.14, film-like highlight desaturation, greens nudged towards olive; Ultra HueSaturation +0.08 to -0.03.
+- Still cartoon-styled: the painted raster icons (coin, gem, cart, power-ups, ability badges, level-up art, store gem packs). These need new art.
+- Checked by screenshot: home at 1280x720 and 520x1000. The run HUD, pause, game over, store and character screens were not screenshotted.
+
+## 2026-11-09 living animals + wild moments
+- Idle: animals without an Idle clip (jax, raja, shadow, snow, nova, blaze, zara) stand on the gallop's grounded frame instead of a 0.12x slow-motion gallop. New idle life for every animal (WildAnimal idleLife): gaze holds and damped head turns carried partly by the neck, ear flicks (no face rig), ribcage breathing, weight shifts. Offsets on bones no clip drives are undone each frame.
+- Crash daze stars removed (adult tone); the fall, shiver and laboured breathing stay.
+- Sonic's tan markings: an even muted mahogany instead of tinting the orange texture (legs glowed).
+- New in-world moments (WorldScene, not on Low): bird flocks bursting from the canopy every 140-300 m by day and on roars, crashes and rock falls (also in the home line-up); butterflies on bright days in open/flowered kits; low ground mist in mist/dawn/rain/night and over swamps/rivers/waterfalls. Chase camera rolls slightly into lane changes. Near misses and abilities pulse the screen edges (RunScreen .wb-edge).
+- Checked by screenshot: home line-up (standing idle, tan colour). The in-run moments were not screenshotted (needs a run).
+
+## 2026-11-09 character screens, premium
+- Character Selection and Details: Cinzel names over tracked species labels, glass chips (.wb-chip) for views/expressions/status, "Included" instead of the painted FREE badge, thin champagne stat bars without icons, the in-use animal as an outlined gold "Selected" state, paw icons and the wooden plank panel removed, roster/feature studio backdrop charcoal instead of flat green.
+- Dev only: ?wbscreen=<screen> opens a screen from the URL (screenshots).
+- Animal models: every one except the tiger needs replacing to look realistic. Blocked on sources: realistic rigged + animated animals are on Sketchfab (download needs an account token) and retargeting needs Blender (not installed).
+
+## 2026-11-09 big cats on the tiger body
+- Panther, jaguar, snow leopard and cheetah now use raja.glb (the realistic tiger body, skeleton and gallop) instead of their own weaker models, each with its own build (head scale, tail thickness, cadence) and a coat painted on the 3D surface: BIGCAT() washes out the tiger stripes and draws spots / broken rosettes with 3D cellular noise in rest space (no UV seams).
+- The orange forehead patch on every tiger-based coat (top 10% of the texture was kept as-is for eyes/teeth) is recoloured; only teeth, gums and eyes keep the texture.
+- Arctic wolf: the grey wolf's anatomy coat (now WOLF(palette)) in off-white.
+- jax.glb, shadow.glb and snow.glb are no longer used by any animal.
+- Still on weak models: Sonic (Rottweiler), Bruno (gorilla), Koda (red panda), and the wolves' body. Needs sourced models (Sketchfab token + Blender).
+
+## 2026-11-09 airstrips, handcar, environment realism
+- New challenge section 'flight' (open kits: savannah, desert, coast, hills, canyon, grassland, beach, lakeside, blossom, birch, ice, snow, baobab): a bush plane idles on the strip in the middle lane; running into it boards it (any pose, never a crash). The ride climbs to FLY_H, cruises and glides in (flightAlt), lane changes steer the plane (no dismount), jump/slide are ignored, no ground obstacle can touch the rider, sky coins weave across the lanes along the flight path, +250 on landing; the plane then climbs away. Engine test added (boards, clears a rock, steers, lands alive).
+- scene/aircraft.ts: procedural high-wing bush plane (lathed fuselage with livery by vertex colour, glazed cabin, strut-braced wing the runner stands on, tail, sprung gear on tundra tyres, spinning two-blade prop with blur disc). Planes (engine items) and Overflights (distant planes crossing the sky in open country and on the home screen). Chase camera pulls back and rises in flight.
+- Trolley rebuilt as a railway handcar (plank deck, iron beams, flanged spoked wheels on axles, pump A-frame and rocking cross handle at the front).
+- Realism: grass tufts darker at the root, per-blade dry/fresh variation, natural meadow/straw colours; sunbeams half as bright with soft edges; waterfalls a dark see-through sheet with multi-scale falling ropes, ragged edges, lip highlight and base foam; ice rocks opaque glacial ice (no glowing cyan); stream water and cave crystals toned down.
+- Run HUD: pause, power-ups and ability are line icons (ui/icons.tsx) in glass circles instead of painted badges.
+- Checked by screenshot: plane model (home screen, temporary hook since removed), two runs (grass, beams, HUD). The flight and the handcar were not seen in a live run.
+
+## 2026-11-09 roster rested to the realistic animals
+- Sonic (Rottweiler), Bruno (gorilla), Koda (red panda), Arctic and Ash (wolves) are rested: content RETIRED / ROSTER. Their source models are low detail (textures 63-222 KB, the gorilla 4.8k and red panda 2.7k triangles) and no realistic free replacement is downloadable without an account. They stay in ANIMALS (saves, race packets, engine), but the roster, home line-up, Details strip, store and race rivals use ROSTER (9 animals).
+- Raja (tiger) is the free starter; a save with a rested animal selected moves to Raja. Sonic's price set to 499 like the others.
+- To bring them back: realistic rigged models (Sketchfab CC-BY with a token in ~/.sketchfab_token, or image-to-3D with credits), then remove the id from RETIRED.
+- Shop products for the rested animals still exist in state/shop.ts (restore purchases). UNLOCK_ALL is true in this build, so no player has lost a paid animal; if a build with real purchases ships, re-check this.
+
+## 2026-11-09 character models upgraded in Blender (tools/wildbound-blender)
+- process.py (Blender 4.5: `~/vgame-tools/Blender.app/Contents/MacOS/Blender -b --python process.py -- in.glb out.glb <subdiv levels> <normal strength> [lod]`): Catmull-Clark subdivision applied in rest pose before the Armature modifier (skin weights interpolate), smooth shading, a tangent-space detail normal map generated from the colour texture (high-pass of luminance), optional removal of duplicate LOD meshes, WebP textures (EXT_texture_webp).
+- raja.glb (tiger body for 7 animals): 4,650 -> ~28k triangles + detail normals, 1.9 MB. titan.glb: 1,958 -> ~47k triangles + skin-wrinkle normals, 2.9 MB; in game a dusty grey-brown skin (COATS titan) with a muted sheen.
+- leo.glb: had five overlapping LOD bodies all drawn at once (removed); its eye material is a near-invisible cornea that the game had forced opaque (blue-white cap): now a clear glossy cornea (realMaterial, userData.cornea). The source lion had no mane: mane2.py builds one (Lion_ManeBase under-layer + Lion_ManeHair ~3200 skinned hair cards with a generated strand alpha texture); in game the MANE shader colours it (golden fringe, tawny crown, dark toward shoulders/chest). 5.4 MB.
+- Note: Blender bakes node transforms into the lion's vertices (metres, y up, nose +z); the tiger and elephant kept their source coordinates (the BIGCAT coats depend on the tiger's).
+- Checked by screenshot: home line-up, Details screen for tiger, lion, elephant. The selection screen (9 live models) is slow under software rendering in headless Chrome; not checked after the upgrade.
+- Dev only: ?wbscreen=preview&wbpreview=<id> opens the Details screen on an animal.
+
+## 2026-11-09 Sonic restored
+- The user asked where Sonic is: Sonic is back in the roster (RETIRED is now bruno, koda, arctic, ash), the free starting animal again and front of the home line-up; Raja stays free too. Sonic must never be rested: he is the heart of the game (modelled on a real dog: collar, engraved tag).

@@ -1,7 +1,8 @@
 import { useState, type ReactNode } from 'react'
 import { ArrowRight, Gavel, Hammer, Handshake, Sparkles, X } from 'lucide-react'
-import type { AuctionState, CityEventModifier, CityPlayer, TradeOffer } from './cityStore'
-import { CATEGORY_TINT, type CityTile, type PropertyTile } from './cityBoardData'
+import type { AuctionState, CityConfig, CityEventModifier, CityPlayer, TradeOffer } from './cityStore'
+import { CATEGORY_TINT, ERECTION_NAMES, buildBlocker, mortgageValue, redeemCost, type CityTile, type PropertyTile } from './cityBoardData'
+import { isTradable } from './cityStore'
 import { tileArtUrl } from './cityTileArt'
 import { money } from './cityFormat'
 
@@ -42,7 +43,7 @@ function PropertyArt({ tile, className = 'w-[118px]' }: { tile: CityTile; classN
   return <img src={tileArtUrl(tile)} alt={tile.name} className={`${className} shrink-0 rounded-xl shadow-[0_10px_24px_-8px_rgba(0,0,0,0.8)]`} draggable={false} />
 }
 
-export function BuyPanel({ tile, cash, onBuy, onSkip }: { tile: PropertyTile; cash: number; onBuy: () => void; onSkip: () => void }) {
+export function BuyPanel({ tile, cash, penalty, onBuy, onSkip }: { tile: PropertyTile; cash: number; penalty: number; onBuy: () => void; onSkip: () => void }) {
   const accent = CATEGORY_TINT[tile.category]
   return (
     <Panel>
@@ -66,8 +67,8 @@ export function BuyPanel({ tile, cash, onBuy, onSkip }: { tile: PropertyTile; ca
               <dd className="font-bold text-white">{money(tile.rentTable[0])}</dd>
             </div>
             <div className="flex justify-between text-slate-300">
-              <dt>Max rent</dt>
-              <dd className="font-bold text-white">{money(tile.rentTable[tile.maxLevel])}</dd>
+              <dt>{tile.kind === 'CONCERN' ? 'With partner' : `With ${ERECTION_NAMES[tile.maxLevel].toLowerCase()}`}</dt>
+              <dd className="font-bold text-white">{money(tile.rentTable[tile.kind === 'CONCERN' ? 1 : tile.maxLevel])}</dd>
             </div>
             <div className="flex justify-between text-slate-300">
               <dt>Your cash</dt>
@@ -81,7 +82,7 @@ export function BuyPanel({ tile, cash, onBuy, onSkip }: { tile: PropertyTile; ca
           Buy {money(tile.basePrice)}
         </Btn>
         <Btn onClick={onSkip} tone="ghost">
-          <Gavel size={15} /> Auction
+          <Gavel size={15} /> {cash >= tile.basePrice ? `Auction (-${money(penalty)})` : 'Auction'}
         </Btn>
       </div>
     </Panel>
@@ -223,7 +224,8 @@ export function TradeComposer({
   const [target, setTarget] = useState('')
   const [offer, setOffer] = useState<number | null>(null)
   const [request, setRequest] = useState<number | null>(null)
-  const owned = (id: string) => tiles.filter((t): t is PropertyTile => t.type === 'PROPERTY' && t.ownerId === id)
+  // only undeveloped, unmortgaged sites can be sold between players
+  const owned = (id: string) => tiles.filter((t): t is PropertyTile => t.type === 'PROPERTY' && t.ownerId === id && isTradable(t))
   const targetPlayer = players.find((p) => p.id === target)
 
 
@@ -276,7 +278,21 @@ export function TradeComposer({
   )
 }
 
-export function BuildPanel({ owned, cash, onUpgrade, onClose }: { owned: PropertyTile[]; cash: number; onUpgrade: (id: number) => void; onClose: () => void }) {
+export function BuildPanel({
+  owned,
+  tiles,
+  cash,
+  onUpgrade,
+  onRedeem,
+  onClose,
+}: {
+  owned: PropertyTile[]
+  tiles: CityTile[]
+  cash: number
+  onUpgrade: (id: number) => void
+  onRedeem: (id: number) => void
+  onClose: () => void
+}) {
   return (
     <Panel onClose={onClose} width="w-[min(94vw,440px)]">
       <p className="mb-3 flex items-center gap-1.5 text-[11px] font-black uppercase tracking-[0.22em] text-emerald-300">
@@ -286,14 +302,17 @@ export function BuildPanel({ owned, cash, onUpgrade, onClose }: { owned: Propert
       <div className="flex max-h-[52vh] flex-col gap-2 overflow-y-auto pr-1">
         {owned.map((t) => {
           const maxed = t.level >= t.maxLevel
+          const blocker = buildBlocker(tiles, t)
+          const redeem = t.mortgaged ? redeemCost(t) : 0
           return (
             <div key={t.id} className="flex items-center gap-3 rounded-2xl bg-white/[0.05] p-2 ring-1 ring-white/10">
               <PropertyArt tile={t} className="w-[52px]" />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[14px] font-black text-white">{t.name}</p>
                 <p className="text-[11px] font-semibold text-slate-400">
-                  Rent {money(t.rentTable[t.level])}
-                  {!maxed && (
+                  {ERECTION_NAMES[t.level]} · Rent {money(t.rentTable[t.level])}
+                  {t.mortgaged && ' · Mortgaged'}
+                  {!maxed && !t.mortgaged && (
                     <>
                       {' '}
                       → <span className="text-emerald-300">{money(t.rentTable[t.level + 1])}</span>
@@ -307,16 +326,105 @@ export function BuildPanel({ owned, cash, onUpgrade, onClose }: { owned: Propert
                 </div>
               </div>
               <button
-                onClick={() => onUpgrade(t.id)}
-                disabled={maxed || cash < t.upgradeCost}
+                onClick={() => (t.mortgaged ? onRedeem(t.id) : onUpgrade(t.id))}
+                disabled={t.mortgaged ? cash < redeem : blocker !== null || cash < t.upgradeCost}
                 className="shrink-0 rounded-xl bg-gradient-to-b from-emerald-400 to-emerald-600 px-3 py-2 text-[12px] font-black text-white shadow-[0_0_14px_rgba(16,185,129,0.45)] transition-transform hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:scale-100"
               >
-                {maxed ? 'MAX' : money(t.upgradeCost)}
+                {t.mortgaged ? `Redeem ${money(redeem)}` : blocker ?? money(t.upgradeCost)}
               </button>
             </div>
           )
         })}
       </div>
+    </Panel>
+  )
+}
+
+/** Tap any board space to see what it does: prices and rents for property, the rule for special spaces. */
+export function TileInfoPanel({
+  tile,
+  tiles,
+  players,
+  config,
+  onClose,
+}: {
+  tile: CityTile
+  tiles: CityTile[]
+  players: CityPlayer[]
+  config: CityConfig
+  onClose: () => void
+}) {
+  const owner = tile.type === 'PROPERTY' && tile.ownerId ? players.find((p) => p.id === tile.ownerId) : undefined
+  const row = (label: string, value: string, strong = false) => (
+    <div key={label} className="flex justify-between gap-3 text-slate-300">
+      <dt>{label}</dt>
+      <dd className={strong ? 'font-black text-amber-300' : 'font-bold text-white'}>{value}</dd>
+    </div>
+  )
+
+  if (tile.type !== 'PROPERTY') {
+    const rules: Record<string, string> = {
+      GO: `Collect ${money(config.goBonus)} every time you pass Start.`,
+      JAIL: `Just visiting. In Jail: roll a 6 or pay ${money(config.jailFine)} within ${config.jailTurns} turns, and pay 10% of earnings to the Bank meanwhile.`,
+      PARK: 'Take a breather — nothing happens here.',
+      GO_TO_JAIL: 'Go straight to Jail. You do not collect the Start bonus.',
+      CHANCE: 'Draw a Chance card and follow it straight away.',
+      COMMUNITY: 'Draw a Republic card and follow it straight away.',
+      TAX: `Pay ${money(config.taxPerProperty)} for every property you own, never more than ${money(config.taxCap)}.`,
+      CLUB: `Common recreation site: pay ${money(config.clubBill)}, shared equally among the other players. Anything that won't divide evenly goes to the Bank.`,
+      EVENT: 'A city event changes rents for a few rounds.',
+    }
+    return (
+      <Panel onClose={onClose}>
+        <div className="flex gap-4">
+          <PropertyArt tile={tile} className="w-[96px]" />
+          <div className="min-w-0 flex-1">
+            <p className="text-[20px] font-black leading-tight text-white">{tile.name}</p>
+            <p className="mt-2 text-[13px] font-semibold leading-snug text-slate-300">{rules[tile.type]}</p>
+          </div>
+        </div>
+      </Panel>
+    )
+  }
+
+  const accent = CATEGORY_TINT[tile.category]
+  const group = tiles.filter((t): t is PropertyTile => t.type === 'PROPERTY' && t.category === tile.category)
+  const rents =
+    tile.kind === 'CONCERN'
+      ? [row('Rent', money(tile.rentTable[0])), row(`With ${group.filter((t) => t.id !== tile.id).map((t) => t.name).join(', ')}`, money(tile.rentTable[1]))]
+      : [
+          row('Site only', money(tile.rentTable[0])),
+          row('Full colour set', money(tile.rentTable[0] * 2)),
+          ...ERECTION_NAMES.slice(1).map((n, i) => row(`With ${n.toLowerCase()}`, money(tile.rentTable[i + 1]))),
+          row('Each erection', money(tile.upgradeCost)),
+        ]
+  return (
+    <Panel onClose={onClose}>
+      <div className="flex gap-4">
+        <PropertyArt tile={tile} className="w-[96px]" />
+        <div className="min-w-0 flex-1">
+          <p className="text-[20px] font-black leading-tight text-white">{tile.name}</p>
+          <span className="mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-slate-950" style={{ background: accent }}>
+            {tile.kind === 'CONCERN' ? 'Concern' : `${tile.category.toLowerCase()} set`}
+          </span>
+          <p className="mt-1 text-[11px] font-semibold text-slate-400">
+            {owner ? (
+              <>
+                Owned by <span style={{ color: owner.color }}>{owner.name}</span>
+                {tile.mortgaged && ' · mortgaged'}
+              </>
+            ) : (
+              'Unowned — the Bank sells it'
+            )}
+          </p>
+        </div>
+      </div>
+      <dl className="mt-3 space-y-1 text-[12.5px]">
+        {row('Price', money(tile.basePrice), true)}
+        {rents}
+        {row('Mortgage value', money(mortgageValue(tile)))}
+      </dl>
+      <p className="mt-2 text-[11px] text-slate-500">Set: {group.map((t) => t.name).join(' · ')}</p>
     </Panel>
   )
 }

@@ -1,7 +1,7 @@
 import type { LucideIcon } from 'lucide-react'
-import { Dices, Building2, Footprints, PawPrint, Sparkles, Spade, Trees } from 'lucide-react'
+import { Dices, Building2, Spade, Trees } from 'lucide-react'
 
-export type GameId = 'ludo' | 'city' | 'mess' | 'amazon' | 'mystery' | 'poker' | 'wildbound'
+export type GameId = 'ludo' | 'city' | 'poker' | 'wildbound'
 
 export interface GameDefinition {
   id: GameId
@@ -58,78 +58,14 @@ export const GAME_REGISTRY: Record<GameId, GameDefinition> = {
     icon: Building2,
     route: 'city',
     howToPlay: [
-      'Roll and move around the city.',
-      'Buy unowned properties or let them go to auction.',
-      'Collect rent when others land on your properties.',
-      'Grow the highest net worth before the game ends.',
+      'Everyone starts with ₹25,000. Highest opening roll starts. Roll a 6 to roll again — three 6s in a row sends you to Jail.',
+      'Buy cities and concerns (Airport, Steamer, Railway, Transport, Radio, Post Office), or pay ₹250 and the Bank auctions them.',
+      'Own both concerns of a pair for higher rent. Taxes cost ₹50 per property; Merchant\'s Club and Milk Bar bills go to the other players.',
+      'Own a whole colour set to double its rent, then build an office, bungalow and godown evenly.',
+      'Short of cash? Erections sell back at half price and sites mortgage for 50% (10% interest to redeem).',
+      'Jail: roll a 6 or pay the fine within 3 turns. Last player standing wins.',
     ],
     rewardsBlurb: 'Coins scale with your final net worth.',
-    singlePlayerCapable: true,
-  },
-  mess: {
-    id: 'mess',
-    name: 'Mess With My Friend',
-    tagline: 'Race, sabotage and survive',
-    description: 'Race to the finish while freezing, pushing and trapping everyone in your way.',
-    playersLabel: '4 Players',
-    minPlayers: 4,
-    maxPlayers: 4,
-    difficulty: 'Medium',
-    accentVar: '--color-mess-accent',
-    accentHex: '#f59e0b',
-    icon: Footprints,
-    route: 'mess',
-    howToPlay: [
-      'Run forward automatically toward the finish.',
-      'Use Freeze, Push, Reverse and Trap on your rivals.',
-      'Watch for boost pads, traps and obstacles on the track.',
-      'First to cross the finish line wins.',
-    ],
-    rewardsBlurb: 'Bonus coins for every rival you mess with.',
-    singlePlayerCapable: true,
-  },
-  amazon: {
-    id: 'amazon',
-    name: 'Amazon Wild Run',
-    tagline: 'Choose your beast. Become Alpha.',
-    description: 'An endless run through the Amazon jungle. Pick your animal, then run solo, race the computer or race your friends online. Whoever runs the farthest is crowned Alpha.',
-    playersLabel: '1–6 Players',
-    minPlayers: 1,
-    maxPlayers: 6,
-    difficulty: 'Medium',
-    accentVar: '--color-amazon-accent',
-    accentHex: '#22c55e',
-    icon: PawPrint,
-    route: 'amazon',
-    howToPlay: [
-      'Pick your animal: wolf, hyena, leopard, cheetah, tiger, lion or black panther, each with its own speed, jump and stamina.',
-      'Swipe left or right to change lanes and dodge boulders.',
-      'Swipe up to jump fallen logs, swipe down to slide under hanging branches.',
-      'Grab coins, shields and magnets. Run solo for your best distance, or race friends and rivals: the farthest runner becomes Alpha.',
-    ],
-    rewardsBlurb: 'Coins for every metre and coin you collect, plus a bonus for finishing as Alpha.',
-    singlePlayerCapable: true,
-  },
-  mystery: {
-    id: 'mystery',
-    name: 'Mystery Wild',
-    tagline: 'Investigate. Share clues. Solve it.',
-    description: 'A body, a theft, a disappearance — every investigator holds different clues. Compare notes with your friends and crack the case together.',
-    playersLabel: '1–4 Players',
-    minPlayers: 1,
-    maxPlayers: 4,
-    difficulty: 'Medium',
-    accentVar: '--color-mystery-accent',
-    accentHex: '#8b5cf6',
-    icon: Sparkles,
-    route: 'mystery',
-    howToPlay: [
-      'Each investigator starts with their own private clues.',
-      'Ask your fellow investigators to share what they know.',
-      'Cross suspects, items and locations off the board as clues rule them out.',
-      'Make your accusation — fewer guesses earns more stars.',
-    ],
-    rewardsBlurb: 'Stars unlock bonus coins on every case.',
     singlePlayerCapable: true,
   },
   poker: {

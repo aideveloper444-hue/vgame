@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { Flag, Timer, Trophy, Users } from 'lucide-react'
 import GameModeMenu from '@/games/shared/online/GameModeMenu'
-import { ANIMALS, getAnimal, type AnimalId } from '../engine/content'
+import { ROSTER, getAnimal, type AnimalId } from '../engine/content'
 import { RACER_COLORS, RACE_LENGTHS, pickBotAnimals, type RaceSeat } from '../engine/race'
 import { useSave } from '../state/progress'
 import { WILD_BOT_NAMES, broadcastGo, sendRaceAction, setRaceNetHandlers, useRaceUI, useWildMatch, wildRoom } from '../state/race'
@@ -105,7 +105,7 @@ export default function RaceScreen() {
             <div className="wb-panel flex items-center gap-3 p-2.5">
               <img src={headArt(a.id)} alt="" className="h-14 w-14 rounded-xl object-cover" />
               <div className="min-w-0 flex-1 leading-tight">
-                <div className="text-[13px] font-bold uppercase tracking-wider text-[#9dff6a]">Racing as</div>
+                <div className="text-[13px] font-bold uppercase tracking-wider text-[#a9d4b6]">Racing as</div>
                 <div className="wb-title text-[26px] wb-yellow wb-stroke">{a.name}</div>
                 <div className="text-[14px] text-white/75">
                   {a.species} · {a.ability.name}
@@ -118,13 +118,13 @@ export default function RaceScreen() {
 
             <div className="wb-panel p-2.5">
               <div className="mb-1.5 flex items-center gap-1.5 text-[15px] font-bold uppercase tracking-wider text-white/80">
-                <Flag size={16} className="text-[#ffd84a]" /> Race to the finish line
+                <Flag size={16} className="text-[#dcc08a]" /> Race to the finish line
               </div>
               <div className="grid grid-cols-3 gap-2">
                 {RACE_LENGTHS.map((l) => (
                   <button
                     key={l}
-                    className={`wb-card h-14 !rounded-xl text-center leading-none ${l === length ? 'ring-2 ring-[#ffd84a] shadow-[0_0_16px_rgba(255,216,74,0.5)]' : 'opacity-80'}`}
+                    className={`wb-card h-14 !rounded-xl text-center leading-none ${l === length ? 'ring-2 ring-[#dcc08a] shadow-[0_0_16px_rgba(255,216,74,0.5)]' : 'opacity-80'}`}
                     onClick={() => (sfx.tap(), useRaceUI.setState({ length: l }))}
                   >
                     <span className="wb-title block text-[26px] wb-yellow">{l / 1000} km</span>
@@ -140,10 +140,10 @@ export default function RaceScreen() {
                   <Users size={15} className="text-[#5ab8ff]" /> {races.played} raced
                 </span>
                 <span className="flex items-center gap-1">
-                  <Trophy size={15} className="text-[#ffd84a]" /> {races.wins} won
+                  <Trophy size={15} className="text-[#dcc08a]" /> {races.wins} won
                 </span>
                 <span className="flex items-center gap-1">
-                  <Timer size={15} className="text-[#9dff6a]" /> {races.podiums} podiums
+                  <Timer size={15} className="text-[#a9d4b6]" /> {races.podiums} podiums
                 </span>
               </div>
             </div>
@@ -167,7 +167,7 @@ export default function RaceScreen() {
               renderPreview={(n) => (
                 <div className="flex items-center gap-3 rounded-2xl bg-black/25 p-2.5 ring-1 ring-white/5">
                   <div className="flex -space-x-3">
-                    {[selected, ...ANIMALS.map((x) => x.id).filter((id) => id !== selected)].slice(0, n).map((id) => (
+                    {[selected, ...ROSTER.map((x) => x.id).filter((id) => id !== selected)].slice(0, n).map((id) => (
                       <img key={id} src={headArt(id)} alt="" className="h-11 w-11 rounded-full object-cover ring-2 ring-[#0b1a10]" />
                     ))}
                   </div>

@@ -2,15 +2,8 @@ import { createPeerRoom, type RoomControls } from '@/games/shared/online/peerRoo
 import { useLudoStore } from './ludoStore'
 import { BOT_NAMES, useLudoMatch } from './ludoMatch'
 
-/** A power-up: a = the token (shield/bomb target). */
-export interface PowerAction {
-  kind: 'speed' | 'shield' | 'bomb'
-  a?: string
-  b?: string
-}
-
 /** What a guest's device can ask the host to do. */
-type LudoAction = { t: 'roll' } | { t: 'select'; tokenId: string } | { t: 'chat'; text: string } | ({ t: 'power' } & PowerAction)
+type LudoAction = { t: 'roll' } | { t: 'select'; tokenId: string } | { t: 'chat'; text: string }
 /** Transient happenings the host shows on every device. */
 type LudoEvent = { t: 'spin' } | { t: 'say'; playerId: string; text: string }
 
@@ -27,15 +20,14 @@ const SNAPSHOT_KEYS = [
   'pendingMove',
   'lastEvent',
   'winnerId',
+  'rankings',
   'bestRoll',
   'eventLog',
   'startedAt',
-  'speedActive',
-  'powerUsed',
 ] as const
 
 const room = createPeerRoom<LudoAction, LudoEvent>({
-  prefix: 'vgame-ludo-v1-',
+  prefix: 'vgame-ludo-v2-',
   botNames: BOT_NAMES,
   snapshot: () => {
     const st = useLudoStore.getState() as unknown as Record<string, unknown>
@@ -84,8 +76,6 @@ export interface NetHandlers {
   onSpin?: () => void
   /** Guest: someone else said something. */
   onSay?: (playerId: string, text: string) => void
-  /** Host: a guest used a power-up on their turn. */
-  onPower?: (a: PowerAction) => void
 }
 
 export function setNetHandlers(h: NetHandlers) {
@@ -95,8 +85,6 @@ export function setNetHandlers(h: NetHandlers) {
       const current = st.players[st.currentPlayerIndex]
       if (a.t === 'roll' && current?.id === seatId && st.phase === 'rolling') h.onRoll?.()
       else if (a.t === 'select' && current?.id === seatId && st.phase === 'selecting') st.selectToken(String(a.tokenId))
-      else if (a.t === 'power' && current?.id === seatId && st.phase === 'rolling' && ['speed', 'shield', 'bomb'].includes(a.kind))
-        h.onPower?.({ kind: a.kind, a: a.a ? String(a.a) : undefined, b: a.b ? String(a.b) : undefined })
       else if (a.t === 'chat') {
         const text = String(a.text ?? '').slice(0, 40)
         if (text) h.onChat?.(seatId, text)

@@ -63,8 +63,6 @@ export function xpForLevel(level: number): number {
 const DEFAULT_ACHIEVEMENTS: Achievement[] = [
   { id: 'first-win', name: 'First Win', description: 'Win any game for the first time.', icon: '🏆', unlocked: false, unlockedAt: null },
   { id: 'ludo-master', name: 'Ludo Master', description: 'Win 5 games of Ludo.', icon: '🎲', unlocked: false, unlockedAt: null },
-  { id: 'alpha-runner', name: 'Alpha Runner', description: 'Finish an Amazon Wild Run race as Alpha.', icon: '🐺', unlocked: false, unlockedAt: null },
-  { id: 'mystery-solver', name: 'Mystery Solver', description: 'Complete 10 Mystery Wild levels.', icon: '🔎', unlocked: false, unlockedAt: null },
   { id: 'party-player', name: 'Party Player', description: 'Play a game with a full party of friends.', icon: '👥', unlocked: false, unlockedAt: null },
   { id: 'tycoon', name: 'City Tycoon', description: 'Win a game of City.', icon: '🏙️', unlocked: false, unlockedAt: null },
 ]
@@ -73,9 +71,6 @@ function emptyStats(): Record<GameId, GameStats> {
   return {
     ludo: { played: 0, wins: 0 },
     city: { played: 0, wins: 0 },
-    mess: { played: 0, wins: 0 },
-    amazon: { played: 0, wins: 0 },
-    mystery: { played: 0, wins: 0 },
     poker: { played: 0, wins: 0 },
     wildbound: { played: 0, wins: 0 },
   }
@@ -151,7 +146,6 @@ export const usePlayerStore = create<PlayerState>()(
             if (gameId === 'ludo' && state.stats.ludo.wins >= 5) unlock('ludo-master')
             if (gameId === 'city') unlock('tycoon')
           }
-          if (gameId === 'mystery' && state.stats.mystery.played >= 10) unlock('mystery-solver')
         }),
 
       unlockAchievement: (id) =>

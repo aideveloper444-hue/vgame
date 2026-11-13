@@ -45,6 +45,25 @@ export async function verifySocial(provider: string, token: string): Promise<Soc
   throw new ApiError(400, 'INVALID_INPUT', 'Unknown provider')
 }
 
+/**
+ * Facebook friends who also play: Graph returns only friends who have signed in to this app with Facebook and
+ * granted user_friends. The token must belong to the signed-in player (checked against their facebook_id).
+ */
+export async function facebookFriendIds(token: string, facebookId: string): Promise<string[]> {
+  if (!socialEnabled.facebook) throw new ApiError(503, 'NOT_CONFIGURED', 'Facebook sign-in is not configured on the server')
+  const app = `${config.facebook.appId}|${config.facebook.appSecret}`
+  const dbg = (await (await fetch(`https://graph.facebook.com/debug_token?input_token=${encodeURIComponent(token)}&access_token=${encodeURIComponent(app)}`)).json()) as { data?: { is_valid: boolean; app_id: string; user_id: string } }
+  if (!dbg.data?.is_valid || dbg.data.app_id !== config.facebook.appId || dbg.data.user_id !== facebookId) throw new ApiError(401, 'BAD_TOKEN', 'Facebook session expired, sign in again')
+  const ids: string[] = []
+  let url: string | null = `https://graph.facebook.com/me/friends?fields=id&limit=500&access_token=${encodeURIComponent(token)}`
+  for (let page = 0; url && page < 10; page++) {
+    const res = (await (await fetch(url)).json()) as { data?: { id: string }[]; paging?: { next?: string } }
+    for (const f of res.data ?? []) ids.push(String(f.id))
+    url = res.paging?.next ?? null
+  }
+  return ids
+}
+
 /* ---------------------------------------------------------------- Google Play */
 
 interface ServiceAccount {

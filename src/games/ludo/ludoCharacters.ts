@@ -1,54 +1,29 @@
 import * as THREE from 'three'
 import { useGLTF } from '@react-three/drei'
-import { RoundedBoxGeometry, SkeletonUtils } from 'three-stdlib'
+import { SkeletonUtils } from 'three-stdlib'
 import type { GLTF } from 'three-stdlib'
 import { applyRimLight } from '@/games/shared/three/protagonistAssets'
 import { COLOR_GLOW, type LudoColor } from './ludoBoardLayout'
-import { makeBreastplate, makeCape, makeHeadGear, makeLimbGuard, makePauldron, type HeroLandmarks } from './ludoHeroGear'
+import { carriesShield, makeArmShield, makeBoot, makeKnightGuard, makeKnightKit, makeVanguardGuard, makeVanguardKit, type HeroLandmarks } from './ludoHeroGear'
+import type { CharacterStyleId } from './ludoThemes'
 
-// Quaternius CC0 casual characters (see public/models/ludo/humans/LICENSE.txt): a hoodie guy, a casual
-// guy and two women. All four share one 62-bone "CharacterArmature" skeleton and the same 24 clips, so
-// any team can play any clip from any of the files.
-const HUMANS = '/models/ludo/humans/'
+// Realistic-proportioned fantasy rangers by Quaternius (CC0, see public/models/ludo/heroes/LICENSE.txt):
+// Universal Base Characters wearing the Modular Fantasy ranger outfit (hood, pauldron, bracers, belts,
+// boots) with PBR textures, animated by the Universal Animation Library. These replaced the chunky
+// low-poly casual figures, which read as toys. Both bodies share the Unreal-style skeleton the clips use.
+const HEROES = '/models/ludo/heroes/'
 const URL = {
-  hoodie: `${HUMANS}red-hoodie.glb`,
-  casual: `${HUMANS}green-casual.glb`,
-  woman: `${HUMANS}yellow-casual.glb`,
-  dress: `${HUMANS}blue-dress.glb`,
+  male: `${HEROES}ranger-male.glb`,
+  female: `${HEROES}ranger-female.glb`,
+  anims: `${HEROES}anims.glb`,
+  // the same realistic bodies in a fitted bodysuit: the base for the Vanguard and Knight styles
+  baseMale: `${HEROES}base-male.glb`,
+  baseFemale: `${HEROES}base-female.glb`,
 } as const
-type Outfit = keyof typeof URL
 
-export const CHARACTER_URLS: string[] = Object.values(URL)
+export const CHARACTER_URLS: string[] = [URL.male, URL.female, URL.anims, URL.baseMale, URL.baseFemale]
 
 type Build = 'female' | 'male'
-
-/** Which outfit each team wears, and the material in that file that is the outfit's main garment. */
-const TEAM_OUTFIT: Record<LudoColor, Outfit> = {
-  RED: 'hoodie',
-  GREEN: 'hoodie',
-  YELLOW: 'casual',
-  BLUE: 'woman',
-  PURPLE: 'dress',
-  ORANGE: 'casual',
-  CYAN: 'hoodie',
-  PINK: 'woman',
-}
-const GARMENT: Record<Outfit, string> = { hoodie: 'Purple', casual: 'LightBrown', woman: 'White', dress: 'LimeGreen' }
-
-/** Deep, saturated garment colors — bright tints read as pastel under the board's glow. */
-const GARMENT_COLOR: Record<LudoColor, string> = {
-  RED: '#b3101e',
-  GREEN: '#0c7d27',
-  YELLOW: '#e3a300',
-  BLUE: '#1238b3',
-  PURPLE: '#5a1aa8',
-  ORANGE: '#c45200',
-  CYAN: '#04788a',
-  PINK: '#b0126a',
-}
-
-/** Recolors that turn the woman model into the dark-haired, dark-jeans look; keyed by source material name. */
-const WOMAN_RECOLOR: Record<string, string> = { Hair_Blond: '#24130a', Hair_Brown: '#24130a', Orange: '#141c33' }
 
 export const TEAM_BUILD: Record<LudoColor, Build> = {
   RED: 'male',
@@ -61,107 +36,131 @@ export const TEAM_BUILD: Record<LudoColor, Build> = {
   PINK: 'female',
 }
 
-/** Display height of a character in world units (a board cell is 0.62). */
+/** Team dye for the ranger's leather and cloth: deep, so the outfit keeps its texture detail. */
+const OUTFIT_DYE: Record<LudoColor, string> = {
+  RED: '#c4283a',
+  GREEN: '#2f9a4a',
+  YELLOW: '#e0b040',
+  BLUE: '#3c63d8',
+  PURPLE: '#7a46c8',
+  ORANGE: '#d8742a',
+  CYAN: '#2aa6b8',
+  PINK: '#cc3c8c',
+}
+
+/** Display height of a character in world units (a board cell is about 0.64). */
 export const CHARACTER_HEIGHT = 1.42
 
 export const CLIP = {
-  idle: 'CharacterArmature|Idle',
-  idleAlt: 'CharacterArmature|Idle_Neutral',
-  run: 'CharacterArmature|Run',
-  attack: 'CharacterArmature|Punch_Right',
-  hit: 'CharacterArmature|HitRecieve',
-  death: 'CharacterArmature|Death',
-  celebrate: 'CharacterArmature|Wave',
-  ready: 'CharacterArmature|Idle_Neutral',
+  idle: 'Idle_Loop',
+  idleAlt: 'Idle_Talking_Loop',
+  run: 'Jog_Fwd_Loop',
+  attack: 'Sword_Attack',
+  hit: 'Hit_Chest',
+  death: 'Death01',
+  celebrate: 'Dance_Loop',
+  ready: 'Sword_Idle',
 } as const
 
-export const HAND_BONE = 'Wrist.R'
+export const HAND_BONE = 'hand_r'
 
 export function useHeroAssets(): GLTF[] {
   return useGLTF(CHARACTER_URLS) as unknown as GLTF[]
 }
 
-function gltfFor(assets: GLTF[], outfit: Outfit): GLTF {
-  return assets[CHARACTER_URLS.indexOf(URL[outfit])]
+/** Ranger and Shadow wear the ranger outfit; Vanguard and Knight start from the bodysuit. */
+function bodyUrl(color: LudoColor, style: CharacterStyleId): string {
+  const female = TEAM_BUILD[color] === 'female'
+  if (style === 'vanguard' || style === 'knight') return female ? URL.baseFemale : URL.baseMale
+  return female ? URL.female : URL.male
 }
 
-/** A team's clips, taken from its own model: the rigs share bone names but not rest orientations. */
-export function heroAnimations(assets: GLTF[], color: LudoColor = 'RED'): THREE.AnimationClip[] {
-  return gltfFor(assets, TEAM_OUTFIT[color]).animations
+function bodyFor(assets: GLTF[], color: LudoColor, style: CharacterStyleId): GLTF {
+  return assets[CHARACTER_URLS.indexOf(bodyUrl(color, style))]
+}
+
+let clipCache: THREE.AnimationClip[] | null = null
+/**
+ * The shared animation clips. The jog's root bone travels forward; the board moves the warrior itself,
+ * so the root's position track is dropped to keep the character in place on its cell.
+ */
+export function heroAnimations(assets: GLTF[], _color: LudoColor = 'RED'): THREE.AnimationClip[] {
+  void _color
+  clipCache ??= assets[CHARACTER_URLS.indexOf(URL.anims)].animations.map((clip) => {
+    const c = clip.clone()
+    c.tracks = c.tracks.filter((t) => t.name !== 'root.position')
+    return c
+  })
+  return clipCache
 }
 
 // ---------- materials ----------
 
 const materialCache = new Map<string, THREE.Material>()
 
-function heroMaterial(color: LudoColor, outfit: Outfit, source: THREE.Material): THREE.Material {
-  const key = `${color}:${outfit}:${source.uuid}`
+/**
+ * Dyes a textured garment: the texture's brightness becomes grey detail that `hex` is multiplied over, so
+ * grain, stitching and shading survive while the colour is entirely the dye's.
+ */
+function dye(mat: THREE.MeshStandardMaterial, hex: string, rimColor: string, rimStrength: number, lift = 2.6) {
+  mat.color = new THREE.Color(hex)
+  applyRimLight(mat, rimColor, rimStrength)
+  const rim = mat.onBeforeCompile
+  mat.onBeforeCompile = (shader, renderer) => {
+    rim(shader, renderer)
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <map_fragment>',
+      `#ifdef USE_MAP
+        vec4 sampledDiffuseColor = texture2D( map, vMapUv );
+        float dyeLum = dot( sampledDiffuseColor.rgb, vec3( 0.299, 0.587, 0.114 ) );
+        diffuseColor.rgb *= mix( sampledDiffuseColor.rgb, vec3( min( 1.0, dyeLum * ${lift.toFixed(2)} ) ), 0.88 );
+        diffuseColor.a *= sampledDiffuseColor.a;
+      #endif`,
+    )
+  }
+  const rimKey = mat.customProgramCacheKey
+  mat.customProgramCacheKey = () => `dye-${lift}-${rimKey()}`
+}
+
+function heroMaterial(color: LudoColor, source: THREE.Material, style: CharacterStyleId): THREE.Material {
+  const key = `${color}:${style}:${source.uuid}`
   const hit = materialCache.get(key)
   if (hit) return hit
   const mat = (source as THREE.MeshStandardMaterial).clone()
-  mat.envMapIntensity = 1.35
-  const recolor = outfit === 'woman' ? WOMAN_RECOLOR[source.name] : undefined
-  if (source.name === GARMENT[outfit]) {
-    const team = new THREE.Color(GARMENT_COLOR[color])
-    mat.color = team
-    mat.roughness = 0.5
-    mat.emissive = team.clone()
-    mat.emissiveIntensity = 0.08
-    applyRimLight(mat, COLOR_GLOW[color], 0.25)
-  } else if (recolor) {
-    mat.color = new THREE.Color(recolor)
-    mat.roughness = 0.55
-    mat.emissive = new THREE.Color('#000000')
-    applyRimLight(mat, COLOR_GLOW[color], 0.15)
+  mat.envMapIntensity = 1
+  // the board camera sees the warriors at a slant: strong anisotropic filtering keeps leather, stitching
+  // and armour crisp instead of smearing into mip blur
+  for (const tex of [mat.map, mat.normalMap, mat.roughnessMap, mat.metalnessMap, mat.aoMap]) {
+    if (tex) tex.anisotropy = 8
+  }
+  const std = mat as THREE.MeshStandardMaterial
+  if (/Ranger/i.test(source.name)) {
+    if (style === 'shadow') {
+      // near-black leather; the team shows only as a strong glowing edge light
+      dye(std, '#2a2a34', COLOR_GLOW[color], 0.75, 2.2)
+      std.roughness = Math.min(std.roughness, 0.55)
+    } else {
+      // team-dyed leather and cloth
+      dye(std, OUTFIT_DYE[color], COLOR_GLOW[color], 0.18)
+    }
+  } else if (/Superhero/i.test(source.name)) {
+    if (style === 'knight') {
+      // charcoal undersuit beneath the plate armour
+      dye(std, '#3a3d48', COLOR_GLOW[color], 0.12, 2.2)
+    } else {
+      // Vanguard: a dark tactical undersuit; the team colour is on the armour plates over it
+      dye(std, '#2c3140', COLOR_GLOW[color], 0.16, 2.2)
+      std.roughness = 0.5
+    }
   } else {
-    // the files ship very dark albedos; lift them so faces and jeans don't turn to silhouettes
-    mat.color = mat.color.clone().multiplyScalar(1.6)
-    mat.emissive = mat.color.clone()
-    mat.emissiveIntensity = 0.1
-    applyRimLight(mat, COLOR_GLOW[color], 0.3)
+    // skin and face: untouched textures, only a faint team rim so the figure separates from the board
+    applyRimLight(mat, COLOR_GLOW[color], 0.08)
   }
   materialCache.set(key, mat)
   return mat
 }
 
 // ---------- accessories ----------
-
-// Rest-pose landmarks of both models, in model space (metres, +Y up, +Z forward): chest height,
-// the back of the torso at that height, and the back of the head.
-const LANDMARK: Record<Outfit, { chestY: number; backZ: number; headY: number; headBackZ: number }> = {
-  hoodie: { chestY: 1.347, backZ: -0.057, headY: 1.556, headBackZ: -0.027 },
-  casual: { chestY: 1.347, backZ: -0.057, headY: 1.556, headBackZ: -0.027 },
-  woman: { chestY: 1.34, backZ: -0.018, headY: 1.548, headBackZ: -0.047 },
-  dress: { chestY: 1.34, backZ: -0.018, headY: 1.548, headBackZ: -0.047 },
-}
-
-let accessoryMats: { bag: THREE.Material; pocket: THREE.Material; strap: THREE.Material; hair: THREE.Material } | null = null
-function accessoryMaterials() {
-  accessoryMats ??= {
-    bag: new THREE.MeshStandardMaterial({ color: '#2b2c31', roughness: 0.72, metalness: 0 }),
-    pocket: new THREE.MeshStandardMaterial({ color: '#3d3f46', roughness: 0.66, metalness: 0 }),
-    strap: new THREE.MeshStandardMaterial({ color: '#17181b', roughness: 0.8, metalness: 0 }),
-    hair: new THREE.MeshStandardMaterial({ color: '#24130a', roughness: 0.42, metalness: 0.05 }),
-  }
-  return accessoryMats
-}
-
-function box(w: number, h: number, d: number, r: number, mat: THREE.Material, x: number, y: number, z: number) {
-  const mesh = new THREE.Mesh(new RoundedBoxGeometry(w, h, d, 3, r), mat)
-  mesh.position.set(x, y, z)
-  mesh.castShadow = true
-  return mesh
-}
-
-/** Long dark hair falling from the crown past the shoulders, with a lock at each side of the face. */
-function makeLongHair(outfit: Outfit) {
-  const { headY, headBackZ } = LANDMARK[outfit]
-  const m = accessoryMaterials()
-  const g = new THREE.Group()
-  g.add(box(0.22, 0.34, 0.08, 0.04, m.hair, 0, headY + 0.06, headBackZ - 0.02))
-  for (const sx of [-1, 1]) g.add(box(0.05, 0.24, 0.07, 0.024, m.hair, sx * 0.11, headY + 0.04, headBackZ + 0.06))
-  return g
-}
 
 /** Parents an accessory built in model space to a bone, keeping it where it was in the rest pose. */
 function attachToBone(root: THREE.Object3D, bone: THREE.Object3D | undefined, accessory: THREE.Object3D) {
@@ -181,7 +180,7 @@ function skinnedMeshes(root: THREE.Object3D): THREE.SkinnedMesh[] {
   return out
 }
 
-const heightCache = new Map<Outfit, number>()
+const heightCache = new Map<string, number>()
 
 export interface Hero {
   root: THREE.Group
@@ -190,64 +189,88 @@ export interface Hero {
   hand: THREE.Bone | null
 }
 
-/** A fresh, team-tinted copy of the team's character with its own skeleton. */
-export function buildHero(color: LudoColor, assets: GLTF[]): Hero {
-  const outfit = TEAM_OUTFIT[color]
-  const source = gltfFor(assets, outfit)
+/** A fresh, team-dyed copy of the team's ranger with its own skeleton and team gear. */
+export function buildHero(color: LudoColor, assets: GLTF[], style: CharacterStyleId = 'ranger'): Hero {
+  const source = bodyFor(assets, color, style)
   const root = SkeletonUtils.clone(source.scene) as THREE.Group
-  let hand: THREE.Bone | null = null
-  let chest: THREE.Object3D | undefined
-  let head: THREE.Object3D | undefined
-  let armL: THREE.Object3D | undefined
-  let armR: THREE.Object3D | undefined
-  const limbs: Record<string, THREE.Object3D> = {}
+  const bones: Record<string, THREE.Object3D> = {}
   root.traverse((o) => {
-    if (/^(LowerArm|Wrist|LowerLeg|Foot)\.[LR]$/.test(o.name)) limbs[o.name] = o
-    if ((o as THREE.Bone).isBone && o.name === HAND_BONE) hand = o as THREE.Bone
-    if (o.name === 'Chest') chest = o
-    if (o.name === 'Head') head = o
-    if (o.name === 'UpperArm.L') armL = o
-    if (o.name === 'UpperArm.R') armR = o
+    if ((o as THREE.Bone).isBone) bones[o.name] = o
   })
-  // hero gear, placed from the rest-pose bone positions so it fits either body
+  const hand = (bones[HAND_BONE] as THREE.Bone | undefined) ?? null
   root.updateMatrixWorld(true)
   const toModel = root.matrixWorld.clone().invert()
   const at = (o: THREE.Object3D | undefined, fallback: [number, number, number]) =>
     o ? o.getWorldPosition(new THREE.Vector3()).applyMatrix4(toModel) : new THREE.Vector3(...fallback)
-  const { chestY, backZ, headY } = LANDMARK[outfit]
+  const chest = bones.spine_03
+  const chestPos = at(chest, [0, 1.35, 0])
   const lm: HeroLandmarks = {
-    shoulderL: at(armL, [0.18, chestY + 0.08, 0.02]),
-    shoulderR: at(armR, [-0.18, chestY + 0.08, 0.02]),
-    head: at(head, [0, headY, 0]),
-    chest: at(chest, [0, chestY, 0.02]),
-    backZ,
+    shoulderL: at(bones.upperarm_l, [0.18, 1.42, 0]),
+    shoulderR: at(bones.upperarm_r, [-0.18, 1.42, 0]),
+    head: at(bones.Head, [0, 1.6, 0]),
+    chest: chestPos,
+    // the back of the torso at chest height
+    backZ: chestPos.z - 0.12,
   }
-  const cape = makeCape(color, lm)
-  if (cape) attachToBone(root, chest, cape)
-  attachToBone(root, chest, makeBreastplate(color, lm))
-  attachToBone(root, armL, makePauldron(color, lm.shoulderL, lm.shoulderL.x >= 0 ? 1 : -1))
-  attachToBone(root, armR, makePauldron(color, lm.shoulderR, lm.shoulderR.x >= 0 ? 1 : -1))
-  // forearm and shin guards so every piece reads as an armoured warrior
-  for (const side of ['L', 'R']) {
-    for (const [joint, end, radius] of [['LowerArm', 'Wrist', 0.042], ['LowerLeg', 'Foot', 0.058]] as const) {
-      const a = limbs[`${joint}.${side}`]
-      const b = limbs[`${end}.${side}`]
-      if (a && b) attachToBone(root, a, makeLimbGuard(color, at(a, [0, 0, 0]), at(b, [0, 0, 0]), radius))
+  // Knight: steel great helm with a team plume, steel pauldrons, breastplate and limb guards
+  if (style === 'knight') {
+    const kit = makeKnightKit(color, lm)
+    attachToBone(root, bones.Head, kit.helm)
+    attachToBone(root, chest, kit.breastplate)
+    attachToBone(root, bones.upperarm_l, kit.pauldronL)
+    attachToBone(root, bones.upperarm_r, kit.pauldronR)
+    for (const side of ['l', 'r'] as const) {
+      for (const [a, b, r] of [[`lowerarm_${side}`, `hand_${side}`, 0.045], [`calf_${side}`, `foot_${side}`, 0.062]] as const) {
+        const ja = bones[a]
+        const jb = bones[b]
+        if (ja && jb) attachToBone(root, ja, makeKnightGuard(color, at(ja, [0, 0, 0]), at(jb, [0, 0, 0]), r))
+      }
     }
   }
-  const headGear = makeHeadGear(color, lm)
-  if (headGear) attachToBone(root, head, headGear)
-  if (outfit === 'woman' || outfit === 'dress') attachToBone(root, head, makeLongHair(outfit))
+  // Vanguard: tactical helmet with a glowing visor, team chest rig, shoulder pads and limb guards
+  if (style === 'vanguard') {
+    const kit = makeVanguardKit(color, lm)
+    attachToBone(root, bones.Head, kit.helm)
+    attachToBone(root, chest, kit.rig)
+    attachToBone(root, bones.upperarm_l, kit.padL)
+    attachToBone(root, bones.upperarm_r, kit.padR)
+    for (const side of ['l', 'r'] as const) {
+      for (const [a, b, r] of [[`lowerarm_${side}`, `hand_${side}`, 0.042], [`calf_${side}`, `foot_${side}`, 0.058]] as const) {
+        const ja = bones[a]
+        const jb = bones[b]
+        if (ja && jb) attachToBone(root, ja, makeVanguardGuard(color, at(ja, [0, 0, 0]), at(jb, [0, 0, 0]), r))
+      }
+    }
+  }
+  // the bodysuit models are barefoot: armoured boots for Knight (steel) and Vanguard (black)
+  if (style === 'knight' || style === 'vanguard') {
+    for (const side of ['l', 'r'] as const) {
+      const foot = bones[`foot_${side}`]
+      const ball = bones[`ball_${side}`]
+      if (foot && ball) attachToBone(root, foot, makeBoot(at(foot, [0, 0, 0]), at(ball, [0, 0, 0]), style === 'knight'))
+    }
+  }
+  // the team shield on the off-hand forearm (the sword hand is HAND_BONE): knights always, others for shield teams
+  if (style === 'knight' || (style === 'ranger' && carriesShield(color))) {
+    const off = HAND_BONE.endsWith('_r') ? 'l' : 'r'
+    const elbow = bones[`lowerarm_${off}`]
+    const wrist = bones[`hand_${off}`]
+    if (elbow && wrist) {
+      const e = at(elbow, [0, 0, 0])
+      attachToBone(root, elbow, makeArmShield(color, e, at(wrist, [0, 0, 0]), Math.sign(e.x) || 1))
+    }
+  }
   for (const mesh of skinnedMeshes(root)) {
     mesh.castShadow = true
     mesh.receiveShadow = true
     mesh.frustumCulled = false
-    mesh.material = Array.isArray(mesh.material) ? mesh.material.map((m) => heroMaterial(color, outfit, m)) : heroMaterial(color, outfit, mesh.material)
+    mesh.material = Array.isArray(mesh.material) ? mesh.material.map((m) => heroMaterial(color, m, style)) : heroMaterial(color, mesh.material, style)
   }
-  let height = heightCache.get(outfit)
+  const hk = bodyUrl(color, style)
+  let height = heightCache.get(hk)
   if (height === undefined) {
     height = new THREE.Box3().setFromObject(source.scene).getSize(new THREE.Vector3()).y
-    heightCache.set(outfit, height)
+    heightCache.set(hk, height)
   }
   return { root, scale: CHARACTER_HEIGHT / Math.max(0.001, height), hand }
 }
