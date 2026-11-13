@@ -1,6 +1,6 @@
 import { RunSim, type RunOptions, type SimEvent } from '../engine/run'
 import type { RaceSession } from '../engine/race'
-import { assistStep } from '../engine/autopilot'
+import { assistStep, autopilot } from '../engine/autopilot'
 
 /*
  * Owns the live run. The 3D scene steps the simulation once per rendered frame (so motion and logic never
@@ -85,6 +85,8 @@ export function tickRun(dtMs: number) {
       dt *= 0.42
     }
     if (run.assist && !race) assistStep(sim)
+    // dev only: ?wbauto drives the runner with the test autopilot (screenshots of whole challenges)
+    else if (import.meta.env.DEV && !race && location.search.includes('wbauto')) autopilot(sim)
     sim.step(dt)
     if (sim.events.length) {
       const evs = sim.events.splice(0, sim.events.length)

@@ -97,6 +97,7 @@ export type ProcProp =
   | 'rail'
   | 'birch'
   | 'trolley'
+  | 'minecart'
   | 'chevron'
   | 'redwood'
   | 'treefern'
@@ -109,6 +110,7 @@ export type ProcProp =
   | 'waterQuad'
   | 'caveRoof'
   | 'stalactite'
+  | 'sandPool'
   | 'crystal'
   | 'tuft'
   | 'tuftDark'
@@ -409,6 +411,8 @@ export function useProcKits(): Record<ProcProp, PropKit> {
     const mud = worldUvMaterial(tex.mudD, tex.mudN, 2.6, { color: '#f0b88e', roughness: 0.88, envMapIntensity: 0.25 }, '#3f4a22')
     // packed, trodden snow: a little darker and bluer than the fresh drifts beside it, so the trail reads clearly
     const snowTile = worldUvMaterial(tex.snowD, tex.snowN, 2.6, { color: '#c4ccd8', roughness: 0.7, emissive: new THREE.Color('#7a8aa0'), emissiveIntensity: 0.16 }, '#f4f7fb')
+    // quicksand: the same sand, dark and wet with a soft sheen, so the sinking patch reads against the firm ground
+    const sandPoolMat = worldUvMaterial(tex.sandD, tex.sandN, 2.6, { color: '#94714c', roughness: 0.34, envMapIntensity: 0.8 })
     const leafTile = worldUvMaterial(tex.leafD, tex.leafN, 2.6, { color: '#cdbcae', roughness: 0.9 }, '#7a4a24')
     const snowBank = worldUvMaterial(tex.groundD, tex.groundN, 6, { color: '#eef2f8', roughness: 0.8, emissive: new THREE.Color('#c4cedc'), emissiveIntensity: 0.25 })
     // zone kits: sand, dry earth, volcanic basalt with glowing cracks, glassy ice
@@ -508,6 +512,30 @@ export function useProcKits(): Record<ProcProp, PropKit> {
     const rust = new THREE.MeshStandardMaterial({ color: '#4a3226', roughness: 0.82, metalness: 0.55 })
     const ironDark = new THREE.MeshStandardMaterial({ color: '#26272a', roughness: 0.55, metalness: 0.8 })
     const yellowBar = new THREE.MeshStandardMaterial({ color: '#8f9296', roughness: 0.3, metalness: 0.9 })
+    // mine cart: a flared riveted iron tub with strap bands and a rolled rim, on a chassis and the handcar's wheels
+    const cartTub = iron([
+      box(1.24, 0.06, 1.74, 0, 0.62, 0),
+      box(0.05, 0.62, 1.8, 0.66, 0.93, 0, -0.1),
+      box(0.05, 0.62, 1.8, -0.66, 0.93, 0, 0.1),
+      box(1.3, 0.62, 0.05, 0, 0.93, 0.9, 0, 0.1),
+      box(1.3, 0.62, 0.05, 0, 0.93, -0.9, 0, -0.1),
+    ])
+    const cartIron = iron([
+      // rolled rim
+      box(0.08, 0.07, 1.96, 0.71, 1.23, 0),
+      box(0.08, 0.07, 1.96, -0.71, 1.23, 0),
+      box(1.5, 0.07, 0.08, 0, 1.23, 0.95),
+      box(1.5, 0.07, 0.08, 0, 1.23, -0.95),
+      // strap bands down the sides
+      ...[-0.55, 0, 0.55].flatMap((z) => [box(0.025, 0.6, 0.08, 0.7, 0.93, z, -0.1), box(0.025, 0.6, 0.08, -0.7, 0.93, z, 0.1)]),
+      // chassis beams, axles, couplings
+      box(0.09, 0.14, 1.7, 0.5, 0.5, 0),
+      box(0.09, 0.14, 1.7, -0.5, 0.5, 0),
+      new THREE.CylinderGeometry(0.035, 0.035, 1.42, 8).rotateZ(Math.PI / 2).translate(0, 0.3, 0.68),
+      new THREE.CylinderGeometry(0.035, 0.035, 1.42, 8).rotateZ(Math.PI / 2).translate(0, 0.3, -0.68),
+      box(0.16, 0.12, 0.3, 0, 0.5, 1.0),
+      box(0.16, 0.12, 0.3, 0, 0.5, -1.0),
+    ])
     // cave: a rough rock vault over the trail, hanging spikes, glowing crystals
     const vault = new THREE.CylinderGeometry(6.5, 6.5, 1, 18, 1, true, -Math.PI / 2, Math.PI)
     vault.rotateX(Math.PI / 2)
@@ -956,6 +984,11 @@ export function useProcKits(): Record<ProcProp, PropKit> {
         [birchTrunk, birchBark],
         [birchCrown, birchLeaf],
       ]),
+      minecart: multi([
+        [cartTub, rust],
+        [cartIron, ironDark],
+        [mergeGeometries(wheels)!, ironDark],
+      ]),
       trolley: multi([
         [deck, wood],
         [frame, ironDark],
@@ -992,6 +1025,8 @@ export function useProcKits(): Record<ProcProp, PropKit> {
       waterQuad: kit(box(1, 1, 1), waterMat),
       caveRoof: kit(vault, caveRock),
       stalactite: kit(mergeGeometries(spikes2)!, caveRock),
+      // a flat rounded pool (an ellipse once scaled to the lane), so the sinking patch has soft natural edges
+      sandPool: kit(new THREE.CylinderGeometry(0.5, 0.5, 0.02, 40), sandPoolMat),
       crystal: kit(crystalGeo, crystalMat),
     }
   }, [tex])

@@ -10,7 +10,7 @@ import { useSave, type Quality } from '../state/progress'
 import type { Racer } from '../engine/race'
 import * as THREE from 'three'
 import { BIOMES, KIT_BASE, POWER_KINDS, ZONE_LEN, biomeAt, isObstacle, isPowerUp, type AnimalId, type BiomeId, type Flavor, type PowerUpKind, type Variant } from '../engine/content'
-import { LANE_W, ROUTE_BONUS_TEXT, ROUTE_RISK_TEXT, laneX, routeForLane, type Fork, type Item, type RunSim } from '../engine/run'
+import { LANE_W, RIDE_H, ROUTE_BONUS_TEXT, ROUTE_RISK_TEXT, ZIP_DROP, ZIP_TOP, laneX, zipAlt, routeForLane, type Fork, type Item, type RunSim } from '../engine/run'
 import WildAnimal, { MODELS, type WildPoseState } from './WildAnimal'
 import { GlbSet, PropSet, hash01, preloadProps, useProcKits, worldUv, type Placement, type PropId } from './props'
 import { onSimEvent, run, showcase, tickRun } from './runController'
@@ -79,6 +79,8 @@ function landBank(out: Placement[], z: number, side: number, from = PATH_HALF + 
   out.push({ prop, x: side * (from + 22), y: -4.04, z, rotY: 0, scale: [44, 4, SEG + 0.02] })
 }
 const TREES = ['tree1', 'tree2', 'tree3'] as const
+/** big trees whose canopy and roots reach well past their placement point (see the ravine rule in makeSource) */
+const TREEISH = /^(tree|atree|btree|wtree|jtree|acacia|palm|birch|pine|redwood|baobab|cypress)/
 const BTREES = ['btree1', 'btree2', 'btree3'] as const
 
 /** The new zone kits (2026-11-06): savannah, desert, canyon, swamp, volcanic, coast, blossom, ice, birch. */
@@ -465,6 +467,34 @@ function itemPlacements(it: Item, z: number, now: number, out: Placement[]) {
   }
   const s = (v: [number, number, number]): [number, number, number] => [v[0] * fade, v[1] * fade, v[2] * fade]
   const X = x + off
+  if (it.kind === 'log' && it.fall && !it.broken) {
+    // a falling tree (design brief: falling tree ambush / tree collapse chain). One item of the row draws the whole
+    // tree: it stands at the trail edge shivering, and topples across its lanes once the runner is close.
+    if (!it.topple) return
+    const sd = it.topple
+    const L = (it.span ?? 2) * LANE_W + 1.4
+    const xb = sd * (PATH_HALF + 0.35)
+    let th = Math.PI / 2
+    if (it.h === 0) th += Math.sin(now / 70 + r * 9) * 0.03 * Math.max(0, 1 - z / 60)
+    else {
+      let t0 = fallen.get(it.id)
+      if (t0 === undefined) {
+        t0 = now
+        fallen.set(it.id, now)
+        if (fallen.size > 100) fallen.delete(fallen.keys().next().value!)
+      }
+      const p = Math.min(1, (now - t0) / 620)
+      // a slow lean, then a heavy drop with a small bounce at the end
+      th = (Math.PI / 2) * (1 - p * p) + (p >= 1 ? 0 : Math.sin(p * Math.PI) * 0.02)
+    }
+    const c = Math.cos(th)
+    const sn = Math.sin(th)
+    out.push({ prop: 'trunk', x: xb - sd * (L / 2) * c, y: 0.15 + (L / 2) * sn - 0.35 * c, z, rotY: 0, rotZ: -sd * th, scale: [L, 0.95, 1.0] })
+    // the crown at the top end and the torn stump at the base
+    out.push({ prop: 'calathea', x: xb - sd * (L + 0.2) * c, y: Math.max(0.2, L * sn - 0.6), z, rotY: r * 6.28, rotZ: -sd * th * 0.6, scale: [2.6, 1.7, 2.6] })
+    out.push({ prop: 'rootset', x: xb + sd * 0.2, y: -0.05, z, rotY: sd > 0 ? 0 : Math.PI, scale: [1.3, 0.55, 1.1] })
+    return
+  }
   if (it.fall && !it.broken) {
     out.push({ prop: 'shadowDisc', x, y: 0.03, z, rotY: 0, scale: [1.1, 1, 1.1] })
     if (it.h === 0) return
@@ -525,6 +555,77 @@ function itemPlacements(it: Item, z: number, now: number, out: Placement[]) {
     case 'stalactite':
       out.push({ prop: 'stalactite', x: X, y: lift, z, rotY: 0, rotZ: tumble, scale: s([2.1, 2.45, 0.7]) })
       break
+    case 'quicksand':
+      // a dark wet pool of sinking sand with soft rounded edges
+      out.push({ prop: 'sandPool', x: x + (r - 0.5) * 0.2, y: 0.015, z, rotY: (r - 0.5) * 0.3, scale: [LANE_W * 1.08, 0.02, it.len * 2.3] })
+      break
+    case 'darts': {
+      // a temple dart volley: stone launchers at the trail edges, darts streaking across the lane at head height
+      if (it.lane !== 1) {
+        const e = it.lane === 0 ? 1 : -1
+        out.push({ prop: 'block', x: e * (PATH_HALF + 0.35), y: 0, z, rotY: 0, scale: [0.7, 2.2, 1.2] })
+      }
+      if (!it.broken)
+        for (let k = 0; k < 5; k++) {
+          const u = ((now / 340 + r + k * 0.23) % 1) - 0.5
+          out.push({ prop: 'post', x: x + u * LANE_W * 1.15, y: 0.98 + (k % 3) * 0.17, z: z + (k - 2) * 0.14, rotY: 0, rotZ: Math.PI / 2, scale: [0.075, 0.95, 0.075] })
+        }
+      break
+    }
+    case 'swinglog': {
+      // a heavy log on two ropes, swinging along the trail. Its swing is tied to the distance to the runner, so it
+      // always hangs at the bottom – head height – as the runner reaches it
+      const PIV = 5.3
+      const ARM = 4.15
+      const th = 0.85 * Math.sin(z * 0.34) * Math.min(1, Math.max(0, z) / 6 + 0.15)
+      const ly = PIV - ARM * Math.cos(th) + lift
+      const lz = z + ARM * Math.sin(th)
+      out.push({ prop: 'trunk', x: X, y: ly - 0.25, z: lz, rotY: 0, rotX: th, rotZ: tumble, scale: s([2.4, 0.58, 0.62]) })
+      if (!it.broken) for (const vx of [-0.85, 0.85]) out.push({ prop: 'vine', x: x + vx, y: ly, z: lz, rotY: 0, rotX: -th, scale: [0.07, ARM, 0.07] })
+      break
+    }
+    case 'minecart': {
+      // a riveted iron mine cart on its track; the ridden one follows the rider across tracks and lifts with a jump
+      const st = run.sim?.state
+      const riding = !!st && st.ride?.item === it.id
+      out.push({ prop: 'minecart', x: riding ? st!.x : x, y: 0.27 + (riding ? Math.max(0, st!.y - RIDE_H) : 0), z, rotY: 0, rotZ: riding ? THREE.MathUtils.clamp((laneX(st!.lane) - st!.x) * 0.06, -0.12, 0.12) : 0, scale: 1.28 })
+      break
+    }
+    case 'buffer':
+      // the end of a track: a timber-faced buffer stop braced by two iron posts
+      out.push({ prop: 'block', x: X, y: lift, z: z + 0.2, rotY: 0, rotZ: tumble, scale: s([1.9, 0.95, 0.5]) })
+      for (const e of [-0.7, 0.7]) out.push({ prop: 'post', x: X + e, y: lift, z: z + 0.45, rotY: 0, rotZ: tumble, scale: s([0.18, 1.45, 0.18]) })
+      break
+    case 'beam':
+      // a low timber roof beam on two props: a rider standing in the cart must duck
+      out.push({ prop: 'sleeper', x: X, y: 1.78 + lift, z, rotY: 0, rotZ: tumble, scale: s([LANE_W + 0.25, 0.32, 0.36]) })
+      if (!it.broken) for (const e of [-1, 1]) out.push({ prop: 'post', x: x + e * (LANE_W / 2 + 0.02), y: 0, z, rotY: 0, scale: [0.22, 1.8, 0.22] })
+      break
+    case 'bough':
+      // a heavy bough hanging over a zipline cable, on vines from the canopy
+      {
+        // across the rider's body where it hangs, a little past halfway along the line
+        const by = zipAlt(0.6) + 0.45
+        out.push({ prop: 'trunk', x: X, y: by + lift, z, rotY: (r - 0.5) * 0.2, rotZ: tumble + (r - 0.5) * 0.1, scale: s([2.7, 0.62, 0.66]) })
+        out.push({ prop: 'calathea', x: X + (r - 0.5) * 0.5, y: by + 0.55 + lift, z, rotY: r * 6.28, rotX: Math.PI, scale: s([2.4, 0.55, 1.2]) })
+        if (!it.broken) for (const vx of [-1.1, 1.1]) out.push({ prop: 'vine', x: X + vx, y: by + 0.3, z, rotY: 0, scale: [0.06, 9, 0.06] })
+      }
+      break
+    case 'zipline': {
+      // a steel cable over the ravine from the start gantry down to the far one; the middle cable's marker draws both
+      // gantries (timber posts at the trail edges and a crossbeam)
+      const L = (it.swingTo ?? it.d + 30) - it.d
+      const dy = -ZIP_DROP
+      out.push({ prop: 'rail', x, y: ZIP_TOP, z, rotY: 0, rotX: Math.atan2(L, dy), scale: [0.075, Math.hypot(L, dy), 0.075] })
+      // the pulley block waiting at the start of each cable
+      if (!it.passed) out.push({ prop: 'rail', x, y: ZIP_TOP - 0.24, z: z + 0.25, rotY: 0, scale: [0.1, 0.22, 0.16] })
+      if (it.lane === 1)
+        for (const [gz, gh] of [[z - 0.3, ZIP_TOP], [z + L + 0.3, ZIP_TOP - ZIP_DROP]] as const) {
+          for (const e of [-1, 1]) out.push({ prop: 'post', x: e * (PATH_HALF + 0.45), y: -0.4, z: gz, rotY: 0, scale: [0.34, gh + 0.95, 0.34] })
+          out.push({ prop: 'sleeper', x: 0, y: gh - 0.05, z: gz, rotY: 0, scale: [PATH_HALF * 2 + 1.5, 0.3, 0.34] })
+        }
+      break
+    }
     case 'vine':
       // a thick hanging vine at the lip of the ravine (the runner carries it once grabbed), with leaves at its foot
       if (!it.passed) {
@@ -615,6 +716,7 @@ function makeSource() {
       push(lift ? { ...p, z, y: p.y + lift } : { ...p, z })
     }
     const inner = PATH_HALF + 0.6
+    const holes = view.showcase || !run.sim ? [] : run.sim.items.filter((it) => (it.kind === 'gap' || it.kind === 'stream') && !it.gone)
     for (let k = k0; k <= k1; k++) {
       const zc = k * SEG + SEG / 2
       if (fork && zc >= fork.d && zc < fork.end) {
@@ -637,7 +739,23 @@ function makeSource() {
       } else {
         const sec = view.showcase ? null : run.sim?.sectionAt(zc)
         const open = sec?.kind === 'bridge'
-        for (const p of scenery(k)) if (!open || (!BANKS.has(p.prop) && Math.abs(p.x) > 11)) emit(p)
+        // the big tree models do not stand on their placement point: their trunk base sits up to 0.3 x their height
+        // off the bounding-box centre and the root collar spreads 0.35 x height, so a tree 5-6 m out reaches into the
+        // lanes. On solid trail the tiles hide it; over a ravine (no tiles) the collar and trunk stood in the gap.
+        // Where the trail has a hole, and over a whole zipline (where the rider hangs at canopy height), big trees
+        // are pushed out by their own reach and hanging vines near the trail go, so the ravine and the view stay clear.
+        const zip = sec?.kind === 'zipline'
+        const holed = zip || holes.some((g) => Math.abs(g.d - zc) < g.len + SEG / 2 + 3)
+        for (const p0 of scenery(k)) {
+          let p = p0
+          if (holed && TREEISH.test(p.prop)) {
+            const hgt = typeof p.scale === 'number' ? p.scale : p.scale[1]
+            const minX = PATH_HALF + 1 + 0.68 * hgt
+            if (Math.abs(p.x) < minX) p = { ...p, x: (p.x < 0 ? -1 : 1) * minX }
+          }
+          if (zip && p.prop === 'vine' && Math.abs(p.x) < 9) continue
+          if (!open || (!BANKS.has(p.prop) && Math.abs(p.x) > 11)) emit(p)
+        }
         if (!open) grassAt(k, biomeId(zc), emit)
       }
     }
@@ -688,6 +806,37 @@ function makeSource() {
           for (const e of [-0.7, 0.7]) push({ prop: 'post', x: laneX(sec.lane) + e, y: 0, z: z + 0.6, rotY: 0, scale: [0.18, 1.4, 0.18] })
         }
       }
+      if (sec.kind === 'minecart') {
+        // three mine tracks (the rails stop where they are broken) under timber frames
+        const lo = Math.max(sec.from, d - view.behind)
+        const hi = Math.min(sec.to, d + 60)
+        const broken = (lane: number, a: number, b: number) => gaps.some((g) => g.lane === lane && g.d + g.len > a && g.d - g.len < b)
+        for (const lane of [0, 1, 2]) {
+          const lx = laneX(lane)
+          for (let rd = Math.floor(lo / (ROW * 2)) * ROW * 2; rd < hi; rd += ROW * 2) {
+            if (broken(lane, rd - 0.6, rd + 0.6)) continue
+            push({ prop: 'sleeper', x: lx, y: 0.01, z: rd + ROW - d, rotY: 0, scale: [2.0, 0.1, 0.24] })
+          }
+          for (let rd = Math.floor(lo / SEG) * SEG; rd < hi; rd += SEG) {
+            if (broken(lane, rd, rd + SEG)) continue
+            for (const e of [-0.72, 0.72]) push({ prop: 'rail', x: lx + e, y: 0.11, z: rd + SEG / 2 - d, rotY: 0, scale: [0.08, 0.12, SEG + 0.01] })
+          }
+        }
+        for (let k = Math.ceil(lo / (SEG * 2)); k * SEG * 2 < hi; k++) {
+          const z = k * SEG * 2 - d
+          for (const side of [-1, 1]) push({ prop: 'post', x: side * (PATH_HALF + 0.55), y: 0, z, rotY: 0, scale: [0.32, 3.7, 0.32] })
+          push({ prop: 'sleeper', x: 0, y: 3.55, z, rotY: 0, scale: [PATH_HALF * 2 + 1.7, 0.36, 0.36] })
+        }
+      }
+      if (sec.kind === 'temple') {
+        // carved stone pillars line the corridor, every other pair carrying a lintel
+        for (let k = Math.floor(sec.from / SEG); k * SEG < sec.to; k++) {
+          const z = k * SEG + SEG / 2 - d
+          if (z < -view.behind || z > view.ahead) continue
+          for (const side of [-1, 1]) push({ prop: 'block', x: side * (PATH_HALF + 1.0), y: 0, z, rotY: 0, scale: [0.9, 4.2, 0.9] })
+          if (k % 2 === 0) push({ prop: 'block', x: 0, y: 4.2, z, rotY: 0, scale: [PATH_HALF * 2 + 2.9, 0.6, 1.0] })
+        }
+      }
       if (sec.kind === 'cave') {
         for (let k = Math.floor(sec.from / SEG); k * SEG < sec.to; k++) {
           const z = k * SEG + SEG / 2 - d
@@ -712,7 +861,8 @@ function makeSource() {
     if (sim) {
       const now = performance.now()
       for (const it of sim.items) {
-        if (it.gone || !isObstacle(it.kind)) continue
+        // obstacles, plus the vine and zipline markers (their vines, cables and gantries)
+        if (it.gone || (!isObstacle(it.kind) && it.kind !== 'vine' && it.kind !== 'zipline')) continue
         const z = it.d - d
         if (z < -BEHIND || z > AHEAD) continue
         itemPlacements(it, z, now, scratch)
@@ -1126,7 +1276,11 @@ function Effects() {
           emit(30, [s.x, 0.4, 0.5], e.kind === 'frost' ? '#bfe9ff' : e.kind === 'roar' ? '#ffcf6b' : e.kind === 'stealth' ? '#9a7dff' : '#fff2c4', 6, 0.55, 1, 0.8)
           break
         case 'crash':
-          emit(24, [s.x, 0.5, 0.6], '#d9c39a', 4.5, 0.6, 8, 0.9)
+          // the debris matches what was hit: wet sand, river spray, wood chips, stone grit
+          if (e.kind === 'quicksand') emit(30, [s.x, 0.15, 0.4], '#6e5236', 3.2, 0.5, 10, 0.8)
+          else if (e.kind === 'stream' || e.kind === 'gap') emit(34, [s.x, 0.1, 0.5], '#d8e6ea', 5.5, 0.45, 9, 0.9)
+          else if (e.kind === 'log' || e.kind === 'swinglog' || e.kind === 'branch' || e.kind === 'roots') emit(26, [s.x, 0.7, 0.6], '#9c7a52', 5, 0.5, 9, 0.8)
+          else emit(24, [s.x, 0.5, 0.6], '#d9c39a', 4.5, 0.6, 8, 0.9)
           break
         case 'rockfall':
           setTimeout(() => emit(26, [laneX(e.lane), 0.4, e.d - view.d], '#b8a888', 5, 0.7, 7, 0.9), 470)
@@ -1262,11 +1416,15 @@ function Runner({ animalId }: { animalId: AnimalId }) {
       rope.current.visible = !!sw
       if (sw && s) {
         // from the paws' grip up to the anchor high over the middle of the ravine
-        const az = (sw.from + sw.to) / 2 - s.d
-        const ay = 8.5 - s.y
+        // a zipline handle hangs straight up to the cable overhead
+        const zp = (s.d - sw.from) / Math.max(1, sw.to - sw.from)
+        const az = sw.zip ? 0.05 : (sw.from + sw.to) / 2 - s.d
+        const ay = (sw.zip ? ZIP_TOP - ZIP_DROP * zp : 8.5) - s.y
         const len = Math.hypot(az, ay - 1.1)
         rope.current.position.set(0, (1.1 + ay) / 2, az / 2)
-        rope.current.scale.set(1, len, 1)
+        // a zipline hangs from a thin dark strap, a vine swing from a thick green vine
+        rope.current.scale.set(sw.zip ? 0.35 : 1, len, sw.zip ? 0.35 : 1)
+        ;(rope.current.material as THREE.MeshStandardMaterial).color.set(sw.zip ? '#1d1b18' : '#3f5a1e')
         rope.current.rotation.set(Math.atan2(az, ay - 1.1), 0, 0)
       }
     }
@@ -1708,6 +1866,7 @@ function ChaseCamera({ height }: { height: number }) {
   // a slight roll into lane changes, like a camera operator following the animal
   const roll = useRef({ prevX: NaN, v: 0, r: 0 })
   const fly = useRef(0)
+  const rideCam = useRef(0)
   useLayoutEffect(() => {
     const cam = camera as THREE.PerspectiveCamera
     cam.near = 0.1
@@ -1739,8 +1898,14 @@ function ChaseCamera({ height }: { height: number }) {
     const flying = s?.ride?.kind === 'plane' ? THREE.MathUtils.clamp((s.y - 1.4) / 3, 0, 1) : 0
     fly.current += (flying - fly.current) * Math.min(1, dt * 2)
     const fl = fly.current
-    const back = -(2.0 + 0.7 * height) * (portrait ? 1.25 : 1) * (1 - o * 0.25) - rv * 0.9 - fl * 4.2
-    const up = 1.2 + 0.75 * height + (portrait ? 0.45 : 0) + (s?.y ?? 0) * (0.35 + 0.55 * fl) + rv * 1.1 + fl * 1.2
+    // any other ride or traversal (handcar, mine cart, zipline, vine swing): a short pull back so the new mode reads
+    // (design brief §9), easing in over half a second and back out on leaving it
+    // (hanging from a line or vine the runner is already high: a gentler pull, so the camera stays clear of the trees)
+    const riding = s && s.alive ? (s.ride && s.ride.kind !== 'plane' ? 1 : s.swing ? 0.45 : 0) : 0
+    rideCam.current += (riding - rideCam.current) * Math.min(1, dt * 2.2)
+    const rc = rideCam.current * (1 - fl)
+    const back = -(2.0 + 0.7 * height) * (portrait ? 1.25 : 1) * (1 - o * 0.25) - rv * 0.9 - fl * 4.2 - rc * 1.5
+    const up = 1.2 + 0.75 * height + (portrait ? 0.45 : 0) + (s?.y ?? 0) * (0.35 + 0.55 * fl) + rv * 1.1 + fl * 1.2 + rc * 0.55
     const tx = x * 0.78 + o * 2.6
     camera.position.x += (tx - camera.position.x) * k
     camera.position.y += (up - camera.position.y) * k
@@ -2292,12 +2457,12 @@ function World() {
   return (
     <>
       <PropSet kit={kits.wall} prop="wall" capacity={320} source={source} receive={false} />
-      <PropSet kit={kits.tileStone} prop="tileStone" capacity={130} source={source} />
-      <PropSet kit={kits.tilePlank} prop="tilePlank" capacity={160} source={source} shadows />
-      <PropSet kit={kits.tileRuin} prop="tileRuin" capacity={130} source={source} />
-      <PropSet kit={kits.tileMud} prop="tileMud" capacity={130} source={source} />
-      <PropSet kit={kits.tileSnow} prop="tileSnow" capacity={130} source={source} />
-      <PropSet kit={kits.tileLeaf} prop="tileLeaf" capacity={130} source={source} />
+      <PropSet kit={kits.tileStone} prop="tileStone" capacity={300} source={source} />
+      <PropSet kit={kits.tilePlank} prop="tilePlank" capacity={300} source={source} shadows />
+      <PropSet kit={kits.tileRuin} prop="tileRuin" capacity={300} source={source} />
+      <PropSet kit={kits.tileMud} prop="tileMud" capacity={300} source={source} />
+      <PropSet kit={kits.tileSnow} prop="tileSnow" capacity={300} source={source} />
+      <PropSet kit={kits.tileLeaf} prop="tileLeaf" capacity={300} source={source} />
       <PropSet kit={kits.bankSnow} prop="bankSnow" capacity={70} source={source} />
       <PropSet kit={kits.bamboo} prop="bamboo" capacity={520} source={source} shadows />
       <PropSet kit={kits.pine} prop="pine" capacity={200} source={source} shadows />
@@ -2312,14 +2477,14 @@ function World() {
       <PropSet kit={kits.post} prop="post" capacity={260} source={source} shadows />
       <PropSet kit={kits.rope} prop="rope" capacity={460} source={source} />
       <PropSet kit={kits.pillar} prop="pillar" capacity={60} source={source} shadows />
-      <PropSet kit={kits.block} prop="block" capacity={90} source={source} shadows />
+      <PropSet kit={kits.block} prop="block" capacity={130} source={source} shadows />
       <PropSet kit={kits.trapBase} prop="trapBase" capacity={20} source={source} shadows />
       <PropSet kit={kits.trapSpikes} prop="trapSpikes" capacity={20} source={source} shadows />
       <PropSet kit={kits.barrier} prop="barrier" capacity={20} source={source} shadows />
       <PropSet kit={kits.stub} prop="stub" capacity={30} source={source} />
-      <PropSet kit={kits.vine} prop="vine" capacity={40} source={source} />
+      <PropSet kit={kits.vine} prop="vine" capacity={80} source={source} />
       <PropSet kit={kits.ice} prop="ice" capacity={90} source={source} receive={false} />
-      {glb('trunk', 40, true)}
+      {glb('trunk', 60, true)}
       {glb('boulder', 50, true)}
       {glb('rootset', 30, true)}
       {glb('calathea', 70)}
@@ -2340,10 +2505,10 @@ function World() {
       {glb('atree1', 40, true)}
       {glb('atree2', 40, true)}
       {glb('atree3', 40, true)}
-      <PropSet kit={kits.tileSand} prop="tileSand" capacity={130} source={source} />
-      <PropSet kit={kits.tileDirt} prop="tileDirt" capacity={130} source={source} />
-      <PropSet kit={kits.tileBasalt} prop="tileBasalt" capacity={130} source={source} />
-      <PropSet kit={kits.tileIce} prop="tileIce" capacity={130} source={source} />
+      <PropSet kit={kits.tileSand} prop="tileSand" capacity={300} source={source} />
+      <PropSet kit={kits.tileDirt} prop="tileDirt" capacity={300} source={source} />
+      <PropSet kit={kits.tileBasalt} prop="tileBasalt" capacity={300} source={source} />
+      <PropSet kit={kits.tileIce} prop="tileIce" capacity={300} source={source} />
       <PropSet kit={kits.bankSand} prop="bankSand" capacity={110} source={source} />
       <PropSet kit={kits.bankGold} prop="bankGold" capacity={70} source={source} />
       <PropSet kit={kits.bankBasalt} prop="bankBasalt" capacity={70} source={source} />
@@ -2351,15 +2516,17 @@ function World() {
       <PropSet kit={kits.dune} prop="dune" capacity={40} source={source} />
       <PropSet kit={kits.palm} prop="palm" capacity={60} source={source} shadows />
       <PropSet kit={kits.reeds} prop="reeds" capacity={120} source={source} />
-      <PropSet kit={kits.sleeper} prop="sleeper" capacity={200} source={source} />
-      <PropSet kit={kits.rail} prop="rail" capacity={200} source={source} />
+      <PropSet kit={kits.sleeper} prop="sleeper" capacity={280} source={source} />
+      <PropSet kit={kits.rail} prop="rail" capacity={280} source={source} />
       <PropSet kit={kits.birch} prop="birch" capacity={150} source={source} shadows />
       <PropSet kit={kits.trolley} prop="trolley" capacity={6} source={source} shadows />
+      <PropSet kit={kits.minecart} prop="minecart" capacity={6} source={source} shadows />
       <PropSet kit={kits.chevron} prop="chevron" capacity={8} source={source} shadows />
       <PropSet kit={kits.shadowDisc} prop="shadowDisc" capacity={12} source={source} receive={false} />
       <PropSet kit={kits.waterQuad} prop="waterQuad" capacity={30} source={source} receive={false} />
       <PropSet kit={kits.caveRoof} prop="caveRoof" capacity={30} source={source} />
       <PropSet kit={kits.stalactite} prop="stalactite" capacity={20} source={source} shadows />
+      <PropSet kit={kits.sandPool} prop="sandPool" capacity={20} source={source} receive />
       <PropSet kit={kits.crystal} prop="crystal" capacity={30} source={source} receive={false} />
       {glb('btree1', 40, true)}
       {glb('btree2', 40, true)}

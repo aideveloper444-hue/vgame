@@ -135,6 +135,79 @@ export const sfx = {
     if (!on()) return
     for (const [i, f] of [523, 659, 784, 1047, 1319].entries()) tone(f, 0.3, 'triangle', 0.09, undefined, i * 0.09)
   },
+  /**
+   * A warning cue for each challenge as it is announced (design brief §9: every major hazard has a recognisable
+   * sound before impact): the sound of the thing itself, kept low and short under the ambience.
+   */
+  warn(kind: string) {
+    if (!on()) return
+    switch (kind) {
+      case 'treefall':
+        // timber creaking, then a sharp crack
+        tone(95, 0.55, 'sawtooth', 0.05, 70)
+        noise(0.5, 0.06, 'bandpass', 380, 6, 260)
+        noise(0.12, 0.22, 'highpass', 2400, 0.8, undefined, 0.5)
+        break
+      case 'quicksand':
+        // a slow wet gurgle
+        for (let i = 0; i < 3; i++) tone(140 + i * 25, 0.18, 'sine', 0.07, 70, i * 0.16)
+        noise(0.6, 0.05, 'lowpass', 500, 1, 200)
+        break
+      case 'temple':
+        // stone grinding and a metal click of a mechanism arming
+        noise(0.8, 0.12, 'lowpass', 260, 2, 120)
+        tone(1800, 0.05, 'square', 0.05, undefined, 0.55)
+        tone(1300, 0.06, 'square', 0.05, undefined, 0.66)
+        break
+      case 'swinglog':
+        // rope creak and a heavy whoosh
+        noise(0.35, 0.07, 'bandpass', 900, 8, 600)
+        noise(0.55, 0.16, 'bandpass', 300, 1, 900, 0.3)
+        break
+      case 'rockslide':
+      case 'cave':
+        noise(1.1, 0.2, 'lowpass', 180, 1, 60)
+        tone(48, 0.9, 'sine', 0.14, 38)
+        break
+      case 'river':
+      case 'bridge':
+        noise(0.9, 0.08, 'bandpass', 1400, 0.6, 800)
+        if (kind === 'bridge') tone(220, 0.25, 'triangle', 0.05, 180, 0.4)
+        break
+      case 'rail':
+        tone(660, 0.18, 'triangle', 0.06)
+        tone(880, 0.3, 'triangle', 0.06, undefined, 0.16)
+        break
+      case 'flight':
+        tone(85, 1.0, 'sawtooth', 0.04, 140)
+        break
+      default:
+        // anything newer: a low, neutral heads-up
+        tone(330, 0.18, 'triangle', 0.06)
+        tone(247, 0.3, 'triangle', 0.06, undefined, 0.14)
+    }
+  },
+  /** a falling tree hits the ground */
+  timber() {
+    if (!on()) return
+    noise(0.1, 0.25, 'highpass', 2000, 0.7)
+    noise(0.7, 0.3, 'lowpass', 600, 0.8, 70, 0.35)
+    tone(60, 0.5, 'sine', 0.22, 35, 0.35)
+  },
+  /** a challenge cleared: a rising figure, one note per star */
+  cleared(stars: number) {
+    if (!on()) return
+    const notes = [587, 740, 880, 1175]
+    for (let i = 0; i <= stars; i++) tone(notes[i], 0.32, 'triangle', 0.08, undefined, i * 0.11)
+    if (stars === 3) tone(1760, 0.6, 'sine', 0.05, undefined, 0.5)
+  },
+  /** the run steps up a difficulty tier: low and grand */
+  tier() {
+    if (!on()) return
+    tone(196, 0.9, 'sawtooth', 0.04)
+    tone(294, 0.9, 'triangle', 0.07, undefined, 0.12)
+    tone(392, 1.1, 'triangle', 0.07, undefined, 0.24)
+  },
   count(final = false) {
     if (on()) tone(final ? 1046 : 523, final ? 0.35 : 0.14, 'square', 0.06)
   },

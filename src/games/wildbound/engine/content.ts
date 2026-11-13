@@ -396,10 +396,10 @@ export function biomeAt(d: number): { biome: BiomeDef; index: number; variant: V
 
 // ---------------------------------------------------------------- obstacles & pickups
 
-export type ObstacleKind = 'log' | 'roots' | 'trap' | 'rock' | 'ruin' | 'branch' | 'barrier' | 'gap' | 'boulder' | 'trolley' | 'stream' | 'rubble' | 'stalactite' | 'plane'
+export type ObstacleKind = 'log' | 'roots' | 'trap' | 'rock' | 'ruin' | 'branch' | 'barrier' | 'gap' | 'boulder' | 'trolley' | 'stream' | 'rubble' | 'stalactite' | 'plane' | 'quicksand' | 'darts' | 'swinglog' | 'minecart' | 'buffer' | 'beam' | 'bough'
 export type PickupKind = 'coin' | 'gem' | 'token' | 'magnet' | 'shield' | 'speed' | 'superjump' | 'megajump' | 'boost'
 /** a hanging vine at the lip of a ravine: jump into it to swing across */
-export type MarkerKind = 'vine'
+export type MarkerKind = 'vine' | 'zipline'
 export type ItemKind = ObstacleKind | PickupKind | MarkerKind
 
 export type Escape = 'jump' | 'low' | 'lane'
@@ -422,9 +422,19 @@ export const ESCAPES: Record<ObstacleKind, Escape[]> = {
   stalactite: ['low'],
   // a bush plane on an airstrip: run into it to board and fly (it never crashes the runner)
   plane: ['lane'],
+  // quicksand (jump it or keep to the firm lane), a temple dart volley (slide under) and a swinging log trap (duck)
+  quicksand: ['jump'],
+  darts: ['low'],
+  swinglog: ['low'],
+  // mine cart: running into a parked cart boards it (never a crash); on the tracks a buffer stop means switching
+  // track, a low timber beam means ducking in the cart. A bough over a zipline ravine means switching cable.
+  minecart: ['jump', 'lane'],
+  buffer: ['lane'],
+  beam: ['low'],
+  bough: ['lane'],
 }
 /** Obstacles that strength abilities can break. Gaps never break. */
-export const BREAKABLE: Record<ObstacleKind, boolean> = { log: true, roots: true, trap: true, rock: true, ruin: true, branch: true, barrier: true, gap: false, boulder: true, trolley: false, stream: false, rubble: true, stalactite: true, plane: false }
+export const BREAKABLE: Record<ObstacleKind, boolean> = { log: true, roots: true, trap: true, rock: true, ruin: true, branch: true, barrier: true, gap: false, boulder: true, trolley: false, stream: false, rubble: true, stalactite: true, plane: false, quicksand: false, darts: false, swinglog: true, minecart: false, buffer: false, beam: true, bough: true }
 export const isObstacle = (k: ItemKind): k is ObstacleKind => k in ESCAPES
 
 export const OBSTACLES_BY_BIOME: Record<BiomeId, ObstacleKind[]> = {
@@ -491,7 +501,7 @@ export const POWER_KINDS: PowerUpKind[] = POWERUPS.map((p) => p.kind)
 export const isPowerUp = (k: string): k is PowerUpKind => (POWER_KINDS as string[]).includes(k)
 
 /** Challenge sections the generator drops into zones that suit them. */
-export type SectionKind = 'rail' | 'river' | 'bridge' | 'rockslide' | 'cave' | 'vines' | 'flight'
+export type SectionKind = 'rail' | 'river' | 'bridge' | 'rockslide' | 'cave' | 'vines' | 'flight' | 'treefall' | 'quicksand' | 'temple' | 'swinglog' | 'minecart' | 'zipline'
 export const SECTION_TEXT: Record<SectionKind, { big: string; small: string }> = {
   rail: { big: 'Railway ahead!', small: 'Jump onto the trolley and ride it' },
   river: { big: 'River crossing!', small: 'Hop the stepping stones' },
@@ -500,7 +510,41 @@ export const SECTION_TEXT: Record<SectionKind, { big: string; small: string }> =
   cave: { big: 'Cave ahead', small: 'Slide under the rock spikes' },
   flight: { big: 'Airstrip ahead!', small: 'Run into the plane to take off' },
   vines: { big: 'Vine swing!', small: 'Jump into a vine to swing the ravine – or take the log' },
+  treefall: { big: 'Timber!', small: 'Trees are coming down – jump the trunks or take the open lane' },
+  quicksand: { big: 'Quicksand!', small: 'Keep to the firm ground or jump the sinking sand' },
+  temple: { big: 'Temple traps!', small: 'Slide under the darts, steer round the pillars' },
+  swinglog: { big: 'Log trap!', small: 'Duck under the swinging logs' },
+  minecart: { big: 'Mine carts!', small: 'Hop in – change lane to switch tracks' },
+  zipline: { big: 'Zipline!', small: 'Grab the line – change lane to dodge the branches' },
 }
+
+// ---------------------------------------------------------------- pacing director
+
+/**
+ * Difficulty tiers by time on the trail (seconds of running). A challenge only appears once the run has reached its
+ * tier, so the first minute and a half only uses the simplest, most readable sections.
+ */
+export const TIERS = [
+  { tier: 1, name: 'Explorer', from: 0 },
+  { tier: 2, name: 'Adventurer', from: 90 },
+  { tier: 3, name: 'Survivor', from: 180 },
+  { tier: 4, name: 'Expert', from: 300 },
+  { tier: 5, name: 'Legend', from: 480 },
+] as const
+export const tierAt = (seconds: number) => {
+  let t = 1
+  for (const x of TIERS) if (seconds >= x.from) t = x.tier
+  return t
+}
+export const tierName = (tier: number) => TIERS[Math.max(0, Math.min(TIERS.length - 1, tier - 1))].name
+/** the first tier at which each challenge may be picked */
+export const SECTION_MIN_TIER: Record<SectionKind, number> = {
+  river: 1, bridge: 1, vines: 1, rail: 1, flight: 1, quicksand: 1, swinglog: 1, zipline: 1,
+  treefall: 2, rockslide: 2, cave: 2, minecart: 2,
+  temple: 3,
+}
+/** a challenge is not picked again until this many others have run (zone signature sections are exempt) */
+export const SECTION_NO_REPEAT = 3
 export const powerUp = (k: PowerUpKind) => POWERUPS.find((p) => p.kind === k)!
 
 // ---------------------------------------------------------------- surface grip

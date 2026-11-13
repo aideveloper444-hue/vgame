@@ -5,8 +5,8 @@
  * Run with: npm run test:wildbound
  */
 import assert from 'node:assert/strict'
-import { ANIMALS, ESCAPES, RETIRED, ROSTER, ZONES, ZONE_LEN, biomeAt, isObstacle, type AnimalId, type ObstacleKind } from './content'
-import { FLY_H, LANE_W, RIDE_H, RunSim, laneX, raceStartZone, type Item, type Lane, type Section } from './run'
+import { ANIMALS, ESCAPES, RETIRED, ROSTER, SECTION_MIN_TIER, SECTION_NO_REPEAT, ZONES, tierAt, ZONE_LEN, biomeAt, isObstacle, type AnimalId, type ObstacleKind } from './content'
+import { FLY_H, LANE_W, PACING, RIDE_H, ZIP_HANG, ZIP_TOP, zipAlt, RunSim, laneX, raceStartZone, runDAtTime, runTimeAt, type Item, type Lane, type Section } from './run'
 import { autopilot } from './autopilot'
 import { RaceSession, STUMBLE_MS, pickBotAnimals, type RaceSeat } from './race'
 
@@ -171,7 +171,7 @@ function lone(kind: ObstacleKind, lane: Lane = 1, animalId: AnimalId = 'titan') 
   ;(sim as unknown as { nextSectionAt: number }).nextSectionAt = 1e9
   sim.sections = []
   sim.state.shieldUntil = 0
-  sim.items.push({ id: 1, d: 20, lane, kind, h: 0, len: { log: 0.45, roots: 0.45, trap: 0.5, rock: 0.75, ruin: 0.8, branch: 0.35, barrier: 0.3, gap: 1.2, boulder: 0.9, trolley: 1.1, stream: 1.3, rubble: 0.45, stalactite: 0.35, plane: 1.6 }[kind], gone: false, passed: false, broken: false, frozen: false, moving: 0 })
+  sim.items.push({ id: 1, d: 20, lane, kind, h: 0, len: { log: 0.45, roots: 0.45, trap: 0.5, rock: 0.75, ruin: 0.8, branch: 0.35, barrier: 0.3, gap: 1.2, boulder: 0.9, trolley: 1.1, stream: 1.3, rubble: 0.45, stalactite: 0.35, plane: 1.6, quicksand: 1.3, darts: 0.3, swinglog: 0.4, minecart: 1.0, buffer: 0.4, beam: 0.3, bough: 0.4 }[kind], gone: false, passed: false, broken: false, frozen: false, moving: 0 })
   return sim
 }
 const until = (sim: RunSim, d: number) => runFor(sim, d - sim.state.d)
@@ -463,6 +463,209 @@ test('sections appear in zones that suit them, never at a junction, and a carefu
     }
   }
   for (const k of ['river', 'bridge', 'rockslide', 'cave']) assert.ok(kinds.has(k), `${k} seen in the first 3 km (${[...kinds]})`)
+})
+
+test('quicksand is jumped, temple darts and swinging logs are ducked', () => {
+  for (const [kind, move] of [['quicksand', 'jump'], ['darts', 'slide'], ['swinglog', 'slide']] as const) {
+    const ok = lone(kind, 1)
+    ok.state.loyalUsed = true
+    until(ok, 17.6)
+    ok.input(move)
+    runFor(ok, 10)
+    assert.ok(ok.state.alive, `${kind}: ${move} should clear it`)
+    const bad = lone(kind, 1)
+    bad.state.loyalUsed = true
+    until(bad, 25)
+    assert.equal(bad.state.crashKind, kind, `${kind} without ${move}`)
+  }
+  // a shield hops quicksand like water instead of breaking it
+  const sh = lone('quicksand', 1)
+  sh.state.loyalUsed = true
+  sh.activatePower('shield')
+  until(sh, 25)
+  assert.ok(sh.state.alive && !sh.items[0].broken, 'shield hops the quicksand')
+})
+
+/** a run that only has one hand-placed challenge section, built ahead of the runner */
+function withSection(kind: Section['kind'], seed: number) {
+  const sim = new RunSim({ seed, animalId: 'titan' })
+  sim.items = []
+  sim.sections = []
+  ;(sim as unknown as { nextRow: number }).nextRow = 1e9
+  ;(sim as unknown as { nextGem: number }).nextGem = 1e9
+  ;(sim as unknown as { nextPower: number }).nextPower = 1e9
+  ;(sim as unknown as { nextSectionAt: number }).nextSectionAt = 1e9
+  sim.forks = []
+  ;(sim as unknown as { nextForkAt: number }).nextForkAt = 1e9
+  sim.state.shieldUntil = 0
+  sim.state.loyalUsed = true
+  const sec: Section = { kind, from: 40, to: 140, lane: 0, built: false, announced: false }
+  sim.sections.push(sec)
+  ;(sim as unknown as { buildSection: (s: Section, at: number) => void }).buildSection(sec, 44)
+  return { sim, sec }
+}
+
+test('new challenge sections: every row leaves a way through and a careful runner gets through', () => {
+  for (const kind of ['treefall', 'quicksand', 'temple', 'swinglog'] as const)
+    for (let seed = 1; seed <= 12; seed++) {
+      const { sim, sec } = withSection(kind, seed)
+      const rows = new Map<number, Item[]>()
+      for (const it of sim.items) if (isObstacle(it.kind)) rows.set(it.d, [...(rows.get(it.d) ?? []), it])
+      assert.ok(rows.size >= 3, `${kind}: has rows`)
+      for (const [d, row] of rows) {
+        const lanesBlocked = new Set(row.map((it) => it.lane))
+        const allMovable = row.every((it) => !ESCAPES[it.kind as ObstacleKind].includes('lane'))
+        assert.ok(lanesBlocked.size < 3 || allMovable, `${kind} seed ${seed}: row at ${d} is a wall`)
+      }
+      runFor(sim, sec.to + 10 - sim.state.d, () => autopilot(sim))
+      assert.ok(sim.state.alive, `${kind} seed ${seed}: crashed into ${sim.state.crashKind} at ${sim.state.d.toFixed(1)}`)
+    }
+})
+
+test('mine carts and ziplines: every row leaves a way through and a careful runner gets through', () => {
+  for (const kind of ['minecart', 'zipline'] as const)
+    for (let seed = 1; seed <= 12; seed++) {
+      const { sim, sec } = withSection(kind, seed)
+      const rows = new Map<number, Item[]>()
+      for (const it of sim.items) if (isObstacle(it.kind) && it.kind !== 'minecart') rows.set(it.d, [...(rows.get(it.d) ?? []), it])
+      assert.ok(rows.size >= 3, `${kind}: has rows`)
+      for (const [d, row] of rows) {
+        const lanesBlocked = new Set(row.map((it) => it.lane))
+        const allMovable = row.every((it) => !ESCAPES[it.kind as ObstacleKind].includes('lane'))
+        assert.ok(lanesBlocked.size < 3 || allMovable, `${kind} seed ${seed}: row at ${d} is a wall`)
+      }
+      if (kind === 'minecart') {
+        assert.equal(sim.items.filter((it) => it.kind === 'minecart').length, 3, 'a cart on every track')
+        // a row never needs a jump in one lane and a duck in another with no clean lane
+        for (const [d, row] of rows) if (new Set(row.map((it) => it.lane)).size === 3) assert.equal(new Set(row.map((it) => it.kind)).size, 1, `mixed full row at ${d}`)
+      }
+      let rode = false
+      let zipped = false
+      runFor(sim, sec.to + 10 - sim.state.d, () => {
+        autopilot(sim)
+        if (sim.state.ride?.kind === 'minecart') rode = true
+        if (sim.state.swing?.zip) zipped = true
+      })
+      assert.ok(sim.state.alive, `${kind} seed ${seed}: crashed into ${sim.state.crashKind} at ${sim.state.d.toFixed(1)}`)
+      if (kind === 'minecart') assert.ok(rode && sim.state.ride === null, `seed ${seed}: rode the cart to the end`)
+      else assert.ok(zipped && sim.state.swing === null, `seed ${seed}: crossed on the zipline`)
+    }
+})
+
+test('mine cart rules: board on contact, lane change switches track, buffers crash, rails jumped, beams ducked', () => {
+  // boarding in any pose; a lane change keeps the ride
+  const { sim } = withSection('minecart', 2)
+  until(sim, 52)
+  assert.equal(sim.state.ride?.kind, 'minecart', 'boarded')
+  const before = sim.state.lane
+  sim.input(before === 0 ? 'right' : 'left')
+  assert.equal(sim.state.ride?.kind, 'minecart', 'still riding after a lane change')
+  assert.equal(sim.state.ride?.lane, sim.state.lane, 'switched track')
+  const cart = sim.items.find((it) => it.id === sim.state.ride!.item)!
+  runFor(sim, 1)
+  assert.equal(cart.lane, sim.state.lane, 'the cart follows the track')
+  // hand-placed hazards in front of a rider
+  const rider = (kind: ObstacleKind) => {
+    const r = lone(kind, 1)
+    r.state.loyalUsed = true
+    r.items.unshift({ id: 99, d: 6, lane: 1, kind: 'minecart', h: 0, len: 1, gone: false, passed: false, broken: false, frozen: false, moving: 0 })
+    until(r, 9)
+    assert.equal(r.state.ride?.kind, 'minecart', `${kind}: boarded`)
+    return r
+  }
+  const buf = rider('buffer')
+  until(buf, 25)
+  assert.equal(buf.state.crashKind, 'buffer', 'a buffer stop ends a ride that stays on its track')
+  const gapNo = rider('gap')
+  until(gapNo, 25)
+  assert.equal(gapNo.state.crashKind, 'gap', 'broken rails without a jump')
+  const gapYes = rider('gap')
+  until(gapYes, 15.5)
+  gapYes.input('jump')
+  runFor(gapYes, 10)
+  assert.ok(gapYes.state.alive && gapYes.state.ride?.kind === 'minecart', 'jumped the broken rails and still in the cart')
+  const beamNo = rider('beam')
+  until(beamNo, 25)
+  assert.equal(beamNo.state.crashKind, 'beam', 'a low beam without ducking')
+  const beamYes = rider('beam')
+  until(beamYes, 18)
+  beamYes.input('slide')
+  runFor(beamYes, 10)
+  assert.ok(beamYes.state.alive, 'ducked under the beam')
+})
+
+test('zipline: grabbed automatically in any pose, carries over the ravine, cables switch with the lane', () => {
+  const { sim } = withSection('zipline', 4)
+  const posts = sim.items.filter((it) => it.kind === 'zipline')
+  assert.equal(posts.length, 6, 'two lines of three cables')
+  const first = Math.min(...posts.map((it) => it.d))
+  // sliding into the post still grabs it
+  until(sim, first - 3)
+  sim.input('slide')
+  runFor(sim, 4)
+  assert.ok(sim.state.swing?.zip, 'on the line')
+  const lane = sim.state.lane
+  sim.input(lane === 0 ? 'right' : 'left')
+  assert.ok(sim.state.swing?.zip && sim.state.swing.lane === sim.state.lane && sim.state.lane !== lane, 'switched cable')
+  assert.ok(sim.state.y > 0.9, 'hanging above the ravine')
+  // the profile starts and ends at the swing grip height and stays below the cable
+  assert.ok(Math.abs(zipAlt(0) - zipAlt(1)) < 1e-9 && zipAlt(0.5) + ZIP_HANG < ZIP_TOP, 'rider profile')
+  // a bough on the rider's cable is a crash; switching away clears it
+  const z2 = withSection('zipline', 4).sim
+  z2.items = z2.items.filter((it) => it.kind !== 'bough' && it.kind !== 'coin' && it.kind !== 'gem')
+  const p0 = Math.min(...z2.items.filter((it) => it.kind === 'zipline').map((it) => it.d))
+  const gap0 = z2.items.find((it) => it.kind === 'gap' && it.d > p0)!
+  z2.items.push({ id: 900, d: gap0.d, lane: 1, kind: 'bough', h: 0, len: 0.4, gone: false, passed: false, broken: false, frozen: false, moving: 0 })
+  until(z2, gap0.d + 2)
+  assert.equal(z2.state.crashKind, 'bough', 'hit the bough on its cable')
+})
+
+test('falling trees: upright and harmless until the runner is close, then they block their lanes', () => {
+  const { sim } = withSection('treefall', 3)
+  const trees = sim.items.filter((it) => it.kind === 'log' && it.fall)
+  assert.ok(trees.length >= 6, 'three trees of two or three lanes')
+  assert.ok(trees.every((it) => it.h === 0), 'standing until the runner comes near')
+  for (const d of new Set(trees.map((it) => it.d))) assert.equal(trees.filter((it) => it.d === d && it.topple).length, 1, 'one item draws each tree')
+  const first = Math.min(...trees.map((it) => it.d))
+  until(sim, first - 30)
+  assert.ok(trees.filter((it) => it.d === first).every((it) => it.h === 1), 'down by 30 m out')
+  // standing still in a covered lane without jumping is a crash
+  const lane = trees.find((it) => it.d === first)!.lane
+  sim.state.lane = lane
+  sim.state.x = laneX(lane)
+  until(sim, first + 2)
+  assert.equal(sim.state.crashKind, 'log')
+})
+
+test('pacing director: quiet start, run-time spacing, tiers and no quick repeats', () => {
+  // the speed-ramp clock round-trips
+  for (const t of [0, 10, 60, 137, 200, 600]) assert.ok(Math.abs(runTimeAt(runDAtTime(t)) - t) < 1e-6, `clock at ${t}s`)
+  for (let seed = 1; seed <= 10; seed++) {
+    const sim = new RunSim({ seed, animalId: 'sonic' })
+    ;(sim as unknown as { planSections: (to: number) => void }).planSections(9000)
+    const secs = sim.sections.length > 8 ? sim.sections : sim.sections
+    assert.ok(secs.length >= 3, `seed ${seed}: sections planned`)
+    const first = secs[0]
+    assert.ok(runTimeAt(first.from) >= PACING.firstHook[0] - 0.5, `seed ${seed}: first challenge after onboarding (${runTimeAt(first.from).toFixed(0)} s)`)
+    for (let i = 0; i < secs.length; i++) {
+      const x = secs[i]
+      assert.ok(SECTION_MIN_TIER[x.kind] <= tierAt(runTimeAt(x.from)), `seed ${seed}: ${x.kind} before its tier`)
+      if (i > 0) {
+        const gap = runTimeAt(x.from) - runTimeAt(secs[i - 1].to)
+        assert.ok(gap >= PACING.linkedGap[0] - 0.5, `seed ${seed}: ${gap.toFixed(1)} s breather`)
+      }
+    }
+  }
+  // the log rule: a kind never comes back within the next SECTION_NO_REPEAT picks when the zone offers others
+  const sim = new RunSim({ seed: 5, animalId: 'sonic' })
+  const pick = (sim as unknown as { pickSection: (w: [Section['kind'], number][], rd: number, sig: null) => Section['kind'] }).pickSection.bind(sim)
+  const log = (sim as unknown as { sectionLog: Section['kind'][] }).sectionLog
+  const W: [Section['kind'], number][] = [['river', 5], ['bridge', 1], ['vines', 1], ['quicksand', 1], ['swinglog', 1]]
+  for (let i = 0; i < 200; i++) {
+    const k = pick(W, 100, null)
+    assert.ok(!log.slice(-SECTION_NO_REPEAT).includes(k), `${k} repeated within ${SECTION_NO_REPEAT} (${log.slice(-SECTION_NO_REPEAT)})`)
+    log.push(k)
+  }
 })
 
 test('zone 72 (Abandoned Railway Forest) has a railway', () => {

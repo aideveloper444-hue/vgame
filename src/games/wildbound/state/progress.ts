@@ -21,6 +21,8 @@ export interface RunResult {
   biomeIndex: number
   stats: { jumps: number; slides: number; rolls: number; laneChanges: number; powerupsUsed: number; abilitiesUsed: number; broken: number; branchesUnder: number; waterfallSections: number; biomesSeen: number; nearMisses?: number; swings?: number }
   tutorial?: boolean
+  /** the run's challenge sections (ChallengeHud tally) and the difficulty tier it reached */
+  challenges?: { cleared: number; stars: number; perfect: number; tier: number }
 }
 
 export interface RunRecord {
@@ -108,6 +110,11 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   { id: 'racewin', name: 'Alpha of the Pack', desc: 'Win 5 races', gems: 80, done: (s) => s.races.wins >= 5 },
   { id: 'vines', name: 'Vine Swinger', desc: 'Swing across 15 ravines on vines', gems: 40, done: (s) => s.totals.swings >= 15 },
   { id: 'closecall', name: 'Close Call', desc: 'Make 50 last-second dodges', gems: 50, done: (s) => s.totals.nearMisses >= 50 },
+  // challenge sections (design brief §7: challenge stars)
+  { id: 'challenger', name: 'Challenger', desc: 'Clear 25 challenges', gems: 40, done: (s) => (s.totals.challenges ?? 0) >= 25 },
+  { id: 'stars', name: 'Star Collector', desc: 'Earn 150 challenge stars', gems: 80, done: (s) => (s.totals.stars ?? 0) >= 150 },
+  { id: 'flawless', name: 'Flawless', desc: 'Clear 10 challenges with all three stars', gems: 60, done: (s) => (s.totals.perfect ?? 0) >= 10 },
+  { id: 'legend', name: 'Legend of the Wild', desc: 'Reach the Legend tier in one run', gems: 150, done: (s) => (s.best.tier ?? 1) >= 5 },
 ]
 
 // ---------------------------------------------------------------- the Jungle Festival (weekly)
@@ -146,10 +153,10 @@ export interface SaveState {
   selected: AnimalId
   inventory: Record<PowerUpKind, number>
   upgrades: Record<PowerUpKind, number>
-  best: { score: number; distance: number; noRevive: number }
+  best: { score: number; distance: number; noRevive: number; tier?: number }
   bestByAnimal: Partial<Record<AnimalId, { score: number; distance: number }>>
   runs: RunRecord[]
-  totals: { runs: number; coins: number; gems: number; distance: number; powerups: number; laneChanges: number; abilities: number; waterfall: number; branches: number; nearMisses: number; swings: number }
+  totals: { runs: number; coins: number; gems: number; distance: number; powerups: number; laneChanges: number; abilities: number; waterfall: number; branches: number; nearMisses: number; swings: number; challenges?: number; stars?: number; perfect?: number }
   /** races with friends, online or vs computer */
   races: { played: number; wins: number; podiums: number; bestTime: Partial<Record<number, number>> }
   missionTier: Record<MissionType, number>
@@ -330,6 +337,7 @@ export const useSave = create<SaveState & Actions>()(
               score: Math.max(s.best.score, r.score),
               distance: Math.max(s.best.distance, r.distance),
               noRevive: r.revives === 0 ? Math.max(s.best.noRevive, r.distance) : s.best.noRevive,
+              tier: Math.max(s.best.tier ?? 1, r.challenges?.tier ?? 1),
             },
             bestByAnimal: { ...s.bestByAnimal, [r.animalId]: { score: Math.max(prevBest?.score ?? 0, r.score), distance: Math.max(prevBest?.distance ?? 0, r.distance) } },
             runs,
@@ -345,6 +353,9 @@ export const useSave = create<SaveState & Actions>()(
               branches: s.totals.branches + r.stats.branchesUnder,
               nearMisses: (s.totals.nearMisses ?? 0) + (r.stats.nearMisses ?? 0),
               swings: (s.totals.swings ?? 0) + (r.stats.swings ?? 0),
+              challenges: (s.totals.challenges ?? 0) + (r.challenges?.cleared ?? 0),
+              stars: (s.totals.stars ?? 0) + (r.challenges?.stars ?? 0),
+              perfect: (s.totals.perfect ?? 0) + (r.challenges?.perfect ?? 0),
             },
             missionProgress: mp,
             levelUps,

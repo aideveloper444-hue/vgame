@@ -270,3 +270,121 @@ surface grip (snow/ice/mud), accessibility options (text size, simplified contro
 
 ## 2026-11-09 Sonic restored
 - The user asked where Sonic is: Sonic is back in the roster (RETIRED is now bruno, koda, arctic, ash), the free starting animal again and front of the home line-up; Raja stays free too. Sonic must never be rested: he is the heart of the game (modelled on a real dog: collar, engraved tag).
+
+## 2026-11-13 "Amazon Wild Run" design brief: pacing director + 4 new challenges
+
+The brief (gameplay & challenge design doc v1.0, 10 Nov 2026) is applied to Wildbound rather than a second jungle runner
+(the old `src/games/amazon` game was removed in f3cc4a3). Its challenge library is the content backlog.
+
+- **Pacing director** (brief §4–5, `engine/run.ts` pickSection / nextChallengeAt, `PACING`; tiers in `content.ts`):
+  - Onboarding: no challenge for the first 30–48 s of running (it was a fixed 290 m).
+  - Challenges are spaced by run time, 22–38 s of plain running (junctions and rows fill the gap), using the speed-ramp
+    clock `runTimeAt` / `runDAtTime`. Typical run: first challenge at ~45 s, then one every ~35–45 s.
+  - **Tiers** Explorer (0 s) / Adventurer (90 s) / Survivor (180 s) / Expert (300 s) / Legend (480 s). Each challenge
+    has a minimum tier (`SECTION_MIN_TIER`): trees, rockslides and caves from Adventurer, the temple from Survivor.
+    A banner announces each new tier.
+  - From Survivor, 30% of gaps are **linked** (8–12 s, never twice in a row), and after a linked pair at Expert+ comes
+    an 8 s recovery stretch.
+  - **No repeats**: a challenge is not picked again within the next 3 (`SECTION_NO_REPEAT`) unless it is the zone's
+    signature (zone 72 railway, Hanging Vine zones) or the zone offers nothing else.
+- **New challenges** (fair-row rules, banner 70 m ahead):
+  - **Timber!** (falling tree ambush / tree collapse chain): 3 trees, alternating sides, each across 2 lanes (the last
+    sometimes all 3: jump). Trees stand shivering at the trail edge and topple 38 m out (camera shake, dust, birds).
+  - **Quicksand**: rounded wet-sand pools in two lanes, a firm lane that wanders, a full-width pool to jump. Shields hop
+    it like water; strength powers can't break it.
+  - **Temple traps** (dart wall corridor): dart volleys across all lanes (slide) between rows of fallen pillars
+    (steer), stone pillars and lintels along the corridor, a gem "idol" at the end. Ruins/temple kits, cave-style echo.
+  - **Log trap** (swinging log trap): logs on ropes at head height (slide); their swing is tied to distance, so a log
+    is always at the bottom when the runner reaches it.
+- Autopilot fix: it swapped endlessly between two lanes that both had jumpable hazards; it now prefers empty lanes.
+- Dev only: `?wbscreen=run&wbsection=<kind>&wbsectionat=<m>&wbzone=<n>` (or `window.__wbSection`) plants a challenge.
+- Tests: 43, all passing (new: quicksand/darts/log escapes, the 4 sections × 12 seeds for fairness, tree-fall timing,
+  director onboarding/spacing/tiers/no-repeat). Checked by screenshot: temple, quicksand, swinging logs, fallen
+  trees (fallen state forced for the shot). Not seen in a live run: the topple animation, the dart motion, the tier banner.
+
+### Later the same day: mine carts and zipline chains
+
+- **Mine carts** (`minecart`, Adventurer tier; canyon, hills, cliffside, volcanic, ruins, mossy, glow, deadwood): three
+  tracks under timber mine frames, a cart parked on each. Running into a cart in any pose boards it (it never
+  crashes you). Riding, a **lane change switches track** instead of hopping off. Ahead come buffer stops where a
+  track ends (switch away; staying on it is a crash), broken rails (jump in the cart; without a jump you crash) and
+  low timber beams (**duck in the cart**: a slide while riding clears a beam). Rule for every row: one clean track,
+  never a full row that mixes jumping and ducking. The middle row is a full-width hazard (all broken rails or all
+  beams). Rows sit 1.3× the reaction gap apart because the cart is 1.25× running speed. Coins and a gem ride along
+  the clean track. The cart sways into track switches, lifts with the rider's jump and is dropped at the end with a
+  hop. New prop: riveted iron tub with strap bands on the handcar's wheels (`minecart` in props.tsx).
+- **Zipline chain** (`zipline`, Explorer tier; forest, jungle, redwood, giantroot, cliffside, cedar, pine, fern):
+  two ravines across all lanes, each with a steel cable over every lane between timber gantries. The line is
+  **grabbed automatically** at the start gantry in any pose (the brief's "automatic grab inside a forgiving zone"),
+  so there is no way to miss it and no ground route is needed. On the line, **lane changes switch cable**. A little
+  past halfway, boughs hang over one or two cables (two on the second line): switch to a clear cable. A 12 m+
+  landing ledge between lines. The rider follows the sagging cable (`zipAlt`) and lets go onto the far lip like the
+  vine swing. Coins and a gem are strung along a clear cable.
+- **Fixed on the way**: the vine marker was never drawn (the render loop skipped non-obstacles), so the vine
+  swing ravine had no vine. Markers are drawn now.
+- **Trees in ravines (fixed)**: the island-tree GLBs are normalised on their bounding-box centre, but the trunk base
+  sits up to 0.3·H off it (tree 2, 3) and tree 3's root collar spreads ±0.35·H. At scale 11-17, a tree placed 5-6 m
+  out reached into the lanes. Solid trail tiles hid it; over the zipline and vine ravines (no tiles) a trunk and its
+  stone collar stood in the gap. Now, in any segment with a hole in the trail and over whole zipline sections, big
+  trees are pushed out to verge + 0.68·H (`TREEISH` in makeSource), and hanging vines within 9 m are dropped over
+  ziplines, which also clears the canopy from the rider's view at ZIP_TOP 6.2. The zipline handle is a thin dark
+  strap, not the green vine. Not changed: the GLB pivots themselves (that would move every forest tree in the game).
+- Autopilot: ignores parked carts and ravine gaps while on a line (used by the tests and race rivals).
+- Tests: 46, all passing (new: both sections × 12 seeds for fairness, an autopilot ride or crossing on every seed,
+  cart rules (board, switch, buffer, rails, beam), zipline rules (auto-grab while sliding, cable switch, bough hit)).
+- Checked by screenshot: mine cart start (three carts, rails, frames, coins), zipline gantry, cables, bough and
+  coins over the ravine. Not seen in a live run (headless Chrome stays in the countdown): riding the cart, switching
+  track, hanging on the line, and the zipline handle rope.
+
+### Brief vs Wildbound: what exists, what is next
+
+| Brief area | In Wildbound | Missing / next |
+|---|---|---|
+| A. Terrain & obstacles | logs, roots, traps, rolling boulders, broken bridge, rockslide, river stones, vine ravine, falling trees, quicksand, swinging logs, cave | collapsing bridge behind the runner, mudslide slope, hidden pitfall (crack telegraph), bee swarm |
+| B. Animal encounters | none (the player is an animal) | wildlife crossings (boar charge, stampede): blocked on realistic animal models, as are the roster animals |
+| C. Vehicles & rides | railway handcar, bush-plane flight, mine carts with track switching | raft/boat (needs a water-lane mode), jeep escape |
+| D. Aerial & traversal | vine swing, zipline chain with cable switching | glider launch with landing zone, canopy rope bridge |
+| E. Water | river crossing, stream channels | flood surge chase, whirlpool |
+| F. Temple & puzzle | dart corridor, idol gem | swinging blades, stone wheel chase, symbol door choice (fits the junction system) |
+| G. Weather & disaster | 9 lighting variants incl. storm, night, snow | lightning strike zones, flash flood, wildfire |
+| H/I. Mini-games & bosses | junction risk routes | time-trial gate, a multi-stage finale combining 3 learned challenges |
+| §4–5 Pacing & fairness | **done**: director, tiers, no-repeat, seeded, every row passable | per-player skill tier (it uses run time only) |
+| §7 Progression | coins, gems, missions, achievements, store | weekly expedition, challenge stars |
+| §10 Monetization | rewarded revive, cosmetics, Play Billing | server receipt check (see blocked list) |
+
+## 2026-11-13 evening: player experience pass (brief §7 and §9)
+
+- **Challenge card** (`ui/ChallengeHud.tsx`, names/tally in `ui/challenges.ts`): one smoked-glass card under the top
+  bar follows every challenge: *ahead* (name, what to do, distance counting down, a slow gold pulse), *live* (a thin
+  progress line), *cleared* (1–3 stars + bonus). Stars: getting through; no save used (shield / Sonic's extra life);
+  80% of its coins. 100 score per star in solo runs (races stay even). It replaces the old centre banner for
+  challenges, so nothing is said twice.
+- **Warning sounds** for every challenge as it is announced (`sfx.warn`): timber creak and crack, quicksand gurgle,
+  temple stone grind and mechanism click, rope creak and whoosh, rockslide rumble, water, rail bell, engine. Falling
+  trees land with a crack and a thud (`sfx.timber`). Cleared: a rising figure, one note per star. Tier up: a low,
+  grand chord.
+- **Screen effects** (CSS over the scene): speed streaks from the edges near top speed and in boosts, a short hot
+  flash on a crash, a gold light sweeping the screen when a challenge is cleared, and the tier title (Cinzel between
+  two gold rules) instead of a toast. All respect reduced motion.
+- **In the world**: crash debris matches what was hit (wet sand, river spray, wood chips, grit); the chase camera
+  pulls back a little on every ride and traversal (handcar, mine cart, zipline, vine), gentler when hanging high;
+  temple darts thicker, longer and five per lane so the volley reads.
+- **Results screen** redesigned: what ended the run in words ("Struck by temple darts"), the score large in Cinzel
+  gold, best or a "New best score" chip, a four-cell stat strip (metres, coins, gems, XP), challenges cleared, stars
+  and the tier reached, then **Run again** as the main action and Revive / Home beneath. The painted cartoon Sonic is
+  gone from it. Pause shows challenges, stars and tier too.
+- **Progression**: challenge results are saved (totals: challenges, stars, perfect; best tier). New achievements:
+  Challenger (25 cleared), Star Collector (150 stars), Flawless (10 three-star clears), Legend of the Wild (reach
+  Legend).
+- **Home**: the painted animal portrait and festival mask in the top-right tiles are now thin line icons in gold rings.
+- **Fixes found while checking**: trail tiles ran out of instances in canyon mine-cart sections (the trail vanished and
+  the water plane showed): every trail-tile set now holds 300. Ziplines were raised (ZIP_TOP 6.2, drop 2.0) so the
+  rider is clearly high over the ravine; boughs follow the rider's height.
+- Dev only: `?wbauto` drives the run with the test autopilot (screenshots of whole challenges). Real-time screenshot
+  recipe: headless Chrome with remote debugging, `Page.captureScreenshot` after real waits (virtual time never gets
+  past the countdown).
+- Checked by live screenshot: challenge card ahead / live / cleared (temple, quicksand, airstrip), results screen,
+  mine cart (forest and canyon), zipline, home. Not seen: the tier title, the crash flash, speed streaks at full
+  strength, the gold sweep (all CSS, timed between frames).
+- Still painted (cartoon) art: power-up and ability badges in the store, level-up art, gem packs, the festival token
+  in the run HUD.

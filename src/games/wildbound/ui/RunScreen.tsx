@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Home, Music, Pause, Play, RotateCcw, Volume2, VolumeX } from 'lucide-react'
 import { AbilityIcon, PowerIcon } from './icons'
-import { GRIP, POWERUPS, POWER_KINDS, SECTION_TEXT, biomeAt, getAnimal, type PowerUpKind } from '../engine/content'
+import { GRIP, POWERUPS, POWER_KINDS, biomeAt, tierAt, tierName, type ObstacleKind, getAnimal, type PowerUpKind, type SectionKind } from '../engine/content'
 import { RaceHud, RaceResults } from './RaceHud'
 import { leaveRace, makeSession, sendRaceAction, useRaceUI, useWildRoom } from '../state/race'
-import { DOUBLE_MS, ROUTE_BONUS_TEXT, raceStartZone, randomStartZone, reviveCost, tutorialStepText, type Command } from '../engine/run'
+import { DOUBLE_MS, ROUTE_BONUS_TEXT, runTimeAt, raceStartZone, randomStartZone, reviveCost, tutorialStepText, type Command } from '../engine/run'
 import RouteChooser from './RouteChooser'
+import ChallengeHud, { Star } from './ChallengeHud'
+import { challengeTally } from './challenges'
 import { useSave } from '../state/progress'
 import { endRun, onPhase, onSimEvent, run, setPhase, startRun, type RunPhase } from '../scene/runController'
-import { ART, headArt } from './art'
+import { ART } from './art'
 import { Coin, Gem, fmt, toast, useFestival, useNav } from './common'
 import { ambienceScene, haptic, sfx, startAmbience, stopAmbience } from './sfx'
 
@@ -31,6 +33,8 @@ interface Hud {
   abilityOn: boolean
   tut: string
   tutWaiting: boolean
+  /** 0 below cruising speed .. 1 at top speed (drives the speed streaks); boosts push it to full */
+  rush: number
 }
 const readHud = (): Hud | null => {
   const sim = run.sim
@@ -47,8 +51,30 @@ const readHud = (): Hud | null => {
     abilityOn: sim.abilityOn(),
     tut: s.tutStep ? tutorialStepText(s.tutStep) : '',
     tutWaiting: s.tutWaiting,
+    rush: s.alive && !s.ride?.kind ? Math.max(sim.powerOn('boost') || sim.powerOn('speed') ? 1 : 0, Math.min(1, Math.max(0, (s.speed - 14) / 7))) : 0,
   }
 }
+
+/** what ended the run, in words (results screen) */
+const CAUSE: Partial<Record<ObstacleKind, string>> = {
+  log: 'Tripped over a log',
+  roots: 'Caught in the roots',
+  trap: 'Caught in a trap',
+  rock: 'Ran into a rock',
+  ruin: 'Ran into the old stones',
+  branch: 'Hit a low branch',
+  barrier: 'Ran into a barrier',
+  gap: 'Fell into the gap',
+  boulder: 'Flattened by a boulder',
+  trolley: 'Ran into the trolley',
+  stream: 'Swept away by the river',
+  rubble: 'Tripped on the rubble',
+  stalactite: 'Hit a rock spike',
+  quicksand: 'Swallowed by quicksand',
+  darts: 'Struck by temple darts',
+  swinglog: 'Hit by a swinging log',
+}
+const crashCause = (k: ObstacleKind | null) => (k ? (CAUSE[k] ?? 'The wild got you') : 'The run is over')
 
 interface Outcome {
   coins: number
@@ -88,6 +114,9 @@ export default function RunScreen() {
   // a short controls reminder on a new player's first few runs (not the tutorial, not a race)
   const [hint, setHint] = useState(false)
   // a close call: a short edge pulse, like the lens catching the rush of air (re-keyed per event)
+  const [flash, setFlash] = useState(0)
+  const [sweep, setSweep] = useState(0)
+  const [tier, setTier] = useState<{ id: number; tier: number; name: string } | null>(null)
   const [edge, setEdge] = useState<{ id: number; tone: 'near' | 'power' } | null>(null)
   const bestBanner = useRef(false)
   const touchUi = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches
@@ -124,7 +153,10 @@ export default function RunScreen() {
         tutorial: tutorialRun.current,
         rampMs: 1500,
         // every run starts in a new place on the 40 km world
-        startZone: (import.meta.env.DEV ? (window as unknown as { __wbZone?: number }).__wbZone : undefined) ?? randomStartZone(),
+        startZone: (import.meta.env.DEV ? ((window as unknown as { __wbZone?: number }).__wbZone ?? (new URLSearchParams(location.search).has('wbzone') ? Number(new URLSearchParams(location.search).get('wbzone')) : undefined)) : undefined) ?? randomStartZone(),
+        debugSectionAt: import.meta.env.DEV && new URLSearchParams(location.search).has('wbsectionat') ? Number(new URLSearchParams(location.search).get('wbsectionat')) : undefined,
+        // dev only: window.__wbSection = 'temple' (or ?wbsection=temple) plants that challenge 70 m in
+        debugSection: import.meta.env.DEV ? ((window as unknown as { __wbSection?: SectionKind }).__wbSection ?? ((new URLSearchParams(location.search).get('wbsection') as SectionKind | null) || undefined)) : undefined,
       },
       2400,
     )
@@ -138,6 +170,12 @@ export default function RunScreen() {
   }, [runKey])
 
   useEffect(() => onPhase((p) => setPh(p)), [])
+  // a challenge cleared (ChallengeHud): a gold light sweeps the screen
+  useEffect(() => {
+    const on = () => setSweep(Date.now())
+    window.addEventListener('wb-cleared', on)
+    return () => window.removeEventListener('wb-cleared', on)
+  }, [])
   useEffect(() => {
     if (phase !== 'running' || racing || tutorialRun.current || useSave.getState().totals.runs >= 3) return
     setHint(true)
@@ -203,7 +241,7 @@ export default function RunScreen() {
         }
         // the ambient sound follows the zone (or the route's world, or a cave)
         const sim = run.sim
-        if (sim) ambienceScene(sim.biomeIdAt(sim.state.d), biomeAt(sim.state.d).variant, sim.sectionAt(sim.state.d + 4)?.kind === 'cave')
+        if (sim) ambienceScene(sim.biomeIdAt(sim.state.d), biomeAt(sim.state.d).variant, ['cave', 'temple'].includes(sim.sectionAt(sim.state.d + 4)?.kind ?? ''))
       }
     }
     raf = requestAnimationFrame(loop)
@@ -248,6 +286,7 @@ export default function RunScreen() {
           case 'crash':
             sfx.crash()
             haptic(160)
+            setFlash(Date.now())
             break
           case 'biome':
             setBanner({ id: Date.now(), big: e.name, small: `Zone ${String(e.zone).padStart(3, '0')} · ${e.from.toLocaleString('en-IN')} m` })
@@ -258,8 +297,9 @@ export default function RunScreen() {
             sfx.tap()
             break
           case 'section':
-            setBanner({ id: Date.now(), big: SECTION_TEXT[e.section.kind].big, small: SECTION_TEXT[e.section.kind].small })
-            sfx.tap()
+            // the challenge card (ChallengeHud) names it and counts the distance down; here only its warning sound
+            sfx.warn(e.section.kind)
+            haptic(20)
             break
           case 'ride':
             if (e.on && e.kind === 'plane') {
@@ -267,6 +307,10 @@ export default function RunScreen() {
               sfx.power()
               haptic(60)
               run.shake = Math.max(run.shake, 0.35)
+            } else if (e.on && e.kind === 'minecart') {
+              setBanner({ id: Date.now(), big: 'All aboard!', small: 'Switch tracks · jump broken rails · duck the beams' })
+              sfx.power()
+              haptic(40)
             } else if (e.on) {
               setBanner({ id: Date.now(), big: 'All aboard!', small: 'Change lane to hop off' })
               sfx.power()
@@ -277,6 +321,8 @@ export default function RunScreen() {
             }
             break
           case 'rockfall':
+            // a falling tree lands with a crack and a thud (rocks keep the shake and dust)
+            if (run.sim?.items.some((it) => it.kind === 'log' && it.fall && Math.abs(it.d - e.d) < 0.5)) setTimeout(() => sfx.timber(), 380)
             run.shake = Math.max(run.shake, 0.6)
             haptic(30)
             break
@@ -295,9 +341,14 @@ export default function RunScreen() {
             // tell the player about a slippery surface once per run, not every time it comes round again
             if (GRIP[e.grip].label && !gripSeen.current.has(e.grip) && gripSeen.current.add(e.grip)) setBanner({ id: Date.now(), big: e.grip === 'ice' ? 'Ice!' : e.grip === 'snow' ? 'Deep snow' : 'Mud!', small: GRIP[e.grip].label })
             break
+          case 'tier':
+            // the pacing director stepped up a difficulty tier (Explorer, Adventurer, Survivor, Expert, Legend)
+            setTier({ id: Date.now(), tier: e.tier, name: e.name })
+            sfx.tier()
+            break
           case 'swing':
             if (e.on) {
-              setBanner({ id: Date.now(), big: 'Swing!', small: '+100' })
+              setBanner({ id: Date.now(), big: e.zip ? 'Hold on!' : 'Swing!', small: e.zip ? 'Change lane to switch cable · +100' : '+100' })
               sfx.jump()
               haptic(30)
             } else sfx.slide()
@@ -317,7 +368,8 @@ export default function RunScreen() {
     if (!sim || outcome) return
     const sum = sim.summary()
     const tutorial = tutorialRun.current
-    const r = useSave.getState().finishRun({ animalId: sim.animal.id, ...sum, tutorial })
+    const challenges = { cleared: challengeTally.cleared, stars: challengeTally.stars, perfect: challengeTally.perfect, tier: tierAt(runTimeAt(sim.runD())) }
+    const r = useSave.getState().finishRun({ animalId: sim.animal.id, ...sum, tutorial, challenges })
     if (tutorial && sim.state.crashKind === null) useSave.getState().completeTutorial()
     setOutcome({ ...r, score: sum.score, distance: sum.distance, tokens: sum.tokens, tutorial })
     if (r.newBest && !tutorial) sfx.win()
@@ -547,6 +599,17 @@ export default function RunScreen() {
       <div className="wb-layer" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} />
 
       {edge && <div key={edge.id} className={`wb-edge pointer-events-none absolute inset-0 ${edge.tone === 'power' ? 'is-power' : ''}`} onAnimationEnd={() => setEdge(null)} />}
+      {/* screen effects: speed streaks, a hit flash, the cleared sweep, the tier title */}
+      <div className="wb-speed" style={{ opacity: (h?.rush ?? 0) * 0.85 }} />
+      {flash > 0 && <div key={flash} className="wb-flash" onAnimationEnd={() => setFlash(0)} />}
+      {sweep > 0 && <div key={sweep} className="wb-sweep" onAnimationEnd={() => setSweep(0)} />}
+      {tier && (
+        <div key={tier.id} className="wb-tier" onAnimationEnd={(ev) => ev.animationName === 'wb-tier' && setTier(null)}>
+          <div className="wb-tier-k">Tier {tier.tier}</div>
+          <div className="wb-tier-n">{tier.name}</div>
+        </div>
+      )}
+      {!tutorialRun.current && phase !== 'over' && <ChallengeHud runKey={runKey} solo={!racing} />}
       <RouteChooser />
       {racing && <RaceHud />}
 
@@ -659,6 +722,20 @@ export default function RunScreen() {
             <div className="mb-4 text-[18px]">
               {fmt(h?.d ?? 0)} m · Score {fmt(h?.score ?? 0)}
               {best.score > 0 && <div className="text-[15px] text-white/70">Best {fmt(best.score)}</div>}
+              {sim && !tutorialRun.current && (
+                <div className="wb-res-chal mt-2 !p-0">
+                  <span>
+                    <b>{challengeTally.cleared}</b>cleared
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Star on size={15} />
+                    <b>{challengeTally.stars}</b>
+                  </span>
+                  <span>
+                    tier <b className="!ml-1">{tierName(tierAt(runTimeAt(sim.runD())))}</b>
+                  </span>
+                </div>
+              )}
             </div>
             <div className="flex flex-col gap-3">
               <button className="wb-btn wb-btn-green h-14 text-[28px]" onClick={resume}>
@@ -712,52 +789,77 @@ export default function RunScreen() {
               </div>
             ) : (
               <>
-                <div className="flex flex-col items-center justify-center gap-1 pt-5">
-                  <div className="text-[13px] font-semibold uppercase tracking-[0.32em] text-[var(--muted)]">Run ended</div>
-                  <div className="wb-title text-[40px] leading-none !tracking-[0.18em] wb-stroke">Game Over</div>
-                  <div className="mt-2 h-px w-16 bg-[var(--gold)] opacity-60" />
-                </div>
-                <div className="relative flex items-center gap-2 px-4 pb-2">
-                  <div className="flex-1 text-center">
-                    <div className="text-[20px] font-bold">Your Score</div>
-                    <div className="wb-title text-[42px] leading-none wb-yellow wb-stroke">{fmt(outcome?.score ?? h?.score ?? 0)}</div>
-                    <div className="mt-1 text-[20px] font-bold">Best Score</div>
-                    <div className="wb-title text-[36px] leading-none wb-yellow wb-stroke">{fmt(Math.max(best.score, outcome?.score ?? h?.score ?? 0))}</div>
-                    {outcome?.newBest && <div className="wb-title mt-1 inline-block rounded-full bg-[#3f7a5c] px-3 text-[18px]">NEW BEST!</div>}
+                <div className="wb-res">
+                  <div className="wb-res-eyebrow">Run ended</div>
+                  <div className="wb-res-cause">{crashCause(sim?.state.crashKind ?? null)}</div>
+                  <div className="wb-res-score">{fmt(outcome?.score ?? h?.score ?? 0)}</div>
+                  {outcome?.newBest ? (
+                    <div className="wb-res-best is-new">New best score</div>
+                  ) : (
+                    <div className="wb-res-best">Best {fmt(Math.max(best.score, outcome?.score ?? h?.score ?? 0))}</div>
+                  )}
+                  <div className="wb-res-stats">
+                    <div>
+                      <b>{fmt(outcome?.distance ?? h?.d ?? 0)}</b>
+                      <span>metres</span>
+                    </div>
+                    <div>
+                      <b className="flex items-center justify-center gap-1">
+                        <Coin size={18} />
+                        {fmt(outcome?.coins ?? h?.coins ?? 0)}
+                      </b>
+                      <span>coins</span>
+                    </div>
+                    <div>
+                      <b className="flex items-center justify-center gap-1">
+                        <Gem size={18} />
+                        {outcome?.gems ?? h?.gems ?? 0}
+                      </b>
+                      <span>gems</span>
+                    </div>
+                    <div>
+                      <b>{outcome ? `+${fmt(outcome.xp)}` : '–'}</b>
+                      <span>xp</span>
+                    </div>
                   </div>
-                  <img src={a.id === 'sonic' ? ART.gameover : headArt(a.id)} alt="" className={a.id === 'sonic' ? 'w-[46%] rounded-xl' : 'h-[150px] w-[120px] rounded-xl object-cover'} />
-                </div>
-                <div className="mx-4 mb-3 flex items-center justify-center gap-4 rounded-xl bg-black/30 py-2 text-[20px]">
-                  <span>{fmt(outcome?.distance ?? h?.d ?? 0)} m</span>
-                  <span className="flex items-center gap-1">
-                    <Coin size={22} /> +{fmt(outcome?.coins ?? h?.coins ?? 0)}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Gem size={22} /> +{outcome?.gems ?? h?.gems ?? 0}
-                  </span>
-                  {outcome && <span className="text-[#a9d4b6]">+{fmt(outcome.xp)} XP</span>}
-                </div>
-                <div className="grid grid-cols-3 gap-2 px-4 pb-4">
-                  <button className="wb-btn wb-btn-blue h-12 text-[22px]" disabled={!!outcome || reviveLeft <= 0 || gems < cost} onClick={revive}>
-                    Revive <Gem size={22} />
-                    {cost}
-                    {!outcome && reviveLeft > 0 && <span className="absolute -right-1 -top-2 grid h-6 w-6 place-items-center rounded-full bg-[#c9574a] text-[14px]">{reviveLeft}</span>}
+                  <div className="wb-res-chal">
+                    <span>
+                      <b>
+                        {challengeTally.cleared}/{challengeTally.seen}
+                      </b>
+                      challenges
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Star on size={16} />
+                      <b>{challengeTally.stars}</b>
+                    </span>
+                    {sim && (
+                      <span>
+                        tier <b className="!ml-1">{tierName(tierAt(runTimeAt(sim.runD())))}</b>
+                      </span>
+                    )}
+                  </div>
+                  <button className="wb-btn wb-btn-gold mt-4 h-[52px] w-full text-[24px]" onClick={retry}>
+                    <RotateCcw size={20} /> Run again
                   </button>
-                  <button className="wb-btn wb-btn-gold h-12 text-[24px]" onClick={home}>
-                    Home
-                  </button>
-                  <button className="wb-btn wb-btn-green h-12 text-[24px]" onClick={retry}>
-                    Retry
-                  </button>
-                </div>
-                {!outcome && reviveLeft > 0 && (
-                  <div className="-mt-2 flex items-center justify-center gap-3 pb-3 text-[14px] text-white/70">
-                    {gems < cost && <span>Not enough gems ({gems}/{cost})</span>}
-                    <button className="underline underline-offset-2" onClick={skipRevive}>
-                      {gems < cost ? 'See results' : 'No thanks'}
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <button className="wb-btn wb-btn-dark relative h-11 text-[18px]" disabled={!!outcome || reviveLeft <= 0 || gems < cost} onClick={revive}>
+                      Revive <Gem size={18} /> {cost}
+                      {!outcome && reviveLeft > 0 && <span className="wb-res-badge">{reviveLeft}</span>}
+                    </button>
+                    <button className="wb-btn wb-btn-dark h-11 text-[18px]" onClick={home}>
+                      <Home size={18} /> Home
                     </button>
                   </div>
-                )}
+                  {!outcome && reviveLeft > 0 && (
+                    <div className="mt-2 flex items-center justify-center gap-3 text-[14px] text-white/60">
+                      {gems < cost && <span>Not enough gems ({gems}/{cost})</span>}
+                      <button className="underline underline-offset-2" onClick={skipRevive}>
+                        {gems < cost ? 'See results' : 'No thanks'}
+                      </button>
+                    </div>
+                  )}
+                </div>
                 {!touchUi && <div className="-mt-1 pb-3 text-[13px] text-white/50">Enter: retry · Esc: home</div>}
               </>
             )}

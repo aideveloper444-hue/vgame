@@ -8,13 +8,13 @@ import { mulberry32, type Item, type Lane, type RunSim } from './run'
  */
 
 const blocks = (sim: RunSim, l: number, from: number, to: number, onlyWalls = false) =>
-  sim.items.some((it) => isObstacle(it.kind) && !it.gone && !it.broken && it.lane === l && it.d + it.len > from && it.d - it.len < to && (!onlyWalls || ESCAPES[it.kind as ObstacleKind].includes('lane')))
+  sim.items.some((it) => isObstacle(it.kind) && !it.gone && !it.broken && !(sim.state.swing && it.kind === 'gap') && it.lane === l && it.d + it.len > from && it.d - it.len < to && (!onlyWalls || ESCAPES[it.kind as ObstacleKind].includes('lane')))
 
 /** The next obstacle in the runner's lane within reach, if any. */
 export function threatAhead(sim: RunSim, look = sim.state.speed * 0.55 + 4): Item | undefined {
   const s = sim.state
   return sim.items
-    .filter((it) => isObstacle(it.kind) && !it.gone && !it.broken && it.kind !== 'trolley' && it.lane === s.lane && it.d + it.len > s.d - 0.3 && it.d - s.d < look)
+    .filter((it) => isObstacle(it.kind) && !it.gone && !it.broken && it.kind !== 'trolley' && it.kind !== 'minecart' && !(s.swing && it.kind === 'gap') && it.lane === s.lane && it.d + it.len > s.d - 0.3 && it.d - s.d < look)
     .sort((a, b) => a.d - b.d)[0]
 }
 
@@ -31,10 +31,14 @@ export function autopilot(sim: RunSim, threat = threatAhead(sim)) {
   const near = threat.d - s.d
   // nearest lane that is clear ahead; head for it one lane at a time while the lane in between is open here
   const crossing = s.speed * 0.45 + 2
-  const clear = ([0, 1, 2] as Lane[]).filter((l) => l !== s.lane && !blocks(sim, l, s.d - 1, s.d + look + 4, true) && !blocks(sim, l, s.d - 1, s.d + crossing)).sort((a, b) => Math.abs(a - s.lane) - Math.abs(b - s.lane))
+  const kind = threat.kind as ObstacleKind
+  const open = (l: number, onlyWalls: boolean) => l !== s.lane && !blocks(sim, l, s.d - 1, s.d + look + 4, onlyWalls) && !blocks(sim, l, s.d - 1, s.d + crossing)
+  // prefer a lane with nothing in it; a lane that only has things to jump or duck is worth moving to only to get
+  // away from a wall (otherwise two jumpable lanes would have the runner swapping between them)
+  const empty = ([0, 1, 2] as Lane[]).filter((l) => open(l, false))
+  const clear = (empty.length ? empty : ESCAPES[kind].includes('lane') ? ([0, 1, 2] as Lane[]).filter((l) => open(l, true)) : []).sort((a, b) => Math.abs(a - s.lane) - Math.abs(b - s.lane))
   const target = clear.find((l) => Math.abs(l - s.lane) === 1 || !blocks(sim, 1, s.d - 1, s.d + crossing))
   const safe = target === undefined ? undefined : ((s.lane + Math.sign(target - s.lane)) as Lane)
-  const kind = threat.kind as ObstacleKind
   if (safe !== undefined && (ESCAPES[kind].includes('lane') || near > 6)) {
     sim.input(safe < s.lane ? 'left' : 'right')
     return

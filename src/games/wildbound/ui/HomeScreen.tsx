@@ -1,7 +1,6 @@
-import { ClipboardList, Gift, MoreHorizontal, PawPrint, Play, Settings, ShoppingCart, Trophy, Users } from 'lucide-react'
+import { ClipboardList, Gift, MoreHorizontal, PawPrint, Play, Settings, ShoppingCart, Sparkles, Trophy, Users } from 'lucide-react'
 import { getAnimal } from '../engine/content'
 import { MISSIONS, levelOf, today, useSave } from '../state/progress'
-import { ART, headArt } from './art'
 import { Wallet, fmt, useFestival, useNav } from './common'
 import { sfx } from './sfx'
 import Logo from './Logo'
@@ -66,7 +65,7 @@ export default function HomeScreen({ onPlay }: { onPlay: () => void }) {
               </span>
             </div>
             <button className="wb-hud-box !h-11 !pl-1 !pr-4" onClick={tap(() => go('select'))}>
-            <img src={headArt(a.id)} alt="" className="h-9 w-9 rounded-lg object-cover" />
+            <span className="wb-home-ico"><PawPrint size={18} strokeWidth={1.5} /></span>
             <span className="text-left leading-none">
               <span className="block text-[18px]">{a.name}</span>
               <span className="block text-[13px] wb-yellow" style={{ fontFamily: 'Barlow Condensed' }}>
@@ -76,7 +75,7 @@ export default function HomeScreen({ onPlay }: { onPlay: () => void }) {
           </button>
             {fest.active && (
               <button className="wb-card wb-shine flex items-center gap-2 !rounded-xl px-2 py-1" onClick={tap(() => go('events'))}>
-                <img src={ART.eventMask} alt="" className="h-10 w-8 object-cover" />
+                <span className="wb-home-ico"><Sparkles size={18} strokeWidth={1.5} /></span>
                 <span className="text-left text-[13px] leading-tight">
                   <span className="wb-title block text-[16px] wb-yellow">Jungle Festival</span>
                   {fest.joined ? `${fest.tokens} tokens` : 'Join now!'}
