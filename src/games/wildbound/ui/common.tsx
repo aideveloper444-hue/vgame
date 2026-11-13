@@ -1,9 +1,9 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { create } from 'zustand'
-import { ChevronLeft, X } from 'lucide-react'
+import { ChevronLeft, ShoppingCart, X } from 'lucide-react'
 import type { AnimalId } from '../engine/content'
 import { festival, useSave } from '../state/progress'
-import { ART } from './art'
+import { CoinMark, GemMark } from './icons'
 import { sfx } from './sfx'
 
 // ---------------------------------------------------------------- navigation
@@ -87,10 +87,10 @@ export function Toasts() {
 export const fmt = (n: number) => Math.floor(n).toLocaleString('en-IN')
 
 export function Coin({ size = 22 }: { size?: number }) {
-  return <img src={ART.coin} alt="" className="wb-round-ic inline-block" style={{ width: size, height: size }} />
+  return <CoinMark size={size} />
 }
 export function Gem({ size = 22 }: { size?: number }) {
-  return <img src={ART.gem} alt="" className="wb-round-ic inline-block" style={{ width: size, height: size }} />
+  return <GemMark size={size} />
 }
 
 /** Coins, gems and the store cart (top right of most screens). */
@@ -112,7 +112,7 @@ export function Wallet({ compact = false }: { compact?: boolean }) {
       </button>
       {!compact && (
         <button className="wb-pill h-[34px] w-[40px] justify-center !p-0" onClick={() => (sfx.tap(), go('store'))} aria-label="Store">
-          <img src={ART.cart} alt="" className="h-[30px] w-[34px] rounded-md object-cover" />
+          <ShoppingCart size={18} strokeWidth={1.6} className="text-[var(--gold-hi)]" />
         </button>
       )}
     </div>

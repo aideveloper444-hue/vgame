@@ -4,7 +4,8 @@ import { ChevronLeft, Lock } from 'lucide-react'
 import { ROSTER, getAnimal, type AnimalId } from '../engine/content'
 import { useSave } from '../state/progress'
 import { charProductId, priceOf, purchase, usePrices } from '../state/shop'
-import { abilityArt, headArt, traitArt } from './art'
+import { headArt } from './art'
+import { AbilityBadge, TraitBadge } from './icons'
 import { Bar, Gem, toast, useNav } from './common'
 import { showcase } from '../scene/runController'
 import { haptic, sfx } from './sfx'
@@ -79,9 +80,9 @@ export default function PreviewScreen() {
   }
 
   const rows = [
-    { art: abilityArt(id), name: a.ability.name, desc: a.ability.desc },
-    { art: traitArt(a.traits[0].icon), name: a.traits[0].name, desc: a.traits[0].desc },
-    { art: traitArt(a.traits[1].icon), name: a.traits[1].name, desc: a.traits[1].desc },
+    { art: <AbilityBadge kind={a.ability.kind} size={40} />, name: a.ability.name, desc: a.ability.desc },
+    { art: <TraitBadge icon={a.traits[0].icon} size={40} />, name: a.traits[0].name, desc: a.traits[0].desc },
+    { art: <TraitBadge icon={a.traits[1].icon} size={40} />, name: a.traits[1].name, desc: a.traits[1].desc },
   ]
 
   return (
@@ -129,7 +130,7 @@ export default function PreviewScreen() {
               <div className="flex flex-col gap-1.5">
                 {rows.map((r) => (
                   <div key={r.name} className="wb-pv-row flex items-center gap-2.5 rounded-lg bg-white/5 px-1.5 py-0.5">
-                    <img src={r.art} alt="" className="wb-round-ic h-10 w-10 shadow-[0_0_0_2px_rgba(255,210,90,0.6)]" />
+                    {r.art}
                     <div className="min-w-0 leading-tight">
                       <div className="text-[18px] font-bold wb-yellow">{r.name}</div>
                       <div className="text-[15px] text-white/90">{r.desc}</div>

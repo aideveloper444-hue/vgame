@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Home, Music, Pause, Play, RotateCcw, Volume2, VolumeX } from 'lucide-react'
-import { AbilityIcon, PowerIcon } from './icons'
+import { AbilityIcon, PowerIcon, TokenMark } from './icons'
 import { GRIP, POWERUPS, POWER_KINDS, biomeAt, tierAt, tierName, type ObstacleKind, getAnimal, type PowerUpKind, type SectionKind } from '../engine/content'
 import { RaceHud, RaceResults } from './RaceHud'
 import { leaveRace, makeSession, sendRaceAction, useRaceUI, useWildRoom } from '../state/race'
@@ -10,7 +10,6 @@ import ChallengeHud, { Star } from './ChallengeHud'
 import { challengeTally } from './challenges'
 import { useSave } from '../state/progress'
 import { endRun, onPhase, onSimEvent, run, setPhase, startRun, type RunPhase } from '../scene/runController'
-import { ART } from './art'
 import { Coin, Gem, fmt, toast, useFestival, useNav } from './common'
 import { ambienceScene, haptic, sfx, startAmbience, stopAmbience } from './sfx'
 
@@ -633,7 +632,7 @@ export default function RunScreen() {
           </div>
           {fest.active && fest.joined && (
             <div className="wb-hud-box min-w-[112px] justify-between text-[22px]">
-              <img src={ART.eventMask} alt="" className="h-8 w-6 object-cover" /> {h?.tokens ?? 0}
+              <TokenMark size={26} /> {h?.tokens ?? 0}
             </div>
           )}
           <div className="text-[15px] font-bold text-white/90 wb-shadow">SCORE {fmt(h?.score ?? 0)}</div>

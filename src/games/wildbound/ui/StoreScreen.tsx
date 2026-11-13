@@ -3,7 +3,8 @@ import { Check, Tag } from 'lucide-react'
 import { POWERUPS, ROSTER, getAnimal } from '../engine/content'
 import { COIN_PACKS, UPGRADE_MAX, upgradeCost, useSave } from '../state/progress'
 import { PRODUCTS, charProductId, loadPrices, priceOf, purchase, restorePurchases, storeAvailable, usePrices } from '../state/shop'
-import { cardArt, gemPackArt, headArt, powerArt } from './art'
+import { cardArt, headArt } from './art'
+import { GemPackMark, PowerBadge } from './icons'
 import { Backdrop, Coin, Gem, Header, fmt, toast, useNav, type StoreTab } from './common'
 import { haptic, sfx } from './sfx'
 
@@ -137,7 +138,7 @@ function PowerUps() {
         const cost = upgradeCost(lvl)
         return (
           <div key={p.kind} className="wb-card flex flex-col items-center gap-1 p-2 text-center">
-            <img src={powerArt(p.kind)} alt="" className="h-20 w-20 rounded-xl object-cover" />
+            <span className="my-1.5"><PowerBadge kind={p.kind} size={64} /></span>
             <div className="wb-title text-[24px] wb-yellow wb-stroke">{p.name}</div>
             <div className="min-h-[36px] text-[15px] leading-tight text-white/90">{p.desc}</div>
             <div className="text-[14px] text-white/75">
@@ -224,8 +225,8 @@ function Coins({ run }: { run: (f: () => Promise<void>) => Promise<void> }) {
         <div className="wb-title mb-1.5 text-[22px] wb-yellow wb-stroke">In-App Purchases</div>
         <div className="grid grid-cols-4 gap-2">
           {gemPacks.map((p) => (
-            <div key={p.id} className="wb-card flex flex-col items-center gap-1 p-1.5 pb-2" style={{ boxShadow: 'inset 0 0 0 2px rgba(255,210,90,0.55), 0 4px 12px rgba(0,0,0,0.45)' }}>
-              <img src={gemPackArt(p.grant.gems!)} alt="" className="h-[74px] w-full rounded-lg object-cover" />
+            <div key={p.id} className="wb-card flex flex-col items-center gap-1 p-1.5 pb-2" style={{ boxShadow: 'inset 0 0 0 1px var(--gold-edge), 0 4px 12px rgba(0,0,0,0.45)' }}>
+              <span className="grid h-[74px] w-full place-items-center"><GemPackMark n={p.grant.gems!} size={70} /></span>
               <div className="wb-title text-[28px] leading-none wb-stroke">{p.grant.gems}</div>
               <button className="wb-btn wb-btn-gold h-9 w-full text-[19px]" onClick={() => run(() => buy(p.id, `+${p.grant.gems} gems`))}>
                 {priceOf(p.id)}

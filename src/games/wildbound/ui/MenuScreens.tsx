@@ -2,7 +2,8 @@ import { Award, Check, ChevronRight, Globe2, GraduationCap, Lock, PartyPopper, R
 import { WORLD_LEN, ZONES, ZONE_COUNT, ZONE_LEN, getAnimal, type Variant } from '../engine/content'
 import { restorePurchases } from '../state/shop'
 import { ACHIEVEMENTS, DAILY_REWARDS, EVENT_TIERS, LEVEL_REWARD, MISSIONS, QUALITIES, today, useSave, type MissionType } from '../state/progress'
-import { ART, headArt, kitArt, missionArt } from './art'
+import { headArt, kitArt } from './art'
+import { LevelEmblem, MissionBadge, TokenMark } from './icons'
 import { Backdrop, Coin, Gem, Header, fmt, toast, useCountdown, useFestival, useNav } from './common'
 import { haptic, sfx, startAmbience, stopAmbience } from './sfx'
 
@@ -35,7 +36,7 @@ export function MissionsScreen({ onPlay }: { onPlay: () => void }) {
               const done = v >= target
               return (
                 <div key={m.type} className="wb-card flex items-center gap-3 px-2 py-2">
-                  <img src={missionArt(m.icon)} alt="" className="wb-round-ic h-12 w-12" />
+                  <MissionBadge icon={m.icon} size={48} />
                   <div className="min-w-0 flex-1 leading-tight">
                     <div className="truncate text-[19px] font-bold">{m.label(target)}</div>
                     <div className="text-[15px] wb-yellow">
@@ -171,9 +172,9 @@ export function EventsScreen({ onPlay }: { onPlay: () => void }) {
         <Header title="SPECIAL EVENTS" />
         <div className="wb-scroll min-h-0 flex-1">
           <div className="mx-auto flex max-w-[720px] flex-col gap-3">
-            <div className="wb-panel relative overflow-hidden p-4" style={{ background: 'linear-gradient(135deg, rgba(110,60,10,0.95), rgba(30,16,4,0.95))', boxShadow: 'inset 0 0 0 2px rgba(255,200,80,0.6), 0 10px 30px rgba(0,0,0,0.5)' }}>
-              <div className="absolute -right-2 top-0 h-full w-[34%] overflow-hidden">
-                <img src={ART.eventMask} alt="" className="h-[118%] w-full object-cover object-top" />
+            <div className="wb-panel relative overflow-hidden p-4" style={{ background: 'radial-gradient(120% 140% at 90% 0%, rgba(220,192,138,0.22), rgba(16,15,11,0.92) 60%)', boxShadow: 'inset 0 0 0 1px var(--gold-edge), 0 10px 30px rgba(0,0,0,0.5)' }}>
+              <div className="absolute right-5 top-1/2 -translate-y-1/2 opacity-90">
+                <TokenMark size={110} />
               </div>
               <div className="relative max-w-[62%]">
                 <div className="wb-title text-[44px] leading-none wb-yellow wb-stroke">JUNGLE FESTIVAL</div>
@@ -200,7 +201,7 @@ export function EventsScreen({ onPlay }: { onPlay: () => void }) {
               <div className="mb-2 flex items-center justify-between">
                 <div className="wb-title text-[24px] wb-yellow wb-stroke">Festival Rewards</div>
                 <div className="flex items-center gap-1 text-[20px] font-bold">
-                  <img src={ART.eventMask} alt="" className="h-8 w-6 object-cover" /> {f.tokens}
+                  <TokenMark size={26} /> {f.tokens}
                 </div>
               </div>
               <div className="flex flex-col gap-2">
@@ -523,9 +524,10 @@ export function LevelUpModal({ level, onOk }: { level: number; onOk: () => void 
     <div className="wb-layer wb-dim z-[85] flex items-center justify-center p-4">
       <div className="wb-in w-full max-w-[380px] text-center">
         <div className="relative mx-auto w-full">
-          <img src={ART.levelup} alt="Level up!" className="w-full drop-shadow-[0_10px_20px_rgba(0,0,0,0.6)]" />
-          <div className="wb-title absolute left-1/2 top-[56%] -translate-x-1/2 -translate-y-1/2 text-[64px] leading-none text-[#f3e3bd]" style={{ textShadow: '0 1px 2px rgba(0,0,0,0.6), 0 8px 24px rgba(0,0,0,0.5)' }}>
-            {level}
+          <div className="flex flex-col items-center pb-3">
+            <LevelEmblem size={150} />
+            <div className="mt-1 text-[13px] font-semibold uppercase tracking-[0.4em] text-[var(--muted)]">Level up</div>
+            <div className="wb-res-score !mt-1 !text-[72px]">{level}</div>
           </div>
         </div>
         <div className="wb-panel -mt-2 px-4 pb-4 pt-3">

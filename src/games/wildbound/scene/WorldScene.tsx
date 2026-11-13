@@ -18,13 +18,7 @@ import { CORNER_LEN, CORNER_R, TrackPath } from './trackPath'
 import { BRANCH_Y, Z_MAX, bendObject, bendPoint, branchGap, patchChunks, updateBend } from './bend'
 import { BIOME_NAME } from '../engine/content'
 import { makeBushPlane, type BushPlane } from './aircraft'
-import puMagnet from '../art/pu_magnet.webp'
-import puShield from '../art/pu_shield.webp'
-import puSpeed from '../art/pu_speed.webp'
-import puJump from '../art/pu_jump.webp'
-import puMega from '../art/pu_megajump.webp'
-import puBoost from '../art/pu_boost.webp'
-import eventMask from '../art/event_mask.webp'
+import { pickupTextures } from './iconTextures'
 
 /*
  * The Deep Forest Run. Everything sits in "focus space": the runner stays at z = 0 and the world slides
@@ -1103,8 +1097,6 @@ function gemGeometry() {
   return g
 }
 
-/** kept as one object: useTexture returns a new result whenever its input object changes identity */
-const PICKUP_ICONS = { magnet: puMagnet, shield: puShield, speed: puSpeed, superjump: puJump, megajump: puMega, boost: puBoost, mask: eventMask }
 
 function Pickups() {
   const coins = useRef<THREE.InstancedMesh>(null)
@@ -1112,12 +1104,11 @@ function Pickups() {
   const tokens = useRef<THREE.InstancedMesh>(null)
   const bubbles = useRef<THREE.InstancedMesh>(null)
   const icons = useRef<Record<PowerUpKind, THREE.InstancedMesh | null>>({ magnet: null, shield: null, speed: null, superjump: null, megajump: null, boost: null })
-  const tex = useTexture(PICKUP_ICONS)
+  const tex = useMemo(() => pickupTextures(), [])
   const r = useMemo(() => {
     const coinMat = new THREE.MeshStandardMaterial({ color: '#ffc928', emissive: '#7a4a00', emissiveIntensity: 0.5, metalness: 1, roughness: 0.22 })
     const gemMat = new THREE.MeshPhysicalMaterial({ color: '#36c8ff', emissive: '#0b5bd6', emissiveIntensity: 0.55, metalness: 0.1, roughness: 0.05, clearcoat: 1, flatShading: true })
-    for (const t of Object.values(tex)) t.colorSpace = THREE.SRGBColorSpace
-    const tokenMat = new THREE.MeshStandardMaterial({ map: tex.mask, transparent: true, alphaTest: 0.3, side: THREE.DoubleSide, emissive: '#ff8a1c', emissiveMap: tex.mask, emissiveIntensity: 0.45, roughness: 0.5 })
+    const tokenMat = new THREE.MeshStandardMaterial({ map: tex.token, transparent: true, alphaTest: 0.3, side: THREE.DoubleSide, emissive: '#dcc08a', emissiveMap: tex.token, emissiveIntensity: 0.35, roughness: 0.5 })
     const bubbleMat = new THREE.ShaderMaterial({
       transparent: true,
       depthWrite: false,

@@ -388,3 +388,20 @@ The brief (gameplay & challenge design doc v1.0, 10 Nov 2026) is applied to Wild
   strength, the gold sweep (all CSS, timed between frames).
 - Still painted (cartoon) art: power-up and ability badges in the store, level-up art, gem packs, the festival token
   in the run HUD.
+
+## 2026-11-13 night: painted art replaced by one vector icon system
+
+- `ui/icons.tsx` is now the icon system: line icons in a hairline gold ring (`Ring`, `PowerBadge`, `AbilityBadge`,
+  `TraitBadge`, `MissionBadge`, `TokenMark`), an engraved gold coin with a paw (`CoinMark`), a sapphire brilliant
+  cut (`GemMark`), gem packs of 1–4 stones (`GemPackMark`) and a laurel level-up emblem (`LevelEmblem`).
+- Replaced everywhere: coins and gems (wallet, rewards, prices: `Coin` / `Gem` in common.tsx), the store cart, store
+  power-ups and gem packs, ability badges (selection strip, focus panel, details), traits, missions, the festival
+  (panel, tokens, run HUD), the level-up modal (emblem + Cinzel number).
+- Trail pickups: power-up bubbles and festival tokens use canvas textures drawn from the same line icons
+  (`scene/iconTextures.ts`, lucide via renderToStaticMarkup) instead of the painted badges.
+- 56 painted files removed from `src/games/wildbound/art` (ab_, pu_, gems_, mi_, ic_, hud_, ctl_, stat_, levelup,
+  gameover_sonic, event_*, badge_free, paw*, plank, sign_*, logo, tagline). What remains: animal portraits and cards
+  (head_, card_) and the environment cards (w_).
+- Checked by screenshot: store (characters, power-ups, coins), missions, festival, character selection and details,
+  the pickup textures. Not seen: the level-up modal (needs a level gained), pickups up close in a live run.
+- Still weak: store cards for Nova, Blaze and Zara are crops of the in-game models (flat yellow), not proper art.

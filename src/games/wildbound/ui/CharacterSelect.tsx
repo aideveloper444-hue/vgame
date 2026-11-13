@@ -3,7 +3,7 @@ import { useRef, useState } from 'react'
 import { Check, Lock, RotateCw, ZoomIn, ZoomOut } from 'lucide-react'
 import { ROSTER, getAnimal, type AnimalId } from '../engine/content'
 import { useSave } from '../state/progress'
-import { abilityArt } from './art'
+import { AbilityBadge } from './icons'
 import { Backdrop, Gem, Header, toast, useNav } from './common'
 import { haptic, sfx } from './sfx'
 import { Stats } from './PreviewScreen'
@@ -229,7 +229,7 @@ export default function CharacterSelect() {
                 pointer-down, which would steal the click from the Select / Unlock / Details buttons. */}
             <div className="absolute inset-x-3 bottom-3 flex flex-col gap-2 landscape:flex-row landscape:items-end" onPointerDown={(e) => e.stopPropagation()}>
               <div className="flex min-w-0 flex-1 items-center gap-2">
-                <img src={abilityArt(focus)} alt="" className="wb-round-ic wb-badge h-11 w-11 shrink-0" />
+                <AbilityBadge kind={f.ability.kind} size={44} />
                 <div className="min-w-0 leading-tight">
                   <div className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[var(--gold)]">Ability</div>
                   <div className="truncate text-[19px] font-semibold uppercase tracking-[0.06em] wb-shadow">{f.ability.name}</div>
@@ -286,7 +286,7 @@ export default function CharacterSelect() {
                       <div className="mt-1 text-[10.5px] font-semibold uppercase tracking-[0.2em] text-white/60 wb-shadow">{a.species}</div>
                     </div>
                     <div className="absolute inset-x-1.5 bottom-1.5 flex items-center justify-between">
-                      <img src={abilityArt(a.id)} alt="" className="wb-round-ic wb-badge h-6 w-6" />
+                      <AbilityBadge kind={a.ability.kind} size={24} />
                       {isSel ? (
                         <span className="wb-chip is-on !h-6 !text-[10px]">
                           <Check size={11} strokeWidth={2.4} /> In use
