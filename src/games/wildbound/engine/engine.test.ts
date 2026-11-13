@@ -714,6 +714,24 @@ test('raft and jeep: board by running in, steer by lane, jump the low hazards, d
   }
 })
 
+test('final jungle gauntlet: from Expert, three distinct legs back to back, then recovery', () => {
+  for (let seed = 1; seed <= 6; seed++) {
+    const sim = new RunSim({ seed, animalId: 'sonic' })
+    ;(sim as unknown as { planSections: (to: number) => void }).planSections(14000)
+    const legs = sim.sections.filter((x) => x.gauntlet)
+    assert.ok(legs.length >= 3, `seed ${seed}: a gauntlet was planned`)
+    const first = sim.sections.findIndex((x) => x.gauntlet === 1)
+    assert.ok(runTimeAt(sim.sections[first].from) >= 300 - 1, `seed ${seed}: not before Expert`)
+    const trio = sim.sections.slice(first, first + 3)
+    assert.deepEqual(trio.map((x) => x.gauntlet), [1, 2, 3], `seed ${seed}: legs in order`)
+    assert.equal(new Set(trio.map((x) => x.kind)).size, 3, `seed ${seed}: three different challenges`)
+    for (let i = 1; i < 3; i++) {
+      const gap = runTimeAt(trio[i].from) - runTimeAt(trio[i - 1].to)
+      assert.ok(gap >= 7.5 && gap < 60, `seed ${seed}: leg breather ${gap.toFixed(1)} s`)
+    }
+  }
+})
+
 test('zone 72 (Abandoned Railway Forest) has a railway', () => {
   const sim = new RunSim({ seed: 4, animalId: 'sonic' })
   const from = 71 * 400

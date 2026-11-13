@@ -431,3 +431,14 @@ The brief (gameplay & challenge design doc v1.0, 10 Nov 2026) is applied to Wild
   records kinds); milestones 3 / 8 / 15 pay 500 coins / 40 gems / 100 gems (`claimExpedition`). Countdown to the
   week's end. Old saves start empty (optional fields).
 - Checked by screenshot: Missions with both cards; the daily run starts from RUN. Not seen: a claim, the daily reward.
+
+## 2026-11-13 night: Final Jungle Gauntlet (brief §I)
+
+- From Expert (300 s), then every 180 s, the director queues three distinct challenges from the run's own history
+  (river, bridge, rockslide, cave, treefall, quicksand, temple, swinglog, vines; no vehicles) back to back with 8–10 s
+  breathers, then a full recovery. Never started inside a signature zone (railway, Hanging Vine). `GAUNTLET` in run.ts.
+- The card reads "Final gauntlet · n/3" with a double gold edge; leg 1 is announced with a banner and the tier chord.
+  All three cleared in a row: "Gauntlet conquered" and +1000 (solo). Saved in totals; achievement Gauntlet Champion;
+  shown on the results screen.
+- Test: 6 seeds, legs 1-2-3 in order, distinct kinds, not before Expert, breathers 7.5–60 s. 48 tests.
+- Dev only: `?wbgauntlet` plants a gauntlet 40 m in. Checked live: leg 1 and leg 3 cards. Not seen: the conquered card.

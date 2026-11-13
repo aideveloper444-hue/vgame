@@ -1144,3 +1144,13 @@
   letter-spacing: 0.06em;
   color: var(--gold-hi);
 }
+
+/* the Final Jungle Gauntlet: the card gets a warmer, double gold edge */
+.wb-chal.is-gauntlet {
+  box-shadow:
+    inset 0 0 0 1px rgba(243, 227, 189, 0.85),
+    inset 0 0 0 3px rgba(20, 18, 12, 0.9),
+    inset 0 0 0 4px rgba(220, 192, 138, 0.45),
+    0 0 30px -8px rgba(220, 192, 138, 0.4),
+    0 18px 40px -18px rgba(0, 0, 0, 0.85);
+}

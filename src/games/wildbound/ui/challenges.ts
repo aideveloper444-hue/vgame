@@ -23,6 +23,6 @@ export const nameOf = (k: string) => CHALLENGE_NAME[k as SectionKind] ?? k.charA
 export const textOf = (k: string): { big: string; small: string } => (SECTION_TEXT as Record<string, { big: string; small: string }>)[k] ?? { big: nameOf(k), small: '' }
 
 /** what the run's challenges came to (read by the results screen; reset at the start of every run) */
-export const challengeTally = { seen: 0, cleared: 0, stars: 0, perfect: 0, bonus: 0, kinds: [] as string[] }
-export const resetChallengeTally = () => Object.assign(challengeTally, { seen: 0, cleared: 0, stars: 0, perfect: 0, bonus: 0, kinds: [] })
+export const challengeTally = { seen: 0, cleared: 0, stars: 0, perfect: 0, bonus: 0, kinds: [] as string[], gauntlets: 0 }
+export const resetChallengeTally = () => Object.assign(challengeTally, { seen: 0, cleared: 0, stars: 0, perfect: 0, bonus: 0, kinds: [], gauntlets: 0 })
 

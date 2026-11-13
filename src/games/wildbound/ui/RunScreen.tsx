@@ -157,6 +157,7 @@ export default function RunScreen() {
         rampMs: 1500,
         // every run starts in a new place on the 40 km world
         startZone: dailyRun.current ? daySeed % 100 : (import.meta.env.DEV ? ((window as unknown as { __wbZone?: number }).__wbZone ?? (new URLSearchParams(location.search).has('wbzone') ? Number(new URLSearchParams(location.search).get('wbzone')) : undefined)) : undefined) ?? randomStartZone(),
+        debugGauntlet: import.meta.env.DEV && location.search.includes('wbgauntlet'),
         debugSectionAt: import.meta.env.DEV && new URLSearchParams(location.search).has('wbsectionat') ? Number(new URLSearchParams(location.search).get('wbsectionat')) : undefined,
         // dev only: window.__wbSection = 'temple' (or ?wbsection=temple) plants that challenge 70 m in
         debugSection: import.meta.env.DEV ? ((window as unknown as { __wbSection?: SectionKind }).__wbSection ?? ((new URLSearchParams(location.search).get('wbsection') as SectionKind | null) || undefined)) : undefined,
@@ -303,6 +304,10 @@ export default function RunScreen() {
             // the challenge card (ChallengeHud) names it and counts the distance down; here only its warning sound
             sfx.warn(e.section.kind)
             haptic(20)
+            if (e.section.gauntlet === 1) {
+              setBanner({ id: Date.now(), big: 'Final Gauntlet', small: 'Three challenges, back to back' })
+              sfx.tier()
+            }
             break
           case 'ride':
             if (e.on && e.kind === 'plane') {
@@ -379,7 +384,7 @@ export default function RunScreen() {
     if (!sim || outcome) return
     const sum = sim.summary()
     const tutorial = tutorialRun.current
-    const challenges = { cleared: challengeTally.cleared, stars: challengeTally.stars, perfect: challengeTally.perfect, tier: tierAt(runTimeAt(sim.runD())), kinds: [...challengeTally.kinds] }
+    const challenges = { cleared: challengeTally.cleared, stars: challengeTally.stars, perfect: challengeTally.perfect, tier: tierAt(runTimeAt(sim.runD())), kinds: [...challengeTally.kinds], gauntlets: challengeTally.gauntlets }
     const r = useSave.getState().finishRun({ animalId: sim.animal.id, ...sum, tutorial, challenges, daily: dailyRun.current })
     if (tutorial && sim.state.crashKind === null) useSave.getState().completeTutorial()
     setOutcome({ ...r, score: sum.score, distance: sum.distance, tokens: sum.tokens, tutorial })
@@ -851,6 +856,7 @@ export default function RunScreen() {
                         tier <b className="!ml-1">{tierName(tierAt(runTimeAt(sim.runD())))}</b>
                       </span>
                     )}
+                    {challengeTally.gauntlets > 0 && <span className="wb-yellow">gauntlet conquered</span>}
                   </div>
                   <button className="wb-btn wb-btn-gold mt-4 h-[52px] w-full text-[24px]" onClick={retry}>
                     <RotateCcw size={20} /> Run again

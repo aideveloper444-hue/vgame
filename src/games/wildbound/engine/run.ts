@@ -101,6 +101,8 @@ export interface Section {
   lane: Lane
   built: boolean
   announced: boolean
+  /** a leg of the Final Jungle Gauntlet (1, 2 or 3) */
+  gauntlet?: number
 }
 /** the runner's height standing on a trolley */
 export const RIDE_H = 0.95
@@ -290,6 +292,8 @@ export interface RunOptions {
   /** development: plant this challenge 70 m into the run (screenshots and playtests) */
   debugSection?: SectionKind
   debugSectionAt?: number
+  /** development: plant a three-leg gauntlet 40 m into the run */
+  debugGauntlet?: boolean
 }
 
 /** A race's start zone, the same on every device (from the race's seed). */
@@ -310,6 +314,17 @@ export function runDAtTime(t: number) {
   const x = Math.max(0, t)
   return x <= RAMP_T ? (BASE_SPEED * (Math.exp(ACCEL * x) - 1)) / ACCEL : RAMP_D + (x - RAMP_T) * MAX_SPEED
 }
+/**
+ * The Final Jungle Gauntlet (brief §I): from Expert, three challenges the runner has already met, back to back with
+ * short breathers, then a long recovery. Vehicles and flights stay out (their set-up takes too long for a finale).
+ */
+export const GAUNTLET = {
+  firstAt: 300,
+  every: 180,
+  gap: [8, 10] as const,
+  kinds: ['river', 'bridge', 'rockslide', 'cave', 'treefall', 'quicksand', 'temple', 'swinglog', 'vines'] as SectionKind[],
+}
+
 /** Pacing (design brief section 4): quiet onboarding, a first hook, then a major challenge every so often. */
 export const PACING = {
   /** the first challenge comes this many seconds into the run (after the onboarding stretch) */
@@ -368,6 +383,10 @@ export class RunSim {
   private linked = false
   /** the difficulty tier last announced */
   private tier = 1
+  /** the Final Jungle Gauntlet: the legs still to place, how many are placed, and when the next one may start (s) */
+  private gauntletQueue: SectionKind[] = []
+  private gauntletStep = 0
+  private nextGauntletT = GAUNTLET.firstAt
   /** where on the 40 km world the run starts (metres); the run's own distance is state.d - origin */
   readonly origin: number
 
@@ -433,6 +452,15 @@ export class RunSim {
       this.state.stats.biomesSeen = 0
     }
     if (opts.tutorial) this.buildTutorial()
+    if (opts.debugGauntlet && !opts.tutorial) {
+      let from = this.origin + 40
+      ;(['swinglog', 'quicksand', 'temple'] as SectionKind[]).forEach((kind, i) => {
+        this.sections.push({ kind, from, to: from + 70, lane: 0, built: false, announced: false, gauntlet: i + 1 })
+        from += 140
+      })
+      this.nextSectionAt = from + 300
+      this.nextForkAt = from + 400
+    }
     if (opts.debugSection && !opts.tutorial) {
       const from = this.origin + (opts.debugSectionAt ?? 70)
       this.sections.push({ kind: opts.debugSection, from, to: from + 90, lane: opts.debugSection === 'flight' ? 1 : 0, built: false, announced: false })
@@ -1263,7 +1291,19 @@ export class RunSim {
       if (has(['savannah', 'desert', 'grassland', 'baobab', 'beach', 'coast'])) W.push(['jeep', 1.4])
       if (has(['forest', 'jungle', 'redwood', 'giantroot', 'cliffside', 'cedar', 'pine', 'fern'])) W.push(['zipline', 1.2])
       if (!W.length) W.push(['river', 1], ['rockslide', 1])
-      const kind = this.pickSection(W, this.runD(d0), (z.flavor === 'rail' || kit === 'railway' ? 'rail' : z.flavor === 'vines' ? 'vines' : null))
+      // time for the gauntlet: three distinct challenges from this run's history (or any the tier allows)
+      // (never in a zone with its own signature challenge: zone 72's railway, the Hanging Vine zones)
+      const signatureZone = z.flavor === 'rail' || kit === 'railway' || z.flavor === 'vines'
+      if (!this.gauntletQueue.length && !signatureZone && runTimeAt(this.runD(d0)) >= this.nextGauntletT) {
+        const tier = tierAt(runTimeAt(this.runD(d0)))
+        const learned = [...new Set(this.sectionLog)].filter((k) => GAUNTLET.kinds.includes(k))
+        const pool = learned.length >= 3 ? learned : GAUNTLET.kinds.filter((k) => SECTION_MIN_TIER[k] <= tier)
+        const picks = [...pool].sort(() => this.rng() - 0.5).slice(0, 3)
+        this.gauntletQueue = picks
+        this.gauntletStep = 0
+        this.nextGauntletT = runTimeAt(this.runD(d0)) + GAUNTLET.every
+      }
+      const kind = this.gauntletQueue[0] ?? this.pickSection(W, this.runD(d0), (z.flavor === 'rail' || kit === 'railway' ? 'rail' : z.flavor === 'vines' ? 'vines' : null))
       const rows = kind === 'minecart' || kind === 'raft' || kind === 'jeep' ? 8 : kind === 'flight' || kind === 'zipline' ? 6 : kind === 'cave' || kind === 'rail' || kind === 'temple' ? 4 : 3
       const len = (this.rowGap(d0 + 60) + 1) * rows + 40
       // keep inside the zone (clear of its 400 m boundaries) and clear of every junction
@@ -1276,7 +1316,9 @@ export class RunSim {
         this.nextSectionAt = Math.max(clash ? clash.end + 20 : 0, from + 60)
         continue
       }
-      this.sections.push({ kind, from, to: from + len, lane: kind === 'flight' || kind === 'minecart' || kind === 'zipline' || kind === 'raft' || kind === 'jeep' ? 1 : this.rng() < 0.5 ? 0 : 2, built: false, announced: false })
+      const gauntlet = this.gauntletQueue.length ? ++this.gauntletStep : undefined
+      if (gauntlet) this.gauntletQueue.shift()
+      this.sections.push({ kind, from, to: from + len, lane: kind === 'flight' || kind === 'minecart' || kind === 'zipline' || kind === 'raft' || kind === 'jeep' ? 1 : this.rng() < 0.5 ? 0 : 2, built: false, announced: false, gauntlet })
       this.sectionLog.push(kind)
       if (this.sectionLog.length > 8) this.sectionLog.shift()
       this.nextSectionAt = this.nextChallengeAt(from + len)
@@ -1308,6 +1350,13 @@ export class RunSim {
     const tier = tierAt(t)
     const span = (g: readonly [number, number]) => g[0] + this.rng() * (g[1] - g[0])
     let gap: number
+    // between gauntlet legs only a breather; after the last leg a full recovery
+    if (this.gauntletQueue.length) return this.origin + runDAtTime(t + span(GAUNTLET.gap))
+    if (this.gauntletStep === 3) {
+      this.gauntletStep = 0
+      this.linked = false
+      return this.origin + runDAtTime(t + span(PACING.gap) + PACING.recovery)
+    }
     if (tier >= 3 && !this.linked && this.rng() < PACING.linkedChance) {
       gap = span(PACING.linkedGap)
       this.linked = true

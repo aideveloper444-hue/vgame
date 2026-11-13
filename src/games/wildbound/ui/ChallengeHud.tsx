@@ -16,15 +16,17 @@ import { challengeTally, nameOf, resetChallengeTally, textOf } from './challenge
 
 /** the run the tally belongs to (a revive keeps the same run, a retry starts a new one) */
 let tallyRun: object | null = null
+/** the bonus for clearing all three gauntlet legs in a row */
+const GAUNTLET_BONUS = 1000
 /** the bonus for each star */
 const STAR_BONUS = 100
 /** how long the cleared card stays up (ms) */
 const DONE_MS = 2100
 
 type Card =
-  | { mode: 'ahead'; kind: string; dist: number }
-  | { mode: 'live'; kind: string; p: number }
-  | { mode: 'done'; kind: string; stars: number; bonus: number; id: number }
+  | { mode: 'ahead'; kind: string; dist: number; leg?: number }
+  | { mode: 'live'; kind: string; p: number; leg?: number }
+  | { mode: 'done'; kind: string; stars: number; bonus: number; id: number; leg?: number; conquered?: boolean }
 
 interface Track {
   sec: Section
@@ -38,6 +40,8 @@ export default function ChallengeHud({ runKey, solo }: { runKey: number; solo: b
   const track = useRef<Track | null>(null)
   const done = useRef<{ until: number; card: Card } | null>(null)
   const finished = useRef(new WeakSet<Section>())
+  /** gauntlet legs cleared in a row */
+  const streak = useRef(0)
 
   useEffect(() => {
     track.current = null
@@ -54,6 +58,7 @@ export default function ChallengeHud({ runKey, solo }: { runKey: number; solo: b
         if (e.type === 'coin' && e.d >= t.sec.from - 6 && e.d <= t.sec.to + 2) t.got++
         else if (e.type === 'saved' && (e.by === 'shield' || e.by === 'loyal')) t.saved = true
         else if (e.type === 'crash') {
+          streak.current = 0
           finished.current.add(t.sec)
           track.current = null
         }
@@ -101,7 +106,11 @@ export default function ChallengeHud({ runKey, solo }: { runKey: number; solo: b
           finished.current.add(t.sec)
           track.current = null
           const stars = 1 + (t.saved ? 0 : 1) + (t.coins === 0 || t.got >= t.coins * 0.8 ? 1 : 0)
-          const bonus = solo ? stars * STAR_BONUS : 0
+          const leg = t.sec.gauntlet
+          if (leg) streak.current = leg === 1 ? 1 : streak.current === leg - 1 ? leg : 0
+          const conquered = leg === 3 && streak.current === 3
+          if (conquered) challengeTally.gauntlets++
+          const bonus = solo ? stars * STAR_BONUS + (conquered ? GAUNTLET_BONUS : 0) : 0
           if (bonus) s.score += bonus
           challengeTally.cleared++
           challengeTally.kinds.push(t.sec.kind)
@@ -110,12 +119,12 @@ export default function ChallengeHud({ runKey, solo }: { runKey: number; solo: b
           if (stars === 3) challengeTally.perfect++
           sfx.cleared(stars)
           haptic(stars === 3 ? 60 : 30)
-          const c: Card = { mode: 'done', kind: t.sec.kind, stars, bonus, id: now }
+          const c: Card = { mode: 'done', kind: t.sec.kind, stars, bonus, id: now, leg, conquered }
           done.current = { until: now + DONE_MS, card: c }
           window.dispatchEvent(new CustomEvent('wb-cleared', { detail: stars }))
           return show(c)
         }
-        return show({ mode: 'live', kind: t.sec.kind, p: Math.max(0, Math.min(1, (s.d - t.sec.from) / Math.max(1, t.sec.to - t.sec.from))) })
+        return show({ mode: 'live', kind: t.sec.kind, leg: t.sec.gauntlet, p: Math.max(0, Math.min(1, (s.d - t.sec.from) / Math.max(1, t.sec.to - t.sec.from))) })
       }
       if (!s.alive) return show(null)
       const next = sim.sections.filter((x) => x.announced && x.to > s.d && !finished.current.has(x)).sort((a, b) => a.from - b.from)[0]
@@ -125,10 +134,10 @@ export default function ChallengeHud({ runKey, solo }: { runKey: number; solo: b
         const coins = sim.items.filter((it) => it.kind === 'coin' && !it.gone && it.d >= next.from - 6 && it.d <= next.to + 2).length
         track.current = { sec: next, coins, got: 0, saved: false }
         challengeTally.seen++
-        return show({ mode: 'live', kind: next.kind, p: 0 })
+        return show({ mode: 'live', kind: next.kind, leg: next.gauntlet, p: 0 })
       }
       const dist = next.from - s.d
-      show(dist < 75 ? { mode: 'ahead', kind: next.kind, dist } : null)
+      show(dist < 75 ? { mode: 'ahead', kind: next.kind, dist, leg: next.gauntlet } : null)
     }
     raf = requestAnimationFrame(loop)
     return () => cancelAnimationFrame(raf)
@@ -137,9 +146,19 @@ export default function ChallengeHud({ runKey, solo }: { runKey: number; solo: b
   if (!card) return null
   const t = textOf(card.kind)
   return (
-    <div className="wb-chal" data-mode={card.mode} key={card.mode === 'done' ? card.id : card.mode + card.kind}>
+    <div className={`wb-chal ${card.leg ? 'is-gauntlet' : ''}`} data-mode={card.mode} key={card.mode === 'done' ? card.id : card.mode + card.kind}>
       <div className="wb-chal-top">
-        <span className="wb-chal-eyebrow">{card.mode === 'done' ? 'Challenge cleared' : card.mode === 'live' ? 'Challenge' : 'Challenge ahead'}</span>
+        <span className="wb-chal-eyebrow">
+          {card.mode === 'done' && card.conquered
+            ? 'Gauntlet conquered'
+            : card.leg
+              ? `Final gauntlet · ${card.leg}/3`
+              : card.mode === 'done'
+                ? 'Challenge cleared'
+                : card.mode === 'live'
+                  ? 'Challenge'
+                  : 'Challenge ahead'}
+        </span>
         {card.mode === 'ahead' && <span className="wb-chal-dist">{Math.max(0, Math.ceil(card.dist / 5) * 5)} m</span>}
         {card.mode === 'done' && card.bonus > 0 && <span className="wb-chal-dist">+{card.bonus}</span>}
       </div>
