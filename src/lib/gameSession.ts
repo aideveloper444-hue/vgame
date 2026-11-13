@@ -27,8 +27,4 @@ export function completeGameSession(opts: SessionCompleteOptions) {
     rewards.bumpChallenge('play-friend', 1)
     usePlayerStore.getState().unlockAchievement('party-player')
   }
-
-  if (gameId === 'amazon' && won) {
-    usePlayerStore.getState().unlockAchievement('alpha-runner')
-  }
 }

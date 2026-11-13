@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import { createPortal, useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
 import * as THREE from 'three'
 import { CLIP, buildHero, heroAnimations, useHeroAssets } from './ludoCharacters'
+import { useCharacterStyle } from './ludoThemes'
 import { COLOR_GLOW, type LudoColor } from './ludoBoardLayout'
 
 export type CharacterPose = 'idle' | 'walk' | 'attack' | 'die' | 'celebrate'
@@ -111,7 +112,8 @@ export default function LudoCharacter({
 }) {
   const assets = useHeroAssets()
   const scene = useThree((s) => s.scene)
-  const hero = useMemo(() => buildHero(color, assets), [color, assets])
+  const style = useCharacterStyle((st) => st.styleId)
+  const hero = useMemo(() => buildHero(color, assets, style), [color, assets, style])
   const clips = useMemo(() => heroAnimations(assets, color), [assets, color])
   const glow = COLOR_GLOW[color]
   const sword = useMemo(() => makeSword(glow), [glow])
@@ -151,6 +153,7 @@ export default function LudoCharacter({
     const target =
       pose === 'walk' ? CLIP.run : pose === 'attack' ? CLIP.attack : pose === 'die' ? CLIP.death : pose === 'celebrate' ? CLIP.celebrate : CLIP.idle
     const next = actions[target] ?? actions[CLIP.idle]
+    // a calm, weapon-free idle; the sword appears only for the capture strike itself
     sword.visible = pose === 'attack'
     if (pose === 'attack') attackStart.current = performance.now()
     if (!next || currentRef.current === target) return
@@ -174,7 +177,7 @@ export default function LudoCharacter({
 
     // Sword trail: sample the blade's base and tip in world space every frame of the slash.
     const mat = trail.material as THREE.MeshBasicMaterial
-    if (!sword.visible) {
+    if (!sword.visible || currentRef.current !== CLIP.attack) {
       mat.opacity = Math.max(0, mat.opacity - delta * 4)
       return
     }
@@ -200,8 +203,8 @@ export default function LudoCharacter({
 
   return (
     <>
-      {/* a little wider than the base mesh, for the chunky figurine look */}
-      <primitive object={hero.root} scale={[hero.scale * 1.14, hero.scale, hero.scale * 1.14]} onClick={onClick} />
+      {/* true proportions: the old widening gave a chunky toy-figurine look */}
+      <primitive object={hero.root} scale={hero.scale} onClick={onClick} />
       {createPortal(<primitive object={trail} />, scene)}
     </>
   )

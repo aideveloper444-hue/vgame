@@ -1,4 +1,4 @@
-import { AlertTriangle, Dices, Flag, MessageCircle, Navigation, Skull, Trophy, Zap, type LucideIcon } from 'lucide-react'
+import { AlertTriangle, Dices, Flag, MessageCircle, Navigation, Skull, Trophy, type LucideIcon } from 'lucide-react'
 import { useLudoStore, type LudoLogEntry, type LudoLogKind } from './ludoStore'
 import { COLOR_GLOW } from './ludoBoardLayout'
 
@@ -10,7 +10,6 @@ const KIND_ICON: Record<LudoLogKind, { icon: LucideIcon; tint: string }> = {
   win: { icon: Trophy, tint: '#fcd34d' },
   warn: { icon: AlertTriangle, tint: '#fbbf24' },
   chat: { icon: MessageCircle, tint: '#c4b5fd' },
-  power: { icon: Zap, tint: '#67e8f9' },
 }
 
 function clock(ms: number): string {

@@ -2,7 +2,7 @@ import { useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { mergeBufferGeometries } from 'three-stdlib'
-import { MeshReflectorMaterial, RoundedBox } from '@react-three/drei'
+import { MeshReflectorMaterial } from '@react-three/drei'
 
 /*
  * The reference's night-city arena, rendered live: a violet-to-magenta sky, a glossy plaza floor with a
@@ -306,12 +306,8 @@ function Towers({ closeRow }: { closeRow: boolean }) {
   )
 }
 
-/* ------------------------------------------------------------------ deck, frame and pylons */
+/* ------------------------------------------------------------------ deck and lamps */
 
-/** Half-width of the board slab (matches LudoScene3D's SLAB_HALF). */
-const SLAB_HALF = 5.0
-const RIM_W = 0.62
-const RIM_TOP = 0.16
 const DECK_HALF = 9.5
 
 /** City floor far below the deck: dark, with a faint blue street grid. */
@@ -359,88 +355,6 @@ function MirrorDeck() {
             <boxGeometry args={[DECK_HALF * 2, 0.05, 0.08]} />
             <meshBasicMaterial color={new THREE.Color(0.3, 1.5, 2.8)} toneMapped={false} />
           </mesh>
-        </group>
-      ))}
-    </group>
-  )
-}
-
-/** Team colours at the board's corners: red far-left, green far-right, yellow near-right, blue near-left. */
-const RIM_COLORS = ['#ff2d55', '#22e06b', '#ffc21a', '#2f7dff']
-
-/**
- * A thick, layered gunmetal frame around the board: beveled bars on all four sides, a neon strip along
- * the top in each adjacent team's colour, a glowing channel on the outer face, and armoured corner
- * blocks with light pylons, like the reference's raised arena table.
- */
-function BoardRim() {
-  const half = SLAB_HALF + RIM_W / 2
-  const h = RIM_TOP - FLOOR_Y
-  const pulse = useRef<(THREE.MeshBasicMaterial | null)[]>([])
-  useFrame((st) => {
-    const k = 1.8 + Math.sin(st.clock.elapsedTime * 2.2) * 0.4
-    for (const m of pulse.current) m?.color.setRGB(0.3 * k, 1.1 * k, 2 * k)
-  })
-  // far (-z), right (+x), near (+z), left (-x); each side is split between its two corner teams
-  const sides = [
-    { rot: 0, colors: [RIM_COLORS[0], RIM_COLORS[1]] },
-    { rot: -Math.PI / 2, colors: [RIM_COLORS[1], RIM_COLORS[2]] },
-    { rot: Math.PI, colors: [RIM_COLORS[2], RIM_COLORS[3]] },
-    { rot: Math.PI / 2, colors: [RIM_COLORS[3], RIM_COLORS[0]] },
-  ]
-  const len = SLAB_HALF * 2
-  return (
-    <group>
-      {sides.map((sd, i) => (
-        <group key={i} rotation-y={sd.rot}>
-          <RoundedBox args={[len + RIM_W * 2, h, RIM_W]} radius={0.08} smoothness={3} position={[0, FLOOR_Y + h / 2, -half]} castShadow receiveShadow>
-            <meshPhysicalMaterial color="#1c2546" metalness={0.92} roughness={0.24} clearcoat={0.7} clearcoatRoughness={0.15} />
-          </RoundedBox>
-          {/* polished stepped inner lip */}
-          <mesh position={[0, RIM_TOP - 0.05, -half + RIM_W / 2 - 0.08]}>
-            <boxGeometry args={[len, 0.12, 0.14]} />
-            <meshStandardMaterial color="#9aa6c8" metalness={1} roughness={0.2} />
-          </mesh>
-          {/* team-colour neon strips along the top, one per half */}
-          {sd.colors.map((c, k) => (
-            <mesh key={k} position={[(k ? 1 : -1) * (len / 4 + 0.05), RIM_TOP + 0.01, -half - 0.05]}>
-              <boxGeometry args={[len / 2 - 0.3, 0.04, 0.1]} />
-              <meshBasicMaterial color={new THREE.Color(c).multiplyScalar(2.3)} toneMapped={false} />
-            </mesh>
-          ))}
-          {/* glowing channel on the outer face */}
-          <mesh position={[0, FLOOR_Y + h * 0.45, -half - RIM_W / 2 - 0.005]}>
-            <boxGeometry args={[len + RIM_W, 0.07, 0.02]} />
-            <meshBasicMaterial
-              ref={(m) => {
-                pulse.current[i] = m
-              }}
-              color={new THREE.Color(0.5, 1.8, 3)}
-              toneMapped={false}
-            />
-          </mesh>
-        </group>
-      ))}
-      {/* armoured corner blocks with a light pylon on each */}
-      {[
-        [-1, -1],
-        [1, -1],
-        [1, 1],
-        [-1, 1],
-      ].map(([sx, sz], i) => (
-        <group key={i} position={[sx * half, 0, sz * half]}>
-          <RoundedBox args={[RIM_W * 1.6, h + 0.12, RIM_W * 1.6]} radius={0.1} smoothness={3} position={[0, FLOOR_Y + (h + 0.12) / 2, 0]} castShadow>
-            <meshPhysicalMaterial color="#232d55" metalness={0.95} roughness={0.2} clearcoat={0.8} />
-          </RoundedBox>
-          <mesh position={[0, RIM_TOP + 0.38, 0]} castShadow>
-            <cylinderGeometry args={[0.12, 0.2, 0.62, 12]} />
-            <meshStandardMaterial color="#2b3766" metalness={0.9} roughness={0.25} />
-          </mesh>
-          <mesh position={[0, RIM_TOP + 0.75, 0]}>
-            <sphereGeometry args={[0.16, 16, 12]} />
-            <meshBasicMaterial color={new THREE.Color(RIM_COLORS[i]).multiplyScalar(2.6)} toneMapped={false} />
-          </mesh>
-          <pointLight position={[0, RIM_TOP + 0.8, 0]} color={RIM_COLORS[i]} intensity={2.2} distance={4.5} decay={1.6} />
         </group>
       ))}
     </group>
@@ -541,7 +455,6 @@ export default function LudoNeonCity() {
       <Sky />
       <CityFloor />
       <MirrorDeck />
-      <BoardRim />
       <DeckLamps />
       <Towers closeRow={closeRow} />
       <Billboards />

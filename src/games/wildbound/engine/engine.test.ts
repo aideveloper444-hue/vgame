@@ -5,8 +5,8 @@
  * Run with: npm run test:wildbound
  */
 import assert from 'node:assert/strict'
-import { ANIMALS, ESCAPES, ZONES, ZONE_LEN, biomeAt, isObstacle, type AnimalId, type ObstacleKind } from './content'
-import { LANE_W, RIDE_H, RunSim, laneX, raceStartZone, type Item, type Lane, type Section } from './run'
+import { ANIMALS, ESCAPES, RETIRED, ROSTER, ZONES, ZONE_LEN, biomeAt, isObstacle, type AnimalId, type ObstacleKind } from './content'
+import { FLY_H, LANE_W, RIDE_H, RunSim, laneX, raceStartZone, type Item, type Lane, type Section } from './run'
 import { autopilot } from './autopilot'
 import { RaceSession, STUMBLE_MS, pickBotAnimals, type RaceSeat } from './race'
 
@@ -119,7 +119,7 @@ test('junctions: the lane at the split picks the route; each route has its own w
   let threeWay = 0
   for (const seed of [11, 12, 13, 14, 15, 16]) {
     for (const lane of [0, 1, 2] as Lane[]) {
-      const sim = new RunSim({ seed, animalId: 'leo' })
+      const sim = new RunSim({ seed, animalId: 'titan' })
       sim.state.invulnUntil = 1e12
       sim.step(16)
       const f = sim.forks[0]
@@ -142,7 +142,7 @@ test('junctions: the lane at the split picks the route; each route has its own w
 })
 
 test('a jump pressed just before landing is buffered and happens on landing; a late one is dropped', () => {
-  const sim = new RunSim({ seed: 2, animalId: 'leo' })
+  const sim = new RunSim({ seed: 2, animalId: 'titan' })
   sim.items = []
   sim.input('jump')
   for (let i = 0; i < 35; i++) sim.step(16) // 560 ms of the 640 ms jump
@@ -151,7 +151,7 @@ test('a jump pressed just before landing is buffered and happens on landing; a l
   for (let i = 0; i < 8; i++) sim.step(16) // lands
   assert.equal(sim.state.pose, 'jump', 'the buffered jump fires on landing')
   assert.equal(sim.state.stats.jumps, 2)
-  const late = new RunSim({ seed: 2, animalId: 'leo' })
+  const late = new RunSim({ seed: 2, animalId: 'titan' })
   late.items = []
   late.input('jump')
   for (let i = 0; i < 19; i++) late.step(16)
@@ -162,7 +162,7 @@ test('a jump pressed just before landing is buffered and happens on landing; a l
 
 // ---------------------------------------------------------------- movement & collisions
 
-function lone(kind: ObstacleKind, lane: Lane = 1, animalId: AnimalId = 'leo') {
+function lone(kind: ObstacleKind, lane: Lane = 1, animalId: AnimalId = 'titan') {
   const sim = new RunSim({ seed: 1, animalId })
   sim.items = []
   ;(sim as unknown as { nextRow: number }).nextRow = 1e9
@@ -171,7 +171,7 @@ function lone(kind: ObstacleKind, lane: Lane = 1, animalId: AnimalId = 'leo') {
   ;(sim as unknown as { nextSectionAt: number }).nextSectionAt = 1e9
   sim.sections = []
   sim.state.shieldUntil = 0
-  sim.items.push({ id: 1, d: 20, lane, kind, h: 0, len: { log: 0.45, roots: 0.45, trap: 0.5, rock: 0.75, ruin: 0.8, branch: 0.35, barrier: 0.3, gap: 1.2, boulder: 0.9, trolley: 1.1, stream: 1.3, rubble: 0.45, stalactite: 0.35 }[kind], gone: false, passed: false, broken: false, frozen: false, moving: 0 })
+  sim.items.push({ id: 1, d: 20, lane, kind, h: 0, len: { log: 0.45, roots: 0.45, trap: 0.5, rock: 0.75, ruin: 0.8, branch: 0.35, barrier: 0.3, gap: 1.2, boulder: 0.9, trolley: 1.1, stream: 1.3, rubble: 0.45, stalactite: 0.35, plane: 1.6 }[kind], gone: false, passed: false, broken: false, frozen: false, moving: 0 })
   return sim
 }
 const until = (sim: RunSim, d: number) => runFor(sim, d - sim.state.d)
@@ -289,6 +289,10 @@ const abilityCase: Record<AnimalId, { kind: ObstacleKind; prep?: (s: RunSim) => 
   titan: { kind: 'ruin' },
   koda: { kind: 'rock', prep: (s) => { until(s, 18); s.input('roll') } },
   snow: { kind: 'gap' },
+  nova: { kind: 'boulder' },
+  blaze: { kind: 'rock' },
+  zara: { kind: 'rock', prep: (s) => { until(s, 20 - s.state.speed * 0.4); s.input('jump') } },
+  ash: { kind: 'rock' },
 }
 
 test('every animal ability gets it through its showcase obstacle, and cools down', () => {
@@ -344,10 +348,12 @@ test('tutorial waits for each move and finishes', () => {
 
 // ---------------------------------------------------------------- roster
 
-test('Sonic is the only free animal; the other nine cost gems', () => {
-  assert.equal(ANIMALS.length, 10)
-  assert.deepEqual(ANIMALS.filter((a) => a.free).map((a) => a.id), ['sonic'])
+test('Sonic and the tiger are free; the others cost gems; rested animals are not offered', () => {
+  assert.equal(ANIMALS.length, 14)
+  assert.deepEqual(ANIMALS.filter((a) => a.free).map((a) => a.id), ['sonic', 'raja'])
   for (const a of ANIMALS.filter((x) => !x.free)) assert.equal(a.gemPrice, 499)
+  assert.equal(ROSTER.length, 10)
+  for (const a of ROSTER) assert.ok(!RETIRED.has(a.id))
 })
 
 
@@ -385,6 +391,32 @@ test('railway: running into the trolley without jumping crashes; changing lane h
   runFor(b, 3)
   assert.equal(b.state.ride, null)
   assert.ok(b.state.alive)
+})
+
+test('airstrip: running into the plane boards it, it flies over everything, steers, and lands', () => {
+  const sim = lone('plane', 1)
+  sim.sections = [{ kind: 'flight', from: 14, to: 130, lane: 1, built: true, announced: true }]
+  // a rock straight ahead on the flight path: the plane must carry the runner over it
+  sim.items.push({ id: 2, d: 60, lane: 1, kind: 'rock', h: 0, len: 0.75, gone: false, passed: false, broken: false, frozen: false, moving: 0 })
+  let boarded = false
+  let top = 0
+  until(sim, 30)
+  assert.ok(sim.state.ride?.kind === 'plane', 'boarded by running into it')
+  boarded = true
+  runFor(sim, 25, () => {
+    top = Math.max(top, sim.state.y)
+  })
+  assert.ok(top > FLY_H * 0.8, `climbed to ${top.toFixed(2)} m`)
+  sim.input('left')
+  runFor(sim, 3)
+  assert.ok(sim.state.ride, 'steering does not drop the runner off the plane')
+  assert.equal(sim.state.lane, 0)
+  sim.input('jump')
+  assert.ok(sim.state.pose !== 'jump', 'no jumping off mid-air')
+  // the flight ends 6 m before the section (124 m); run on past the landing
+  runFor(sim, 80)
+  assert.ok(boarded && sim.state.ride === null, 'landed and stepped off')
+  assert.ok(sim.state.alive, `crashed into ${sim.state.crashKind}`)
 })
 
 test('river water must be jumped; rubble jumped; cave spikes slid under', () => {
@@ -477,7 +509,7 @@ test('races: the same seed gives every animal the same obstacles', () => {
 })
 
 function vineSim() {
-  const sim = new RunSim({ seed: 8, animalId: 'leo' })
+  const sim = new RunSim({ seed: 8, animalId: 'titan' })
   sim.state.shieldUntil = 0
   sim.items = sim.items.filter((it) => it.d < 20)
   const sec: Section = { kind: 'vines', from: 60, to: 120, lane: 0, built: false, announced: true }
@@ -548,7 +580,7 @@ test('surface grip: ice slows lane changes, mud slows the run', () => {
 })
 
 test('close call: leaving a lane at the last moment before an obstacle scores a near miss', () => {
-  const sim = new RunSim({ seed: 6, animalId: 'leo' })
+  const sim = new RunSim({ seed: 6, animalId: 'titan' })
   sim.state.shieldUntil = 0
   sim.items = []
   ;(sim as unknown as { nextRow: number }).nextRow = 1e9
@@ -558,7 +590,7 @@ test('close call: leaving a lane at the last moment before an obstacle scores a 
   until(sim, rock.d + 4)
   assert.ok(sim.state.alive)
   assert.equal(sim.state.stats.nearMisses, 1)
-  const early = new RunSim({ seed: 6, animalId: 'leo' })
+  const early = new RunSim({ seed: 6, animalId: 'titan' })
   early.items = []
   ;(early as unknown as { nextRow: number }).nextRow = 1e9
   ;(early as unknown as { add: (d: number, l: Lane, k: string) => Item }).add(40, 1, 'rock')
@@ -596,8 +628,8 @@ test('race vs computer: rivals run the same trail, stumble instead of dying, and
 })
 
 test('race: a crash costs a stumble, then the runner is back up', () => {
-  const race = new RaceSession(5, 1000, [{ id: 'you', name: 'You', avatarEmoji: '', kind: 'local', animalId: 'leo' }], 'you')
-  const me = new RunSim({ seed: 5, animalId: 'leo' })
+  const race = new RaceSession(5, 1000, [{ id: 'you', name: 'You', avatarEmoji: '', kind: 'local', animalId: 'titan' }], 'you')
+  const me = new RunSim({ seed: 5, animalId: 'titan' })
   me.state.shieldUntil = 0
   me.items = []
   ;(me as unknown as { nextRow: number }).nextRow = 1e9

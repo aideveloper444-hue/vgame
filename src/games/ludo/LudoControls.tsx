@@ -1,15 +1,14 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ChevronRight, Coins, Mic, MicOff, Send, Smile, X } from 'lucide-react'
 import { COLOR_GLOW, COLOR_HEX } from './ludoBoardLayout'
-import type { LudoPlayer, PowerKind, PowerStock } from './ludoStore'
+import type { LudoPlayer } from './ludoStore'
 import LudoAvatar from './LudoAvatar'
 import { usePartyStore } from '@/social/stores/usePartyStore'
 import { useVoiceStore } from '@/social/stores/useVoiceStore'
 import { usePlayerStore } from '@/social/stores/usePlayerStore'
 
 /*
- * The lounge's game controls, as in the poster: Power Ups (Speed, Shield, Bomb),
- * Quick Chat & Emotes, Voice Chat, the chat box, Send Gift.
+ * The lounge's game controls, as in the poster: Quick Chat & Emotes, Voice Chat, the chat box, Send Gift.
  */
 
 const glass = {
@@ -20,138 +19,17 @@ const glass = {
   WebkitBackdropFilter: 'blur(20px) saturate(1.45)',
 } as const
 
-// ---------------------------------------------------------------- power ups
-
-const POWER_META: Record<PowerKind, { label: string; icon: string; ring: string; glow: string }> = {
-  speed: { label: 'Speed', icon: '⚡', ring: '#a855f7', glow: '#facc15' },
-  shield: { label: 'Shield', icon: '🛡️', ring: '#3b82f6', glow: '#60a5fa' },
-  bomb: { label: 'Bomb', icon: '💣', ring: '#6b21a8', glow: '#f97316' },
-}
-
-export function PowerUpsPanel({
-  powers,
-  enabled,
-  armed,
-  onUse,
-}: {
-  powers: PowerStock
-  /** It is this device's turn and a power-up may be used now. */
-  enabled: boolean
-  /** The power that is on (Speed) or waiting for a target (Shield, Bomb). */
-  armed: PowerKind | null
-  onUse: (kind: PowerKind) => void
-}) {
-  return (
-    <div className="pointer-events-auto flex w-[5.7rem] flex-col gap-1 rounded-2xl px-1 pb-1.5 pt-1.5 sm:w-[6.2rem] sm:gap-1.5 sm:px-1.5 sm:pb-2" style={glass}>
-      <p className="text-center text-[8px] font-black uppercase leading-tight tracking-[0.08em] text-sky-200 [text-shadow:0_0_8px_rgba(56,189,248,0.8)] sm:text-[9px]">Power Ups</p>
-      {(Object.keys(POWER_META) as PowerKind[]).map((k) => {
-        const m = POWER_META[k]
-        const count = powers[k]
-        const usable = enabled && count > 0
-        const on = armed === k
-        return (
-          <button
-            key={k}
-            type="button"
-            disabled={!usable && !on}
-            onClick={() => onUse(k)}
-            className="flex w-full items-center gap-1.5 rounded-xl py-0.5 pl-0.5 pr-0.5 text-left transition-transform active:scale-90 disabled:opacity-45"
-            style={on ? { background: `${m.glow}33`, boxShadow: `0 0 12px ${m.glow}` } : undefined}
-            aria-label={`${m.label} (${count} left)`}
-          >
-            <span
-              className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[15px] sm:h-8 sm:w-8 sm:text-[16px]"
-              style={{ background: 'radial-gradient(circle at 40% 35%, #2a2f5e, #0a0d24 75%)', boxShadow: `0 0 0 2px ${m.ring}, 0 0 10px ${m.glow}` }}
-            >
-              <span className={on ? 'animate-pulse' : ''}>{m.icon}</span>
-              <span className="absolute -bottom-1 -right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-gradient-to-b from-amber-300 to-amber-600 px-0.5 text-[9px] font-black text-amber-950 ring-1 ring-black/40">
-                {count}
-              </span>
-            </span>
-            <span className="min-w-0 truncate text-[8px] font-black leading-none text-emerald-100 sm:text-[9px]">{m.label}</span>
-          </button>
-        )
-      })}
-    </div>
-  )
-}
-
-/**
- * Portrait layout: the three power-ups as a slim horizontal strip of round buttons that sits in the gap
- * above the board's far edge, so it never covers tiles.
- */
-export function PowerUpsStrip({ powers, enabled, armed, onUse }: { powers: PowerStock; enabled: boolean; armed: PowerKind | null; onUse: (kind: PowerKind) => void }) {
-  return (
-    <div className="pointer-events-auto flex items-center gap-1.5 rounded-full py-1 pl-2 pr-1.5" style={glass}>
-      <span className="text-[8px] font-black uppercase leading-[1.05] tracking-[0.08em] text-sky-200 [text-shadow:0_0_8px_rgba(56,189,248,0.8)]">
-        Power
-        <br />
-        Ups
-      </span>
-      {(Object.keys(POWER_META) as PowerKind[]).map((k) => {
-        const m = POWER_META[k]
-        const count = powers[k]
-        const on = armed === k
-        return (
-          <button
-            key={k}
-            type="button"
-            disabled={!(enabled && count > 0) && !on}
-            onClick={() => onUse(k)}
-            className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[15px] transition-transform active:scale-90 disabled:opacity-45"
-            style={{ background: 'radial-gradient(circle at 40% 35%, #2a2f5e, #0a0d24 75%)', boxShadow: on ? `0 0 0 2px ${m.ring}, 0 0 14px ${m.glow}` : `0 0 0 2px ${m.ring}, 0 0 8px ${m.glow}88` }}
-            aria-label={`${m.label} (${count} left)`}
-            title={m.label}
-          >
-            <span className={on ? 'animate-pulse' : ''}>{m.icon}</span>
-            <span className="absolute -bottom-1 -right-1 flex h-[15px] min-w-[15px] items-center justify-center rounded-full bg-gradient-to-b from-amber-300 to-amber-600 px-0.5 text-[9px] font-black text-amber-950">{count}</span>
-          </button>
-        )
-      })}
-    </div>
-  )
-}
-
-/** Phone layout: the three power-ups as pills in one row (as in the approved mockup). */
-export function PowerUpsRow({ powers, enabled, armed, onUse }: { powers: PowerStock; enabled: boolean; armed: PowerKind | null; onUse: (kind: PowerKind) => void }) {
-  return (
-    <div className="flex min-w-0 flex-1 gap-1.5">
-      {(Object.keys(POWER_META) as PowerKind[]).map((k) => {
-        const m = POWER_META[k]
-        const count = powers[k]
-        const on = armed === k
-        return (
-          <button
-            key={k}
-            type="button"
-            disabled={!(enabled && count > 0) && !on}
-            onClick={() => onUse(k)}
-            className="pointer-events-auto flex h-[2.6rem] min-w-0 flex-1 items-center justify-center gap-1.5 rounded-2xl px-1 transition-transform active:scale-95 disabled:opacity-50"
-            style={{ ...glass, ...(on ? { boxShadow: `0 0 16px ${m.glow}`, borderColor: m.glow } : {}) }}
-            aria-label={`${m.label} (${count} left)`}
-          >
-            <span className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[14px]" style={{ background: 'radial-gradient(circle at 40% 35%, #2a2f5e, #0a0d24 75%)', boxShadow: `0 0 0 2px ${m.ring}` }}>
-              <span className={on ? 'animate-pulse' : ''}>{m.icon}</span>
-              <span className="absolute -bottom-1 -right-1.5 flex h-[15px] min-w-[15px] items-center justify-center rounded-full bg-gradient-to-b from-amber-300 to-amber-600 px-0.5 text-[9px] font-black text-amber-950">{count}</span>
-            </span>
-            <span className="truncate text-[11px] font-black text-white">{m.label}</span>
-          </button>
-        )
-      })}
-    </div>
-  )
-}
-
 // ---------------------------------------------------------------- emotes, voice, chat, gift
 
 export const EMOTES = ['👍', '😆', '😡', '❤️']
 
-export function EmoteBar({ onEmote, onGift }: { onEmote: (emoji: string) => void; onGift: () => void }) {
+export function EmoteBar({ onEmote, onGift, inline = false }: { onEmote: (emoji: string) => void; onGift: () => void; inline?: boolean }) {
   return (
-    <div className="pointer-events-auto flex min-w-0 flex-col items-center rounded-2xl px-1.5 pb-1 pt-1.5" style={glass}>
+    <div className={`pointer-events-auto flex min-w-0 shrink-0 flex-col items-center ${inline ? 'h-12 justify-center rounded-full px-1.5' : 'rounded-2xl px-1.5 pb-1 pt-1.5'}`} style={glass}>
       <div className="flex items-center gap-1">
-        {EMOTES.map((e) => (
-          <button key={e} type="button" onClick={() => onEmote(e)} className="flex h-[30px] w-[30px] items-center justify-center rounded-full bg-white/5 text-[17px] ring-1 ring-sky-300/40 transition-transform active:scale-90" aria-label={`Send ${e}`}>
+        {EMOTES.map((e, i) => (
+          // in the slim phone row only two emotes fit beside a usable chat field
+          <button key={e} type="button" onClick={() => onEmote(e)} className={`flex h-[30px] w-[30px] items-center justify-center rounded-full bg-white/5 text-[17px] ring-1 ring-sky-300/40 transition-transform active:scale-90 ${inline && i >= 2 ? 'max-[440px]:hidden' : ''}`} aria-label={`Send ${e}`}>
             {e}
           </button>
         ))}
@@ -159,12 +37,12 @@ export function EmoteBar({ onEmote, onGift }: { onEmote: (emoji: string) => void
           🎁
         </button>
       </div>
-      <p className="mt-0.5 text-[9.5px] font-black tracking-wide text-sky-200">Quick Chat &amp; Emotes</p>
+      {!inline && <p className="mt-0.5 text-[9.5px] font-black tracking-wide text-sky-200">Quick Chat &amp; Emotes</p>}
     </div>
   )
 }
 
-export function VoiceChip({ onInfo }: { onInfo: (text: string) => void }) {
+export function VoiceChip({ onInfo, compact = false }: { onInfo: (text: string) => void; compact?: boolean }) {
   const partyActive = usePartyStore((s) => s.active)
   const joined = useVoiceStore((s) => s.joined)
   const joining = useVoiceStore((s) => s.joining)
@@ -186,14 +64,14 @@ export function VoiceChip({ onInfo }: { onInfo: (text: string) => void }) {
   }
 
   return (
-    <button type="button" onClick={toggle} className="pointer-events-auto flex h-[3.4rem] shrink-0 items-center gap-1 rounded-2xl px-1.5 transition-transform active:scale-95" style={glass} aria-pressed={live} aria-label="Voice chat">
+    <button type="button" onClick={toggle} className={`pointer-events-auto flex shrink-0 items-center gap-1 transition-transform active:scale-95 ${compact ? 'h-12 rounded-full px-1.5' : 'h-[3.4rem] rounded-2xl px-1.5'}`} style={glass} aria-pressed={live} aria-label="Voice chat">
       <span
         className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
         style={{ background: live ? 'radial-gradient(circle, #38bdf8, #1d4ed8)' : 'radial-gradient(circle, #1e3a8a, #0b1236)', boxShadow: live ? '0 0 14px #38bdf8' : '0 0 0 1.5px #3b82f6' }}
       >
         {joined && micMuted ? <MicOff size={17} className="text-white" /> : <Mic size={17} className="text-white" />}
       </span>
-      <span className="flex min-w-0 flex-col items-start max-[379px]:hidden">
+      <span className={`flex min-w-0 flex-col items-start max-[379px]:hidden ${compact ? 'hidden' : ''}`}>
         <span className="flex h-4 items-end gap-[2px]" aria-hidden>
           {[5, 9, 13, 8, 12, 6, 10].map((h, i) => (
             <span key={i} className={`w-[2.5px] rounded-full bg-sky-300 ${live ? 'ludo-wave' : ''}`} style={{ height: live ? h : 3, animationDelay: `${i * 90}ms`, opacity: live ? 1 : 0.5 }} />

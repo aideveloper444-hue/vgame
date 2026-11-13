@@ -14,8 +14,9 @@ export default function RootLayout() {
   const { pathname } = useLocation()
   const immersive = isImmersiveRoute(pathname)
   const inVoice = useVoiceStore((s) => s.joined)
-  const inGame = /^\/games\/[^/]+\/play/.test(pathname)
-  useEffect(() => setMusicContext({ inGame, inVoice }), [inGame, inVoice])
+  // each game has its own theme; the app screens share one
+  const gameId = /^\/games\/([^/]+)\/play/.exec(pathname)?.[1] ?? null
+  useEffect(() => setMusicContext({ gameId, inVoice }), [gameId, inVoice])
   return (
     <div className="flex h-full min-h-screen bg-surface-0">
       <SidebarNav />

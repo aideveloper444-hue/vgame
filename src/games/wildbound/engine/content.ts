@@ -3,7 +3,7 @@
  * shared by the simulation, its tests and the UI.
  */
 
-export type AnimalId = 'sonic' | 'leo' | 'raja' | 'shadow' | 'jax' | 'arctic' | 'bruno' | 'titan' | 'koda' | 'snow'
+export type AnimalId = 'sonic' | 'leo' | 'raja' | 'shadow' | 'jax' | 'arctic' | 'bruno' | 'titan' | 'koda' | 'snow' | 'nova' | 'blaze' | 'zara' | 'ash'
 
 export type AbilityKind = 'boost' | 'roar' | 'leap' | 'stealth' | 'dodge' | 'frost' | 'smash' | 'charge' | 'roll' | 'cliff'
 
@@ -63,7 +63,7 @@ export const ANIMALS: AnimalDef[] = [
     stats: { speed: 3, stamina: 5, defense: 4 },
   },
   {
-    id: 'raja', name: 'Raja', species: 'Tiger', free: false, gemPrice: 499,
+    id: 'raja', name: 'Raja', species: 'Tiger', free: true, gemPrice: 0,
     blurb: 'Raw power on four legs. Clears what others go around.',
     ability: { kind: 'leap', name: 'Super Leap', short: 'Jump higher', desc: 'Huge jumps that clear rocks, ruins and boulders', durationMs: 8000, cooldownMs: CD },
     traits: [
@@ -142,8 +142,55 @@ export const ANIMALS: AnimalDef[] = [
     ],
     stats: { speed: 4, stamina: 3, defense: 3 },
   },
+  {
+    id: 'nova', name: 'Nova', species: 'White Tiger', free: false, gemPrice: 499,
+    blurb: 'A ghost of the snowy forests. Ice follows every stride.',
+    ability: { kind: 'frost', name: 'Frost Sprint', short: 'Freeze obstacles', desc: 'Freezes obstacles ahead so they shatter on contact', durationMs: 6000, cooldownMs: CD },
+    traits: [
+      { name: 'Rare Coat', desc: 'Gems appear more often', icon: 'gems' },
+      { name: 'Power Legs', desc: 'Longer jumps', icon: 'speed' },
+    ],
+    stats: { speed: 4, stamina: 4, defense: 4 },
+  },
+  {
+    id: 'blaze', name: 'Blaze', species: 'Cheetah', free: false, gemPrice: 499,
+    blurb: 'The fastest thing on four legs. Blink and she is gone.',
+    ability: { kind: 'boost', name: 'Speed Burst', short: 'Run faster', desc: 'Explodes into a flat-out sprint for a few seconds', durationMs: 5000, cooldownMs: CD },
+    traits: [
+      { name: 'Built for Speed', desc: 'Faster lane changes', icon: 'speed' },
+      { name: 'Spotted Luck', desc: '+10% gems from pickups', icon: 'gems' },
+    ],
+    stats: { speed: 5, stamina: 2, defense: 2 },
+  },
+  {
+    id: 'zara', name: 'Zara', species: 'Lioness', free: false, gemPrice: 499,
+    blurb: 'The pride\'s true hunter. Patient, then unstoppable.',
+    ability: { kind: 'leap', name: 'Pounce', short: 'Jump higher', desc: 'Huge pouncing jumps that clear rocks, ruins and boulders', durationMs: 8000, cooldownMs: CD },
+    traits: [
+      { name: 'Pride Hunter', desc: '+10% coins from every run', icon: 'coins' },
+      { name: 'Ambush', desc: 'Starts every run with a shield', icon: 'shield' },
+    ],
+    stats: { speed: 4, stamina: 4, defense: 3 },
+  },
+  {
+    id: 'ash', name: 'Ash', species: 'Grey Wolf', free: false, gemPrice: 499,
+    blurb: 'Leader of the pack. Reads the trail before it happens.',
+    ability: { kind: 'dodge', name: 'Rapid Dodge', short: 'Avoid traps', desc: 'Automatically dodges into the safe lane', durationMs: 6000, cooldownMs: CD },
+    traits: [
+      { name: 'Pack Leader', desc: '+10% XP from every run', icon: 'xp' },
+      { name: 'Endurance', desc: 'Power-ups last longer', icon: 'ability' },
+    ],
+    stats: { speed: 4, stamina: 5, defense: 3 },
+  },
 ]
 
+/**
+ * Animals rested from the roster until they have realistic models (their source models are low-detail). They stay in
+ * ANIMALS so old saves, race packets and the engine keep working; nothing offers them any more.
+ */
+export const RETIRED: ReadonlySet<AnimalId> = new Set<AnimalId>(['bruno', 'koda', 'arctic', 'ash'])
+/** The animals the game offers: the roster, home line-up, store and race rivals. */
+export const ROSTER = ANIMALS.filter((a) => !RETIRED.has(a.id))
 export const getAnimal = (id: string | null | undefined): AnimalDef => ANIMALS.find((a) => a.id === id) ?? ANIMALS[0]
 
 // ---------------------------------------------------------------- world
@@ -349,7 +396,7 @@ export function biomeAt(d: number): { biome: BiomeDef; index: number; variant: V
 
 // ---------------------------------------------------------------- obstacles & pickups
 
-export type ObstacleKind = 'log' | 'roots' | 'trap' | 'rock' | 'ruin' | 'branch' | 'barrier' | 'gap' | 'boulder' | 'trolley' | 'stream' | 'rubble' | 'stalactite'
+export type ObstacleKind = 'log' | 'roots' | 'trap' | 'rock' | 'ruin' | 'branch' | 'barrier' | 'gap' | 'boulder' | 'trolley' | 'stream' | 'rubble' | 'stalactite' | 'plane'
 export type PickupKind = 'coin' | 'gem' | 'token' | 'magnet' | 'shield' | 'speed' | 'superjump' | 'megajump' | 'boost'
 /** a hanging vine at the lip of a ravine: jump into it to swing across */
 export type MarkerKind = 'vine'
@@ -373,9 +420,11 @@ export const ESCAPES: Record<ObstacleKind, Escape[]> = {
   stream: ['jump'],
   rubble: ['jump'],
   stalactite: ['low'],
+  // a bush plane on an airstrip: run into it to board and fly (it never crashes the runner)
+  plane: ['lane'],
 }
 /** Obstacles that strength abilities can break. Gaps never break. */
-export const BREAKABLE: Record<ObstacleKind, boolean> = { log: true, roots: true, trap: true, rock: true, ruin: true, branch: true, barrier: true, gap: false, boulder: true, trolley: false, stream: false, rubble: true, stalactite: true }
+export const BREAKABLE: Record<ObstacleKind, boolean> = { log: true, roots: true, trap: true, rock: true, ruin: true, branch: true, barrier: true, gap: false, boulder: true, trolley: false, stream: false, rubble: true, stalactite: true, plane: false }
 export const isObstacle = (k: ItemKind): k is ObstacleKind => k in ESCAPES
 
 export const OBSTACLES_BY_BIOME: Record<BiomeId, ObstacleKind[]> = {
@@ -442,13 +491,14 @@ export const POWER_KINDS: PowerUpKind[] = POWERUPS.map((p) => p.kind)
 export const isPowerUp = (k: string): k is PowerUpKind => (POWER_KINDS as string[]).includes(k)
 
 /** Challenge sections the generator drops into zones that suit them. */
-export type SectionKind = 'rail' | 'river' | 'bridge' | 'rockslide' | 'cave' | 'vines'
+export type SectionKind = 'rail' | 'river' | 'bridge' | 'rockslide' | 'cave' | 'vines' | 'flight'
 export const SECTION_TEXT: Record<SectionKind, { big: string; small: string }> = {
   rail: { big: 'Railway ahead!', small: 'Jump onto the trolley and ride it' },
   river: { big: 'River crossing!', small: 'Hop the stepping stones' },
   bridge: { big: 'Broken bridge!', small: 'Watch for missing planks' },
   rockslide: { big: 'Rockslide!', small: 'Dodge the falling rocks' },
   cave: { big: 'Cave ahead', small: 'Slide under the rock spikes' },
+  flight: { big: 'Airstrip ahead!', small: 'Run into the plane to take off' },
   vines: { big: 'Vine swing!', small: 'Jump into a vine to swing the ravine – or take the log' },
 }
 export const powerUp = (k: PowerUpKind) => POWERUPS.find((p) => p.kind === k)!

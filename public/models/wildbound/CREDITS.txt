@@ -1,0 +1,19 @@
+Wildbound animal models with third-party licences
+================================================
+
+leo.glb (Leo, lion)
+  "realistic Lion 3d model" by Tarun.Teja
+  https://sketchfab.com/3d-models/realistic-lion-3d-model-6da45f5d5a9f4733b195c6f03c92d33c
+  Licence: CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)
+  Changes: texture reduced to 2048 px JPEG; the tiger's gallop retargeted onto the lion's skeleton
+  (clip "Gallop"); the original roar kept as "Intro". 2026-11-09: the four extra detail levels (LODs) removed,
+  a detail normal map generated from the colour texture, a mane added (an under-layer plus ~3200 hair cards skinned to
+  the skeleton, built in Blender), textures re-encoded as WebP.
+
+titan.glb (Titan, elephant)
+  "Elephant animated with transition animation" by theogilat
+  https://sketchfab.com/3d-models/elephant-animated-with-transition-animation-466a15d0875b4b60bca2661c155711d5
+  Licence: CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)
+  Changes: 4 of 28 clips kept and renamed (run -> Gallop, idle -> Idle, death -> Death, idle trumpet -> Intro);
+  textures re-encoded. 2026-11-09: mesh subdivided twice (Catmull-Clark, skin weights interpolated), a detail
+  normal map generated from the colour texture, textures re-encoded as WebP.

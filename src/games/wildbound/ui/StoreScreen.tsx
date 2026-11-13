@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Check, Tag } from 'lucide-react'
-import { ANIMALS, POWERUPS, getAnimal } from '../engine/content'
+import { POWERUPS, ROSTER, getAnimal } from '../engine/content'
 import { COIN_PACKS, UPGRADE_MAX, upgradeCost, useSave } from '../state/progress'
 import { PRODUCTS, charProductId, loadPrices, priceOf, purchase, restorePurchases, storeAvailable, usePrices } from '../state/shop'
 import { cardArt, gemPackArt, headArt, powerArt } from './art'
@@ -75,7 +75,7 @@ export default function StoreScreen() {
 function Characters({ run }: { run: (f: () => Promise<void>) => Promise<void> }) {
   const owned = useSave((s) => s.owned)
   const go = useNav((s) => s.go)
-  const list = ANIMALS.filter((a) => !a.free)
+  const list = ROSTER.filter((a) => !a.free)
   return (
     <>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 landscape:grid-cols-4">
@@ -119,7 +119,7 @@ function Characters({ run }: { run: (f: () => Promise<void>) => Promise<void> })
         })}
       </div>
       <button className="mx-auto mt-3 flex items-center gap-2 text-[18px] font-bold wb-yellow wb-shadow" onClick={() => (sfx.tap(), useNav.setState({ storeTab: 'bundles' }))}>
-        <Tag size={18} className="text-[#ff4b3e]" fill="#ff4b3e" /> Get 50% OFF on Character Packs!
+        <Tag size={18} className="text-[#c9574a]" fill="#c9574a" /> Get 50% OFF on Character Packs!
       </button>
     </>
   )
@@ -158,7 +158,7 @@ function PowerUps() {
             </button>
             <div className="mt-1 flex w-full items-center gap-1">
               {Array.from({ length: UPGRADE_MAX }, (_, i) => (
-                <i key={i} className="h-2 flex-1 rounded-full" style={{ background: i < lvl ? '#ffd84a' : 'rgba(255,255,255,0.15)' }} />
+                <i key={i} className="h-2 flex-1 rounded-full" style={{ background: i < lvl ? '#dcc08a' : 'rgba(255,255,255,0.15)' }} />
               ))}
             </div>
             <button
@@ -251,14 +251,14 @@ function Bundles({ run }: { run: (f: () => Promise<void>) => Promise<void> }) {
           <div key={p.id} className="wb-card flex items-center gap-3 p-3 portrait:flex-col">
             <div className="flex -space-x-4">
               {animals.map((a) => (
-                <img key={a} src={headArt(a)} alt={getAnimal(a).name} className="h-[84px] w-[66px] rounded-lg object-cover ring-2 ring-[#ffd84a]" />
+                <img key={a} src={headArt(a)} alt={getAnimal(a).name} className="h-[84px] w-[66px] rounded-lg object-cover ring-2 ring-[#dcc08a]" />
               ))}
             </div>
             <div className="min-w-0 flex-1 portrait:text-center">
               <div className="wb-title text-[28px] wb-yellow wb-stroke">{p.title}</div>
               <div className="text-[16px] text-white/90">{animals.map((a) => getAnimal(a).name).join(', ')}</div>
               <div className="text-[15px]">
-                <s className="text-white/55">₹{full.toFixed(2)}</s> <span className="ml-1 rounded bg-[#ff4b3e] px-1.5 font-bold">50% OFF</span>
+                <s className="text-white/55">₹{full.toFixed(2)}</s> <span className="ml-1 rounded bg-[#c9574a] px-1.5 font-bold">50% OFF</span>
               </div>
             </div>
             {all ? (

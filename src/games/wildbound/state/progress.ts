@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { ANIMALS, getAnimal, type AnimalId, type PowerUpKind, powerUp } from '../engine/content'
+import { ANIMALS, RETIRED, getAnimal, type AnimalId, type PowerUpKind, powerUp } from '../engine/content'
 
 /*
  * Wildbound save game on this device: currencies, roster, power-ups, records, missions, achievements,
@@ -174,7 +174,8 @@ const INITIAL: SaveState = {
   coins: 500,
   gems: 50,
   xp: 0,
-  owned: UNLOCK_ALL ? ALL_ANIMALS : ['sonic'],
+  owned: UNLOCK_ALL ? ALL_ANIMALS : ['sonic', 'raja'],
+  // Sonic is the starting animal; the tiger is free too
   selected: 'sonic',
   inventory: { magnet: 1, shield: 1, speed: 1, superjump: 1, megajump: 1, boost: 1 },
   upgrades: { ...ZERO },
@@ -301,8 +302,8 @@ export const useSave = create<SaveState & Actions>()(
         finishRun: (r) => {
           const s = get()
           const a = getAnimal(r.animalId)
-          const coinBonus = a.id === 'leo' || a.id === 'bruno' ? 1.1 : 1
-          const xpBonus = a.id === 'arctic' || a.id === 'titan' ? 1.1 : 1
+          const coinBonus = a.id === 'leo' || a.id === 'bruno' || a.id === 'zara' ? 1.1 : 1
+          const xpBonus = a.id === 'arctic' || a.id === 'titan' || a.id === 'ash' ? 1.1 : 1
           const coins = Math.round(r.coins * coinBonus)
           const xp = Math.round((r.distance * 0.5 + r.coins + r.gems * 10) * xpBonus)
           const before = levelOf(s.xp).level
@@ -453,7 +454,9 @@ export const useSave = create<SaveState & Actions>()(
           ...p,
           inventory: { ...ZERO, megajump: 1, boost: 1, ...((p.inventory ?? current.inventory) as Partial<Record<PowerUpKind, number>>) },
           upgrades: { ...ZERO, ...(p.upgrades ?? current.upgrades) },
-          owned: UNLOCK_ALL ? ALL_ANIMALS : (p.owned ?? current.owned),
+          owned: UNLOCK_ALL ? ALL_ANIMALS : [...new Set<AnimalId>([...(p.owned ?? current.owned), 'raja'])],
+          // a save that had a rested animal selected moves back to Sonic
+          selected: p.selected && !RETIRED.has(p.selected) ? p.selected : 'sonic',
           // newer settings (quality levels, text size, assist, colour-safe markers) and race records
           settings: { ...current.settings, ...(p.settings ?? {}) },
           totals: { ...current.totals, ...(p.totals ?? {}) },

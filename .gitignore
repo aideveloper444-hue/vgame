@@ -56,3 +56,7 @@ android/build/
 android-wildbound/build/
 android/.gradle/
 android-wildbound/.gradle/
+dist-apk/
+android-wildbound/app/src/main/assets/public
+android-wildbound/app/src/main/assets/capacitor.*.json
+android-wildbound/local.properties

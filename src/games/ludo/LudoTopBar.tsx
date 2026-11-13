@@ -85,11 +85,22 @@ export default function LudoTopBar({ onBack, onRestart, onLeave }: { onBack?: ()
           <ArrowLeft size={18} strokeWidth={2.6} className="@min-[56rem]:h-9! @min-[56rem]:w-9!" />
         </button>
         <div className="ludo-glass ludo-logo-plate flex min-w-0 shrink-0 items-center gap-1.5 rounded-2xl py-1 pl-2 pr-2.5 max-[380px]:gap-1 max-[380px]:pl-1.5 max-[380px]:pr-2 sm:gap-2 sm:py-1.5 sm:pl-2.5 sm:pr-3.5 @min-[56rem]:gap-3! @min-[56rem]:rounded-[1.4rem]! @min-[56rem]:py-2! @min-[56rem]:pl-4! @min-[56rem]:pr-7!">
-          <img src="/assets/ludo/logo-crown.png" alt="" draggable={false} className="crown-bob h-7 w-auto shrink-0 mix-blend-screen @min-[56rem]:h-14!" />
+          {/* the mark: a neon-cut diamond, the same crystal that hovers over the board's finish */}
+          <svg viewBox="0 0 32 32" aria-hidden className="ludo-logo-mark h-7 w-7 shrink-0 @min-[56rem]:h-12! @min-[56rem]:w-12!">
+            <defs>
+              <linearGradient id="ludo-mark" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stopColor="#00e5ff" />
+                <stop offset="0.5" stopColor="#ff2d95" />
+                <stop offset="1" stopColor="#ffe600" />
+              </linearGradient>
+            </defs>
+            <path d="M16 2 L29 16 L16 30 L3 16 Z" fill="none" stroke="url(#ludo-mark)" strokeWidth="2.2" strokeLinejoin="round" />
+            <path d="M16 9 L23 16 L16 23 L9 16 Z" fill="url(#ludo-mark)" opacity="0.9" />
+          </svg>
           <div className="min-w-0 leading-none">
-            <p className="ludo-logo-text text-[1.35rem] font-black italic leading-[1.05] tracking-tight max-[380px]:text-[1.15rem] sm:text-[1.6rem] @min-[56rem]:text-[2.9rem]!">Ludo</p>
+            <p className="ludo-logo-text text-[1.2rem] font-extrabold uppercase leading-[1.05] tracking-[0.18em] max-[380px]:text-[1.05rem] sm:text-[1.45rem] @min-[56rem]:text-[2.6rem]!">Ludo</p>
             <p className="mt-0.5 whitespace-nowrap text-[7px] max-[380px]:text-[6px] font-bold uppercase tracking-[0.08em] text-slate-300/90 min-[400px]:tracking-[0.16em] sm:text-[9px] sm:tracking-[0.22em] @min-[56rem]:mt-1! @min-[56rem]:text-[1.05rem]! @min-[56rem]:font-semibold! @min-[56rem]:normal-case! @min-[56rem]:tracking-wide! @min-[56rem]:text-white!">
-              Play • Chat • Win
+              Neon Edition
             </p>
           </div>
         </div>

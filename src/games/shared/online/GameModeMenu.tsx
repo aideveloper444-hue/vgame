@@ -180,9 +180,9 @@ function ModeTile({ m, i, hero, onClick }: { m: (typeof MODES)[number]; i: numbe
       }`}
       style={{
         animationDelay: `${i * 60}ms`,
-        background: `linear-gradient(160deg, ${m.hex}40 0%, rgba(14,12,34,0.82) 55%, rgba(8,7,20,0.9) 100%)`,
-        border: `1px solid ${m.glow}55`,
-        boxShadow: `0 14px 30px -16px ${m.glow}88, inset 0 1px 0 rgba(255,255,255,0.14)`,
+        background: `linear-gradient(160deg, ${m.hex}22 0%, rgba(10,10,16,0.88) 50%, rgba(3,3,8,0.94) 100%)`,
+        border: `1px solid ${m.glow}66`,
+        boxShadow: `0 0 22px -10px ${m.glow}, 0 14px 30px -16px rgba(0,0,0,0.9), inset 0 1px 0 rgba(255,255,255,0.08)`,
         backdropFilter: 'blur(14px)',
         WebkitBackdropFilter: 'blur(14px)',
       }}
@@ -190,9 +190,9 @@ function ModeTile({ m, i, hero, onClick }: { m: (typeof MODES)[number]; i: numbe
       <span className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full blur-2xl" style={{ background: `${m.glow}55` }} />
       <span
         className={`relative flex shrink-0 items-center justify-center rounded-2xl ${hero ? 'h-14 w-14' : 'h-12 w-12'}`}
-        style={{ background: `linear-gradient(160deg, ${m.glow}, ${m.hex})`, boxShadow: `0 6px 16px -4px ${m.glow}aa, inset 0 1px 0 rgba(255,255,255,0.5)` }}
+        style={{ background: 'rgba(0,0,0,0.55)', border: `1.5px solid ${m.glow}`, boxShadow: `0 0 14px -2px ${m.glow}, inset 0 0 12px -4px ${m.glow}` }}
       >
-        <Icon size={hero ? 28 : 24} className="text-white" strokeWidth={2.4} />
+        <Icon size={hero ? 26 : 22} strokeWidth={1.8} style={{ color: m.glow, filter: `drop-shadow(0 0 4px ${m.glow})` }} />
       </span>
       <span className={`relative ${hero ? '' : 'mt-auto'}`}>
         <span className="mb-1 inline-block rounded-full bg-black/30 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.16em]" style={{ color: m.glow }}>
@@ -214,8 +214,8 @@ function Home({ pick, cfg }: { pick: (m: ModeKey) => void; cfg: GameModeMenuConf
   return (
     <div>
       <div className="mb-5 text-center">
-        <p className="text-[11px] font-black uppercase tracking-[0.3em] text-amber-300/90">Ready to play?</p>
-        <h1 className="mt-1 text-[1.7rem] font-black leading-tight text-white">Choose how to play</h1>
+        <p className="text-[11px] font-bold uppercase tracking-[0.34em] text-cyan-300/90 [text-shadow:0_0_10px_rgba(0,229,255,0.6)]">Ready to play</p>
+        <h1 className="mt-1 text-[1.7rem] font-extrabold leading-tight tracking-tight text-white">Choose how to play</h1>
       </div>
       <div className="grid grid-cols-2 gap-3">
         {modeList(cfg).map((m, i, all) => (

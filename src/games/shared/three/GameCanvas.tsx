@@ -26,6 +26,13 @@ interface GameCanvasProps {
   vignetteDarkness?: number
   /** Show the asset-loading progress bar over the canvas (default true). */
   showLoader?: boolean
+  /** MSAA samples for the post-processing pass; 0 (default) leaves edges un-antialiased. */
+  multisampling?: number
+  /** Flat fill light levels. Dark, premium materials need less fill so the key lights can model them. */
+  ambientIntensity?: number
+  hemisphereIntensity?: number
+  /** Highest device-pixel ratio to render at (default 2). */
+  maxDpr?: number
 }
 
 export default function GameCanvas({
@@ -46,19 +53,24 @@ export default function GameCanvas({
   bloomRadius = 0.6,
   vignetteDarkness = 0.6,
   showLoader = true,
+  multisampling = 0,
+  ambientIntensity = 0.85,
+  hemisphereIntensity = 0.55,
+  maxDpr = 2,
 }: GameCanvasProps) {
   return (
     <div className={`relative ${className}`}>
       <Canvas
-        shadows={shadows}
+        // 'percentage' = PCF shadows; plain `true` asks for PCFSoft, which three.js removed (it warns and falls back to PCF)
+        shadows={shadows ? 'percentage' : false}
         camera={{ position: cameraPosition, fov }}
-        dpr={[1, 2]}
+        dpr={[1, maxDpr]}
         gl={{ alpha: transparent }}
         style={transparent ? { background: 'transparent' } : undefined}
       >
         {!transparent && <color attach="background" args={[background]} />}
-        <ambientLight intensity={0.85} />
-        <hemisphereLight intensity={0.55} groundColor="#1a1830" color={keyLightColor} />
+        <ambientLight intensity={ambientIntensity} />
+        <hemisphereLight intensity={hemisphereIntensity} groundColor="#1a1830" color={keyLightColor} />
         <directionalLight
           position={[2, 12, 3]}
           intensity={1.1}
@@ -88,7 +100,7 @@ export default function GameCanvas({
         </SceneErrorBoundary>
         {glow && (
           <SceneErrorBoundary label="postprocessing">
-            <EffectComposer multisampling={0}>
+            <EffectComposer multisampling={multisampling}>
               <Bloom intensity={bloomIntensity} luminanceThreshold={bloomThreshold} luminanceSmoothing={0.25} mipmapBlur radius={bloomRadius} />
               <Vignette eskil={false} offset={0.15} darkness={vignetteDarkness} />
             </EffectComposer>

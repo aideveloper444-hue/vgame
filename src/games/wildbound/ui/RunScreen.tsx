@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Home, Music, Play, RotateCcw, Volume2, VolumeX } from 'lucide-react'
+import { Home, Music, Pause, Play, RotateCcw, Volume2, VolumeX } from 'lucide-react'
+import { AbilityIcon, PowerIcon } from './icons'
 import { GRIP, POWERUPS, POWER_KINDS, SECTION_TEXT, biomeAt, getAnimal, type PowerUpKind } from '../engine/content'
 import { RaceHud, RaceResults } from './RaceHud'
 import { leaveRace, makeSession, sendRaceAction, useRaceUI, useWildRoom } from '../state/race'
@@ -7,7 +8,7 @@ import { DOUBLE_MS, ROUTE_BONUS_TEXT, raceStartZone, randomStartZone, reviveCost
 import RouteChooser from './RouteChooser'
 import { useSave } from '../state/progress'
 import { endRun, onPhase, onSimEvent, run, setPhase, startRun, type RunPhase } from '../scene/runController'
-import { ART, abilityArt, headArt, hudPowerArt } from './art'
+import { ART, headArt } from './art'
 import { Coin, Gem, fmt, toast, useFestival, useNav } from './common'
 import { ambienceScene, haptic, sfx, startAmbience, stopAmbience } from './sfx'
 
@@ -84,6 +85,12 @@ export default function RunScreen() {
   const online = !!pending?.online
   const [quitAsk, setQuitAsk] = useState(false)
   const roomStatus = useWildRoom((s) => s.status)
+  // a short controls reminder on a new player's first few runs (not the tutorial, not a race)
+  const [hint, setHint] = useState(false)
+  // a close call: a short edge pulse, like the lens catching the rush of air (re-keyed per event)
+  const [edge, setEdge] = useState<{ id: number; tone: 'near' | 'power' } | null>(null)
+  const bestBanner = useRef(false)
+  const touchUi = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches
 
   // ---------------------------------------------------------------- lifecycle
 
@@ -104,6 +111,7 @@ export default function RunScreen() {
       }
     }
     gripSeen.current.clear()
+    bestBanner.current = false
     // the guided tutorial only runs when picked from the More menu, never automatically
     tutorialRun.current = nav.tutorial
     useNav.setState({ tutorial: false })
@@ -130,6 +138,17 @@ export default function RunScreen() {
   }, [runKey])
 
   useEffect(() => onPhase((p) => setPh(p)), [])
+  useEffect(() => {
+    if (phase !== 'running' || racing || tutorialRun.current || useSave.getState().totals.runs >= 3) return
+    setHint(true)
+    const t = window.setTimeout(() => setHint(false), 4500)
+    return () => {
+      window.clearTimeout(t)
+      setHint(false)
+    }
+    // only the first stretch of each run
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runKey, phase === 'running'])
   useEffect(() => {
     run.assist = settings.assist
   }, [settings.assist])
@@ -172,7 +191,16 @@ export default function RunScreen() {
       }
       if (t - last > 66) {
         last = t
-        setHud(readHud())
+        const next = readHud()
+        setHud(next)
+        // passing the best score mid-run is worth a moment (only once a best exists)
+        const bestScore = useSave.getState().best.score
+        if (next && !bestBanner.current && bestScore > 0 && next.score > bestScore && !tutorialRun.current && !useRaceUI.getState().pending) {
+          bestBanner.current = true
+          setBanner({ id: Date.now(), big: 'New best!', small: 'Every metre now is a record' })
+          sfx.milestone()
+          haptic(40)
+        }
         // the ambient sound follows the zone (or the route's world, or a cave)
         const sim = run.sim
         if (sim) ambienceScene(sim.biomeIdAt(sim.state.d), biomeAt(sim.state.d).variant, sim.sectionAt(sim.state.d + 4)?.kind === 'cave')
@@ -205,6 +233,7 @@ export default function RunScreen() {
             if (e.kind === 'roar') sfx.roar()
             else sfx.ability()
             haptic(30)
+            setEdge({ id: Date.now(), tone: 'power' })
             setBanner({ id: Date.now(), big: a.ability.name, small: a.ability.desc })
             break
           case 'break':
@@ -233,9 +262,17 @@ export default function RunScreen() {
             sfx.tap()
             break
           case 'ride':
-            if (e.on) {
+            if (e.on && e.kind === 'plane') {
+              setBanner({ id: Date.now(), big: 'Take-off!', small: 'Steer left and right through the sky coins' })
+              sfx.power()
+              haptic(60)
+              run.shake = Math.max(run.shake, 0.35)
+            } else if (e.on) {
               setBanner({ id: Date.now(), big: 'All aboard!', small: 'Change lane to hop off' })
               sfx.power()
+              haptic(40)
+            } else if (e.kind === 'plane') {
+              setBanner({ id: Date.now(), big: 'Touchdown', small: '+250' })
               haptic(40)
             }
             break
@@ -250,8 +287,9 @@ export default function RunScreen() {
             sfx.milestone()
             break
           case 'nearmiss':
-            // a close call just pays out (a light buzz); a banner every time crowded the screen
+            // a close call just pays out (a light buzz) and the screen edges pulse; no banner (it crowded the screen)
             haptic(15)
+            setEdge({ id: Date.now(), tone: 'near' })
             break
           case 'surface':
             // tell the player about a slippery surface once per run, not every time it comes round again
@@ -299,7 +337,8 @@ export default function RunScreen() {
       finish()
       return
     }
-    setReviveLeft(6)
+    // one extra second: the panel waits for the crash reaction first
+    setReviveLeft(7)
     const t = setInterval(() => setReviveLeft((v) => v - 1), 1000)
     return () => clearInterval(t)
   }, [phase, outcome, finish])
@@ -307,6 +346,17 @@ export default function RunScreen() {
   useEffect(() => {
     if (phase === 'over' && !outcome && reviveLeft < 0) finish()
   }, [reviveLeft, phase, outcome, finish])
+
+  // after a crash the animal's reaction (the fall, the head going down, the stars) plays before the panel covers it
+  const [overShown, setOverShown] = useState(false)
+  useEffect(() => {
+    if (phase !== 'over') {
+      setOverShown(false)
+      return
+    }
+    const t = window.setTimeout(() => setOverShown(true), 1300)
+    return () => window.clearTimeout(t)
+  }, [phase])
 
   const revive = () => {
     const sim = run.sim
@@ -320,6 +370,11 @@ export default function RunScreen() {
     sfx.saved()
     setReviveLeft(0)
     setPhase('running')
+  }
+
+  const skipRevive = () => {
+    sfx.tap()
+    setReviveLeft(-1)
   }
 
   const retry = () => {
@@ -395,10 +450,26 @@ export default function RunScreen() {
     }
   }, [cmd])
 
+  // pause / results panels from the keyboard (refs: these handlers change every render)
+  const panelKeys = useRef({ resume: () => {}, retry: () => {}, home: () => {}, ready: false })
+  panelKeys.current = { resume, retry, home, ready: phase === 'over' && !racing && overShown }
+
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (e.repeat) return
       const k = e.key.toLowerCase()
+      if (run.phase === 'over') {
+        const p = panelKeys.current
+        if (!p.ready) return
+        if (k === 'enter' || k === ' ' || k === 'r') (e.preventDefault(), p.retry())
+        else if (k === 'escape' || k === 'h') (e.preventDefault(), p.home())
+        return
+      }
+      if (run.phase === 'paused' && (k === 'enter' || k === ' ')) {
+        e.preventDefault()
+        panelKeys.current.resume()
+        return
+      }
       const map: Record<string, Command> = { arrowleft: 'left', a: 'left', arrowright: 'right', d: 'right', arrowup: 'jump', w: 'jump', ' ': 'jump', shift: 'ability', r: 'roll', e: 'ability', q: 'ability' }
       if (k === 's' || k === 'arrowdown') {
         e.preventDefault()
@@ -420,9 +491,12 @@ export default function RunScreen() {
     window.addEventListener('keydown', down)
     const hide = () => document.hidden && pause()
     document.addEventListener('visibilitychange', hide)
+    // switching to another window on desktop pauses too, so the runner never crashes unseen
+    window.addEventListener('blur', pause)
     return () => {
       window.removeEventListener('keydown', down)
       document.removeEventListener('visibilitychange', hide)
+      window.removeEventListener('blur', pause)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cmd, firePower, pause, lowCmd])
@@ -472,14 +546,15 @@ export default function RunScreen() {
       {/* gesture layer */}
       <div className="wb-layer" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} />
 
+      {edge && <div key={edge.id} className={`wb-edge pointer-events-none absolute inset-0 ${edge.tone === 'power' ? 'is-power' : ''}`} onAnimationEnd={() => setEdge(null)} />}
       <RouteChooser />
       {racing && <RaceHud />}
 
       {/* top bar */}
       <div className="pointer-events-none absolute inset-x-0 top-0 wb-safe flex items-start justify-between">
         <div className="pointer-events-auto flex items-center gap-2">
-          <button className="h-[46px] w-[46px]" onClick={pause} aria-label="Pause">
-            <img src={ART.pause} alt="" className="h-full w-full rounded-full" />
+          <button className="wb-ctl wb-ctl-glass h-[44px] w-[44px]" onClick={pause} aria-label="Pause">
+            <Pause size={18} strokeWidth={1.8} />
           </button>
           <div className="wb-hud-box !h-[44px] !px-4 text-[28px]">
             {fmt(h?.d ?? 0)}
@@ -510,22 +585,22 @@ export default function RunScreen() {
           const dur = POWERUPS.find((p) => p.kind === k)!.durationMs
           const frac = active ? Math.min(1, (h?.powers[k] ?? 0) / dur) : 0
           return (
-            <button key={k} className={`wb-ctl h-[min(54px,9vh)] w-[min(54px,9vh)] min-h-[40px] min-w-[40px] ${n <= 0 && !active ? 'opacity-55 grayscale' : ''}`} onClick={() => firePower(k)} aria-label={k}>
-              <img src={hudPowerArt(k)} alt="" />
-              {active && <span className="wb-cooldown" style={{ background: `conic-gradient(rgba(120,255,120,0.55) ${frac * 360}deg, transparent 0)`, boxShadow: '0 0 14px rgba(120,255,120,0.9)' }} />}
-              <span className="absolute -bottom-1 -right-1 grid h-6 min-w-6 place-items-center rounded-full bg-[#0b1a2e] px-1 text-[14px] font-bold ring-2 ring-[#ffd84a]">{active ? Math.ceil((h?.powers[k] ?? 0) / 1000) + 's' : n}</span>
+            <button key={k} className={`wb-ctl wb-ctl-glass h-[min(50px,8.5vh)] w-[min(50px,8.5vh)] min-h-[40px] min-w-[40px] ${n <= 0 && !active ? 'opacity-40' : ''} ${active ? 'is-active' : ''}`} onClick={() => firePower(k)} aria-label={k}>
+              <PowerIcon kind={k} />
+              {active && <span className="wb-cooldown" style={{ background: `conic-gradient(rgba(220,192,138,0.35) ${frac * 360}deg, transparent 0)` }} />}
+              <span className="absolute -bottom-1 -right-1 grid h-5 min-w-5 place-items-center rounded-full bg-[#0f110f] px-1 text-[11px] font-semibold tabular-nums ring-1 ring-[var(--gold-edge)]">{active ? Math.ceil((h?.powers[k] ?? 0) / 1000) + 's' : n}</span>
             </button>
           )
         })}
       </div>
 
       <div className={`absolute bottom-[calc(env(safe-area-inset-bottom)+18px)] portrait:bottom-[calc(env(safe-area-inset-bottom)+112px)] ${left ? 'left-3' : 'right-3'} flex flex-col items-center gap-1`}>
-        <button className={`wb-ctl h-[min(72px,17vh)] w-[min(72px,17vh)] min-h-[56px] min-w-[56px] ${abilityCd <= 0 && !h?.abilityOn ? 'wb-pulse' : ''}`} onPointerDown={(e) => (e.stopPropagation(), cmd('ability'))} aria-label={a.ability.name} style={{ boxShadow: abilityCd <= 0 ? '0 0 0 3px #ffd84a, 0 0 20px rgba(255,210,70,0.9)' : '0 0 0 3px rgba(255,255,255,0.3)' }}>
-          <img src={abilityArt(a.id)} alt="" />
+        <button className={`wb-ctl wb-ctl-glass h-[min(68px,16vh)] w-[min(68px,16vh)] min-h-[56px] min-w-[56px] ${abilityCd <= 0 && !h?.abilityOn ? 'wb-pulse text-[var(--gold-hi)]' : ''}`} onPointerDown={(e) => (e.stopPropagation(), cmd('ability'))} aria-label={a.ability.name} style={{ boxShadow: abilityCd <= 0 ? 'inset 0 0 0 1.5px #dcc08a, 0 0 18px rgba(220,192,138,0.35)' : 'inset 0 0 0 1px rgba(255,248,232,0.22)' }}>
+          <AbilityIcon kind={a.ability.kind} />
           {abilityCd > 0 && <span className="wb-cooldown" style={{ background: `conic-gradient(rgba(0,0,0,0.65) ${abilityCd * 360}deg, transparent 0)` }} />}
           {abilityCd > 0 && <span className="absolute text-[20px] font-bold wb-shadow">{Math.ceil((h?.abilityLeft ?? 0) / 1000)}</span>}
         </button>
-        <span className="text-[13px] font-bold wb-shadow">{a.ability.name}</span>
+        <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/80 wb-shadow">{a.ability.name}</span>
       </div>
 
       {/* banners, tutorial, countdown */}
@@ -542,6 +617,17 @@ export default function RunScreen() {
           </div>
         </div>
       )}
+      {hint && !count && !banner && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+22%)] flex justify-center px-6">
+          <div className="wb-panel wb-in px-4 py-2 text-center text-[16px] font-bold leading-snug">
+            {touchUi ? (
+              <>Swipe ← → to change lane · ↑ jump · ↓ slide<br />Swipe ↓ twice to roll · hold to use {a.ability.name}</>
+            ) : (
+              <>← → / A D change lane · ↑ / Space jump · ↓ / S slide<br />Shift uses {a.ability.name} · Esc pauses</>
+            )}
+          </div>
+        </div>
+      )}
       {count && (
         <div key={count} className="pointer-events-none absolute inset-0 grid place-items-center">
           <div className="wb-count wb-title text-[110px] wb-yellow wb-stroke">{count}</div>
@@ -552,7 +638,7 @@ export default function RunScreen() {
         <div className="wb-layer z-[70] flex items-center justify-center bg-black/40 p-4">
           <div className="wb-panel wb-in w-full max-w-[360px] p-5 text-center">
             <div className="wb-title text-[34px] wb-yellow wb-stroke">Leave the race?</div>
-            <p className="mb-4 text-[16px] text-white/80">The others keep running â€“ an online race can't be paused.</p>
+            <p className="mb-4 text-[16px] text-white/80">The others keep running – an online race can't be paused.</p>
             <div className="grid grid-cols-2 gap-3">
               <button className="wb-btn wb-btn-green h-12 text-[22px]" onClick={() => setQuitAsk(false)}>
                 Keep racing
@@ -572,6 +658,7 @@ export default function RunScreen() {
             <div className="wb-title text-[44px] wb-yellow wb-stroke">PAUSED</div>
             <div className="mb-4 text-[18px]">
               {fmt(h?.d ?? 0)} m · Score {fmt(h?.score ?? 0)}
+              {best.score > 0 && <div className="text-[15px] text-white/70">Best {fmt(best.score)}</div>}
             </div>
             <div className="flex flex-col gap-3">
               <button className="wb-btn wb-btn-green h-14 text-[28px]" onClick={resume}>
@@ -607,7 +694,7 @@ export default function RunScreen() {
 
       {/* game over / results */}
       {phase === 'over' && racing && <RaceResults online={online} onAgain={online ? lobby : retry} onHome={home} />}
-      {phase === 'over' && !racing && (
+      {phase === 'over' && !racing && overShown && (
         <div className="wb-layer wb-dim z-[70] flex items-center justify-center p-4">
           <div className="wb-panel wb-in w-full max-w-[460px] overflow-hidden p-0 text-center">
             {outcome?.tutorial && !run.sim?.state.crashKind ? (
@@ -625,12 +712,10 @@ export default function RunScreen() {
               </div>
             ) : (
               <>
-                <div className="flex items-center justify-center gap-3 pt-4">
-                  <img src={ART.pawRed} alt="" className="h-9 w-9" />
-                  <div className="wb-title text-[46px] leading-none text-[#ff4b3e]" style={{ textShadow: '0 3px 0 #4a0a05, 0 0 2px #000, 0 6px 12px rgba(0,0,0,0.6)' }}>
-                    GAME OVER
-                  </div>
-                  <img src={ART.pawRed} alt="" className="h-9 w-9" />
+                <div className="flex flex-col items-center justify-center gap-1 pt-5">
+                  <div className="text-[13px] font-semibold uppercase tracking-[0.32em] text-[var(--muted)]">Run ended</div>
+                  <div className="wb-title text-[40px] leading-none !tracking-[0.18em] wb-stroke">Game Over</div>
+                  <div className="mt-2 h-px w-16 bg-[var(--gold)] opacity-60" />
                 </div>
                 <div className="relative flex items-center gap-2 px-4 pb-2">
                   <div className="flex-1 text-center">
@@ -638,7 +723,7 @@ export default function RunScreen() {
                     <div className="wb-title text-[42px] leading-none wb-yellow wb-stroke">{fmt(outcome?.score ?? h?.score ?? 0)}</div>
                     <div className="mt-1 text-[20px] font-bold">Best Score</div>
                     <div className="wb-title text-[36px] leading-none wb-yellow wb-stroke">{fmt(Math.max(best.score, outcome?.score ?? h?.score ?? 0))}</div>
-                    {outcome?.newBest && <div className="wb-title mt-1 inline-block rounded-full bg-[#2fb80f] px-3 text-[18px]">NEW BEST!</div>}
+                    {outcome?.newBest && <div className="wb-title mt-1 inline-block rounded-full bg-[#3f7a5c] px-3 text-[18px]">NEW BEST!</div>}
                   </div>
                   <img src={a.id === 'sonic' ? ART.gameover : headArt(a.id)} alt="" className={a.id === 'sonic' ? 'w-[46%] rounded-xl' : 'h-[150px] w-[120px] rounded-xl object-cover'} />
                 </div>
@@ -650,13 +735,13 @@ export default function RunScreen() {
                   <span className="flex items-center gap-1">
                     <Gem size={22} /> +{outcome?.gems ?? h?.gems ?? 0}
                   </span>
-                  {outcome && <span className="text-[#9dff6a]">+{fmt(outcome.xp)} XP</span>}
+                  {outcome && <span className="text-[#a9d4b6]">+{fmt(outcome.xp)} XP</span>}
                 </div>
                 <div className="grid grid-cols-3 gap-2 px-4 pb-4">
-                  <button className="wb-btn wb-btn-blue h-12 text-[22px]" disabled={!!outcome || reviveLeft <= 0} onClick={revive}>
+                  <button className="wb-btn wb-btn-blue h-12 text-[22px]" disabled={!!outcome || reviveLeft <= 0 || gems < cost} onClick={revive}>
                     Revive <Gem size={22} />
                     {cost}
-                    {!outcome && reviveLeft > 0 && <span className="absolute -right-1 -top-2 grid h-6 w-6 place-items-center rounded-full bg-[#ff4b3e] text-[14px]">{reviveLeft}</span>}
+                    {!outcome && reviveLeft > 0 && <span className="absolute -right-1 -top-2 grid h-6 w-6 place-items-center rounded-full bg-[#c9574a] text-[14px]">{reviveLeft}</span>}
                   </button>
                   <button className="wb-btn wb-btn-gold h-12 text-[24px]" onClick={home}>
                     Home
@@ -665,7 +750,15 @@ export default function RunScreen() {
                     Retry
                   </button>
                 </div>
-                {!outcome && reviveLeft > 0 && gems < cost && <div className="-mt-2 pb-3 text-[14px] text-white/70">You have {gems} gems</div>}
+                {!outcome && reviveLeft > 0 && (
+                  <div className="-mt-2 flex items-center justify-center gap-3 pb-3 text-[14px] text-white/70">
+                    {gems < cost && <span>Not enough gems ({gems}/{cost})</span>}
+                    <button className="underline underline-offset-2" onClick={skipRevive}>
+                      {gems < cost ? 'See results' : 'No thanks'}
+                    </button>
+                  </div>
+                )}
+                {!touchUi && <div className="-mt-1 pb-3 text-[13px] text-white/50">Enter: retry · Esc: home</div>}
               </>
             )}
           </div>

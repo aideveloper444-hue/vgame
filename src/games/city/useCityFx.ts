@@ -117,7 +117,7 @@ export function useCityFx() {
     if (!lastEvent || (lastEvent.type !== 'card' && lastEvent.type !== 'event')) return
     const p = players[currentPlayerIndex]
     const icon = useCityStore.getState().eventLog[0]?.icon
-    const kind: CardKind = lastEvent.type === 'event' ? 'EVENT' : icon === '🤝' ? 'COMMUNITY' : 'CHANCE'
+    const kind: CardKind = lastEvent.type === 'event' ? 'EVENT' : (lastEvent.deck ?? (icon === '🤝' ? 'COMMUNITY' : 'CHANCE'))
     const reveal: CardReveal = { id: nextId(), kind, text: lastEvent.text, playerName: p?.name ?? '', byBot: Boolean(p?.isBot) }
     setCard(reveal)
     setLastCard(reveal)

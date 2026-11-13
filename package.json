@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "test:poker": "rolldown src/games/poker/engine/engine.test.ts --platform node --format esm --file node_modules/.cache/poker-test.mjs --log-level warn && node node_modules/.cache/poker-test.mjs",
     "server:build": "rolldown server/src/main.ts --platform node --format esm --file server/dist/server.mjs --log-level warn",
-    "server": "npm run server:build && node server/dist/server.mjs",
+    "server": "npm run server:build && node --env-file-if-exists=server/.env server/dist/server.mjs",
     "server:check": "tsc -p server/tsconfig.json",
     "test:wildbound": "rolldown src/games/wildbound/engine/engine.test.ts --platform node --format esm --file node_modules/.cache/wildbound-test.mjs --log-level warn && node node_modules/.cache/wildbound-test.mjs"
   },

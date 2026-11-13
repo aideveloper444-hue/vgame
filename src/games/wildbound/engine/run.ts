@@ -93,6 +93,17 @@ export interface Section {
 }
 /** the runner's height standing on a trolley */
 export const RIDE_H = 0.95
+/** the runner's height standing on the plane's back, parked on the ground */
+export const PLANE_DECK = 1.45
+/** cruising height of a flight (the runner's feet above the trail) */
+export const FLY_H = 5.6
+/** The flight profile: the runner's height at progress p (0 board .. 1 land): climb out, cruise with a gentle swell, glide in. */
+export function flightAlt(p: number) {
+  const q = Math.min(1, Math.max(0, p))
+  const up = q < 0.2 ? (q / 0.2) ** 2 * (3 - 2 * (q / 0.2)) : 1
+  const down = q > 0.82 ? 1 - ((q - 0.82) / 0.18) ** 2 * (3 - 2 * ((q - 0.82) / 0.18)) : 1
+  return PLANE_DECK + FLY_H * Math.min(up, down) * (1 + 0.06 * Math.sin(q * Math.PI * 4))
+}
 /** how high a vine swing carries the runner over a ravine */
 export const SWING_H = 2.6
 /** the runner's height where a swing starts and ends */
@@ -123,7 +134,7 @@ export type SimEvent =
   | { type: 'fork'; fork: Fork }
   | { type: 'route'; fork: Fork; name: string; bonus: RouteBonus }
   | { type: 'section'; section: Section }
-  | { type: 'ride'; on: boolean }
+  | { type: 'ride'; on: boolean; kind?: 'trolley' | 'plane' }
   | { type: 'rockfall'; d: number; lane: Lane }
   | { type: 'nearmiss'; kind: ObstacleKind }
   | { type: 'surface'; grip: Grip }
@@ -169,7 +180,7 @@ export interface RunState {
   megaJumpUntil: number
   boostUntil: number
   /** riding a rail trolley */
-  ride: { lane: Lane; end: number; item: number } | null
+  ride: { lane: Lane; end: number; item: number; kind?: 'trolley' | 'plane'; from?: number } | null
   /** swinging on a vine over a ravine */
   swing: { from: number; to: number; lane: Lane } | null
   /** how the trail under the paws handles (ice, snow, mud) */
@@ -254,7 +265,7 @@ export function mulberry32(seed: number) {
   }
 }
 
-const HALF_LEN: Record<ObstacleKind, number> = { log: 0.45, roots: 0.45, trap: 0.5, rock: 0.75, ruin: 0.8, branch: 0.35, barrier: 0.3, gap: 1.2, boulder: 0.9, trolley: 1.1, stream: 1.3, rubble: 0.45, stalactite: 0.35 }
+const HALF_LEN: Record<ObstacleKind, number> = { log: 0.45, roots: 0.45, trap: 0.5, rock: 0.75, ruin: 0.8, branch: 0.35, barrier: 0.3, gap: 1.2, boulder: 0.9, trolley: 1.1, stream: 1.3, rubble: 0.45, stalactite: 0.35, plane: 1.6 }
 /** height the runner must be above the trail to clear a jump obstacle */
 const CLEARANCE: Partial<Record<ObstacleKind, number>> = { log: 0.55, roots: 0.4, trap: 0.45, gap: 0.02, rock: 1.2, ruin: 1.5, boulder: 1.2, trolley: 1.2, stream: 0.02, rubble: 0.45 }
 
@@ -293,7 +304,7 @@ export class RunSim {
     this.rng = mulberry32(opts.seed)
     this.lootRng = mulberry32((opts.seed ^ 0x2c1b3c6d) >>> 0)
     this.forkRng = mulberry32((opts.seed ^ 0x5f3759df) >>> 0)
-    const startShield = this.animal.id === 'leo' || this.animal.id === 'titan' ? 8000 : 0
+    const startShield = this.animal.id === 'leo' || this.animal.id === 'titan' || this.animal.id === 'zara' ? 8000 : 0
     this.state = {
       t: 0,
       d: 0,
@@ -393,13 +404,13 @@ export class RunSim {
   private dur(kind: PowerUpKind) {
     const lvl = this.opts.upgrades?.[kind] ?? 0
     let ms = powerUp(kind).durationMs * (1 + 0.15 * lvl)
-    if (this.animal.id === 'arctic') ms *= 1.15
+    if (this.animal.id === 'arctic' || this.animal.id === 'ash') ms *= 1.15
     if (kind === 'shield' && this.animal.id === 'bruno') ms *= 1.25
     return ms
   }
   private jumpMs() {
     let ms = JUMP_MS
-    if (this.animal.id === 'raja' || this.animal.id === 'snow') ms *= 1.1
+    if (this.animal.id === 'raja' || this.animal.id === 'snow' || this.animal.id === 'nova') ms *= 1.1
     if (this.powerOn('megajump')) ms *= 1.65
     else if (this.powerOn('superjump') || this.abilityOn('leap')) ms *= 1.25
     if (this.abilityOn('cliff')) ms *= 1.5
@@ -414,7 +425,7 @@ export class RunSim {
   private laneRate() {
     // m/s sideways; ice, snow and mud make turns slower (not on the trolley or a vine)
     const g = this.state.ride || this.state.swing ? 1 : GRIP[this.state.grip].lane
-    return (this.animal.id === 'shadow' || this.animal.id === 'jax' ? 15 : 12) * g
+    return (this.animal.id === 'shadow' || this.animal.id === 'jax' || this.animal.id === 'blaze' ? 15 : 12) * g
   }
   speedFactor() {
     let f = 0.96 + this.animal.stats.speed * 0.012
@@ -452,12 +463,14 @@ export class RunSim {
       this.buffered = { cmd, at: s.t }
       return
     }
+    // flying: the plane does the flying; left / right steer it, nothing else
+    if (s.ride?.kind === 'plane' && (cmd === 'jump' || cmd === 'slide' || cmd === 'roll')) return
     switch (cmd) {
       case 'left':
       case 'right': {
         const next = Math.max(0, Math.min(2, s.lane + (cmd === 'left' ? -1 : 1))) as Lane
         if (next !== s.lane) {
-          if (s.ride) this.dismount(false)
+          if (s.ride && s.ride.kind !== 'plane') this.dismount(false)
           if (s.swing) break
           s.laneFrom = { lane: s.lane, t: s.t, d: s.d }
           s.lane = next
@@ -582,7 +595,19 @@ export class RunSim {
     }
     s.poseT = Math.min(1, Math.max(0, p))
     // riding: stand on the trolley deck; after hopping off the ground drops away under the runner
-    if (s.ride) {
+    if (s.ride?.kind === 'plane') {
+      // flying: the runner stands on the plane's back; the plane follows the flight profile and steers with the lane
+      const from = s.ride.from ?? s.d
+      const alt = flightAlt((s.d - from) / Math.max(1, s.ride.end - from))
+      s.base += (alt - s.base) * Math.min(1, dt * 7)
+      const pl = this.items.find((it) => it.id === s.ride!.item)
+      if (pl) {
+        pl.d = s.d + 0.1
+        pl.h = s.base - PLANE_DECK
+        pl.lane = s.lane
+      }
+      if (s.d >= s.ride.end - 1.5) this.dismount(true)
+    } else if (s.ride) {
       s.base = RIDE_H
       const tr = this.items.find((it) => it.id === s.ride!.item)
       if (tr) tr.d = Math.min(s.ride.end, s.d + 0.15)
@@ -595,6 +620,13 @@ export class RunSim {
     for (const it of this.items) if (it.fall && !it.passed && it.h === 0 && it.d - s.d < 38) {
       it.h = 1
       this.events.push({ type: 'rockfall', d: it.d, lane: it.lane })
+    }
+
+    // a plane that has landed its rider takes off again and climbs away
+    for (const it of this.items) if (it.kind === 'plane' && it.ridden && !it.gone) {
+      it.d += dt * (s.speed + 9)
+      it.h += dt * 3.2
+      if (it.h > 40) it.gone = true
     }
 
     // rolling boulders
@@ -629,14 +661,20 @@ export class RunSim {
     if (!s.ride) return
     const tr = this.items.find((it) => it.id === s.ride!.item)
     if (tr) {
-      tr.d = s.ride.end
+      if (tr.kind !== 'plane') tr.d = s.ride.end
       tr.ridden = true
     }
+    if (s.ride.kind === 'plane') {
+      s.base = Math.min(s.base, PLANE_DECK)
+      // a flight flown to the end lands a bonus
+      if (atEnd) s.score += 250
+    }
+    const kind = s.ride.kind ?? 'trolley'
     s.ride = null
     s.pose = 'jump'
     s.actionAt = s.t
     s.actionMs = atEnd ? JUMP_MS : JUMP_MS * 0.8
-    this.events.push({ type: 'ride', on: false })
+    this.events.push({ type: 'ride', on: false, kind })
   }
 
   private escapes(it: Item): boolean {
@@ -646,6 +684,7 @@ export class RunSim {
     const airborne = s.pose === 'jump' || s.y > 0.3
     const low = (s.pose === 'slide' || s.pose === 'roll') && s.poseT > 0.03 && s.poseT < 0.97
     const bigJump = this.powerOn('superjump') || this.powerOn('megajump') || this.abilityOn('leap') || this.abilityOn('cliff')
+    if (s.ride?.kind === 'plane') return true
     if ((kind === 'gap' || kind === 'stream') && (this.abilityOn('cliff') || s.ride || s.swing)) return true
     if (allowed.includes('jump') && airborne && s.y >= (CLEARANCE[kind] ?? 0.5)) return true
     if (bigJump && airborne && (kind === 'rock' || kind === 'ruin' || kind === 'boulder') && s.y >= (CLEARANCE[kind] ?? 1.2)) return true
@@ -670,15 +709,26 @@ export class RunSim {
         continue
       }
       if (it.lane !== bodyLane || Math.abs(s.x - laneX(it.lane)) > LANE_W * 0.55) continue
+      if (it.kind === 'plane') {
+        // run into the plane to board it (any pose); it never hurts the runner
+        if (!it.ridden && !s.ride && !s.swing) {
+          const sec = this.sectionAt(it.d)
+          s.ride = { lane: it.lane, end: sec ? sec.to - 6 : it.d + 90, item: it.id, kind: 'plane', from: it.d }
+          s.pose = 'run'
+          s.actionMs = 0
+          this.events.push({ type: 'ride', on: true, kind: 'plane' })
+        }
+        continue
+      }
       if (it.kind === 'trolley') {
         if (it.ridden || s.ride) continue
         // jump onto the trolley to ride it
         if (s.y > 0.25 && !this.powerOn('boost')) {
           const sec = this.sectionAt(it.d)
-          s.ride = { lane: it.lane, end: sec ? sec.to - 4 : it.d + 50, item: it.id }
+          s.ride = { lane: it.lane, end: sec ? sec.to - 4 : it.d + 50, item: it.id, kind: 'trolley' }
           s.pose = 'run'
           s.actionMs = 0
-          this.events.push({ type: 'ride', on: true })
+          this.events.push({ type: 'ride', on: true, kind: 'trolley' })
           continue
         }
       }
@@ -751,7 +801,7 @@ export class RunSim {
           this.tutDone('coins')
           break
         case 'gem':
-          s.gems += this.animal.id === 'jax' || this.animal.id === 'snow' ? (this.lootRng() < 0.1 ? 2 : 1) : 1
+          s.gems += this.animal.id === 'jax' || this.animal.id === 'snow' || this.animal.id === 'blaze' ? (this.lootRng() < 0.1 ? 2 : 1) : 1
           s.score += 100
           this.events.push({ type: 'gem', d: it.d, lane: it.lane })
           break
@@ -982,7 +1032,7 @@ export class RunSim {
         continue
       }
       this.add(this.nextGem, Math.floor(this.lootRng() * 3) as Lane, 'gem', 0.9)
-      const freq = this.animal.id === 'raja' || this.animal.id === 'koda' ? 0.8 : 1
+      const freq = this.animal.id === 'raja' || this.animal.id === 'koda' || this.animal.id === 'nova' ? 0.8 : 1
       this.nextGem += (110 + this.lootRng() * 90) * freq
     }
     while (this.nextPower < ahead) {
@@ -1070,6 +1120,8 @@ export class RunSim {
       if (has(['hills', 'canyon', 'ice', 'volcanic', 'waterfall', 'ruins', 'moonlit', 'jungle', 'temple', 'mossy', 'glow', 'cliffside'])) W.push(['cave', 1])
       if (z.flavor === 'vines') W.push(['vines', 4])
       else if (has(['jungle', 'giantroot', 'forest', 'mangrove', 'temple', 'glow', 'fern', 'flower', 'cliffside', 'mossy', 'redwood'])) W.push(['vines', 1])
+      // open country with room to take off: an airstrip and a bush plane
+      if (has(['savannah', 'desert', 'coast', 'hills', 'canyon', 'grassland', 'beach', 'lakeside', 'blossom', 'birch', 'ice', 'snow', 'baobab'])) W.push(['flight', 1.4])
       if (!W.length) W.push(['river', 1], ['rockslide', 1])
       let r = this.rng() * W.reduce((a, [, w]) => a + w, 0)
       let kind = W[0][0]
@@ -1077,7 +1129,7 @@ export class RunSim {
         kind = k
         break
       }
-      const rows = kind === 'cave' ? 4 : kind === 'rail' ? 4 : 3
+      const rows = kind === 'flight' ? 6 : kind === 'cave' ? 4 : kind === 'rail' ? 4 : 3
       const len = (this.rowGap(d0 + 60) + 1) * rows + 40
       // keep inside the zone (clear of its 400 m boundaries) and clear of every junction
       let from = d0
@@ -1089,7 +1141,7 @@ export class RunSim {
         this.nextSectionAt = Math.max(clash ? clash.end + 20 : 0, from + 60)
         continue
       }
-      this.sections.push({ kind, from, to: from + len, lane: this.rng() < 0.5 ? 0 : 2, built: false, announced: false })
+      this.sections.push({ kind, from, to: from + len, lane: kind === 'flight' ? 1 : this.rng() < 0.5 ? 0 : 2, built: false, announced: false })
       this.nextSectionAt = from + len + 170 + this.rng() * 120
     }
     if (this.sections.length > 8) this.sections = this.sections.filter((x) => x.to > this.state.d - 80)
@@ -1113,6 +1165,24 @@ export class RunSim {
     const others = ([0, 1, 2] as Lane[]).filter((l) => l !== sec.lane)
     const gapAt = (d: number) => this.rowGap(d) + 1
     switch (sec.kind) {
+      case 'flight': {
+        // a bush plane waits on the airstrip in the middle lane: run into it to take off. In the air the coins are
+        // strung along the flight path, weaving across the lanes (steer to collect them). The ground lanes stay
+        // runnable for anyone who skips the plane: one obstacle at a time, never both side lanes.
+        const at = from + 6
+        this.add(at, sec.lane, 'plane', 0)
+        this.lastRowD = at
+        const end = to - 6
+        for (let d = at + 8, i = 0; d < end - 6; d += 2.4, i++) {
+          const lane = Math.max(0, Math.min(2, Math.round(1 + Math.sin(i * 0.33) * 1.2))) as Lane
+          this.add(d, lane, i % 17 === 8 ? 'gem' : 'coin', flightAlt((d - at) / Math.max(1, end - at)) + 0.6)
+        }
+        for (let d = at + gapAt(at) + 4; d < end - 8; d += gapAt(d)) {
+          this.add(d, others[Math.floor(this.rng() * 2)], this.rng() < 0.5 ? 'log' : 'rock')
+          this.lastRowD = d
+        }
+        break
+      }
       case 'rail': {
         // the trolley waits at the start of the track; jump on to ride it to the buffer stop
         this.add(from + 4, sec.lane, 'trolley', 0)

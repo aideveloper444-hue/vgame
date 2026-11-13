@@ -6,6 +6,8 @@ import path from 'node:path'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  // also run on older iPhones / iPads (Safari 14+), not just the newest browsers
+  build: { target: ['es2020', 'safari14', 'chrome87', 'firefox78', 'edge88'] },
   resolve: {
     alias: {
       '@': path.resolve(import.meta.dirname, './src'),

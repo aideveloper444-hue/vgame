@@ -1,9 +1,10 @@
+import '@fontsource/cinzel/600.css'
 import { useEffect, useRef, useState } from 'react'
 import { ChevronLeft, Lock } from 'lucide-react'
-import { ANIMALS, getAnimal, type AnimalId } from '../engine/content'
+import { ROSTER, getAnimal, type AnimalId } from '../engine/content'
 import { useSave } from '../state/progress'
 import { charProductId, priceOf, purchase, usePrices } from '../state/shop'
-import { ART, abilityArt, headArt, traitArt } from './art'
+import { abilityArt, headArt, traitArt } from './art'
 import { Bar, Gem, toast, useNav } from './common'
 import { showcase } from '../scene/runController'
 import { haptic, sfx } from './sfx'
@@ -96,29 +97,24 @@ export default function PreviewScreen() {
               </button>
               <Logo size={0.8} className="ml-3 mt-3 portrait:scale-75" />
             </div>
-            <img src={ART.tagline} alt="Run. Explore. Survive." className="mt-6 w-[150px] rounded-lg opacity-95 [mask-image:radial-gradient(ellipse_at_center,#000_55%,transparent_75%)] portrait:hidden" />
           </div>
 
           {/* right: plank panel, abilities, stats */}
           <div className="wb-pv-side wb-scroll flex max-h-full w-[min(100%,380px)] shrink-0 flex-col gap-1.5 portrait:w-full portrait:self-stretch">
             <div
-              className="relative rounded-xl px-3 py-2"
-              style={{
-                background: 'repeating-linear-gradient(180deg, rgba(0,0,0,0) 0 14px, rgba(0,0,0,0.18) 14px 16px), linear-gradient(170deg, #4a3423 0%, #2c1d12 60%, #1e140c 100%)',
-                boxShadow: 'inset 0 0 0 2px rgba(255,210,140,0.25), 0 10px 24px rgba(0,0,0,0.55)',
-                transform: 'rotate(-1.2deg)',
-              }}
+              className="wb-panel relative px-4 py-3"
             >
               <div className="flex items-center gap-2">
-                <img src={ART.paw} alt="" className="h-12 w-12" />
                 <div className="min-w-0 flex-1 leading-none">
-                  <div className="wb-pv-name wb-title text-[40px] wb-stroke">{a.name}</div>
-                  <div className="wb-pv-species wb-title text-[24px] wb-yellow wb-stroke">{a.species}</div>
+                  <div className="wb-pv-species text-[12px] font-semibold uppercase tracking-[0.32em] text-[var(--gold)]">{a.species}</div>
+                  <div className="wb-pv-name mt-1.5 text-[38px] wb-stroke" style={{ fontFamily: "'Cinzel', serif", fontWeight: 600, letterSpacing: '0.08em' }}>
+                    {a.name}
+                  </div>
                 </div>
                 {a.free ? (
-                  <img src={ART.free} alt="Free" className="h-11 w-auto" />
+                  <span className="wb-chip">Included</span>
                 ) : own ? (
-                  <span className="wb-btn wb-btn-green h-9 px-3 text-[18px]">Owned</span>
+                  <span className="wb-chip is-on">Owned</span>
                 ) : (
                   <span className="wb-pill !h-9 px-2 text-[20px]">
                     <Gem size={24} /> {a.gemPrice}
@@ -152,7 +148,7 @@ export default function PreviewScreen() {
         {/* carousel + select */}
         <div className="mt-2 flex items-end gap-3 portrait:flex-col portrait:items-stretch">
           <div ref={strip} className="wb-pv-strip wb-panel flex min-w-0 flex-1 gap-2 overflow-x-auto p-2 [scrollbar-width:none]" style={{ touchAction: 'pan-x' }}>
-            {ANIMALS.map((x) => {
+            {ROSTER.map((x) => {
               const on = x.id === id
               const mine = owned.includes(x.id)
               return (
@@ -161,7 +157,7 @@ export default function PreviewScreen() {
                   data-id={x.id}
                   onClick={() => show(x.id)}
                   className="relative h-[86px] w-[68px] shrink-0 overflow-hidden rounded-lg"
-                  style={{ boxShadow: on ? '0 0 0 3px #ffd84a, 0 0 16px rgba(255,200,60,0.9)' : 'inset 0 0 0 1.5px rgba(150,210,255,0.4)' }}
+                  style={{ boxShadow: on ? '0 0 0 3px #dcc08a, 0 0 16px rgba(255,200,60,0.9)' : 'inset 0 0 0 1.5px rgba(150,210,255,0.4)' }}
                 >
                   <img src={headArt(x.id)} alt={x.name} className="h-full w-full object-cover" />
                   {!mine && (
@@ -169,15 +165,15 @@ export default function PreviewScreen() {
                       <Lock size={11} strokeWidth={3} /> {x.gemPrice}
                     </span>
                   )}
-                  {selected === x.id && <span className="absolute left-0.5 top-0.5 rounded bg-[#2fb80f] px-1 text-[10px] font-bold">IN USE</span>}
+                  {selected === x.id && <span className="absolute left-0.5 top-0.5 rounded bg-[#3f7a5c] px-1 text-[10px] font-bold">IN USE</span>}
                 </button>
               )
             })}
           </div>
           <div className="flex shrink-0 flex-col gap-2">
             {own ? (
-              <button className="wb-btn wb-btn-gold wb-pulse h-[64px] min-w-[220px] px-6 text-[38px]" disabled={selected === id} onClick={select}>
-                <img src={ART.paw} alt="" className="h-10 w-10" /> {selected === id ? 'Selected' : 'Select'}
+              <button className={`wb-btn h-[58px] min-w-[220px] px-6 text-[28px] ${selected === id ? 'wb-btn-dark wb-btn-current' : 'wb-btn-gold'}`} disabled={selected === id} onClick={select}>
+                {selected === id ? 'Selected' : 'Select'}
               </button>
             ) : (
               <>
@@ -199,18 +195,17 @@ export default function PreviewScreen() {
 export function Stats({ id }: { id: AnimalId }) {
   const a = getAnimal(id)
   const rows = [
-    { art: ART.statSpeed, label: 'Speed', v: a.stats.speed, c: 'linear-gradient(180deg,#ffe76a,#f2a20c)' },
-    { art: ART.statStamina, label: 'Stamina', v: a.stats.stamina, c: 'linear-gradient(180deg,#9dff6a,#24b40f)' },
-    { art: ART.statDefense, label: 'Defense', v: a.stats.defense, c: 'linear-gradient(180deg,#8fd8ff,#1f74e0)' },
+    { label: 'Speed', v: a.stats.speed, c: 'linear-gradient(90deg,#a9864e,#f3e3bd)' },
+    { label: 'Stamina', v: a.stats.stamina, c: 'linear-gradient(90deg,#a9864e,#f3e3bd)' },
+    { label: 'Defense', v: a.stats.defense, c: 'linear-gradient(90deg,#a9864e,#f3e3bd)' },
   ]
   return (
     <>
-      <div className="wb-title text-[22px] wb-yellow wb-stroke">Stats</div>
-      <div className="flex flex-col gap-1.5">
+      <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.28em] text-[var(--gold)]">Stats</div>
+      <div className="flex flex-col gap-2">
         {rows.map((r) => (
-          <div key={r.label} className="flex items-center gap-2">
-            <img src={r.art} alt="" className="h-7 w-7 rounded object-contain" />
-            <span className="w-[70px] text-[18px]">{r.label}</span>
+          <div key={r.label} className="flex items-center gap-3">
+            <span className="w-[72px] text-[12px] font-semibold uppercase tracking-[0.16em] text-white/75">{r.label}</span>
             <div className="flex-1">
               <Bar value={r.v} color={r.c} />
             </div>

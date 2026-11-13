@@ -1,4 +1,4 @@
-import { ClipboardList, Gift, MoreHorizontal, PawPrint, Play, ShoppingCart, Users } from 'lucide-react'
+import { ClipboardList, Gift, MoreHorizontal, PawPrint, Play, Settings, ShoppingCart, Trophy, Users } from 'lucide-react'
 import { getAnimal } from '../engine/content'
 import { MISSIONS, levelOf, today, useSave } from '../state/progress'
 import { ART, headArt } from './art'
@@ -28,11 +28,11 @@ export default function HomeScreen({ onPlay }: { onPlay: () => void }) {
   }
 
   const nav = [
-    { label: 'Characters', icon: <PawPrint size={26} fill="currentColor" />, on: () => go('select'), dot: 0 },
-    { label: 'Store', icon: <ShoppingCart size={26} />, on: () => go('store'), dot: 0 },
-    { label: 'Missions', icon: <ClipboardList size={26} />, on: () => go('missions'), dot: missionsReady },
-    { label: 'Rewards', icon: <Gift size={26} />, on: () => go('rewards'), dot: dailyReady ? 1 : 0 },
-    { label: 'More', icon: <MoreHorizontal size={28} />, on: () => go('more'), dot: 0 },
+    { label: 'Characters', icon: <PawPrint size={22} strokeWidth={1.6} />, on: () => go('select'), dot: 0 },
+    { label: 'Store', icon: <ShoppingCart size={22} strokeWidth={1.6} />, on: () => go('store'), dot: 0 },
+    { label: 'Missions', icon: <ClipboardList size={22} strokeWidth={1.6} />, on: () => go('missions'), dot: missionsReady },
+    { label: 'Rewards', icon: <Gift size={22} strokeWidth={1.6} />, on: () => go('rewards'), dot: dailyReady ? 1 : 0 },
+    { label: 'More', icon: <MoreHorizontal size={24} strokeWidth={1.6} />, on: () => go('more'), dot: 0 },
   ]
 
   return (
@@ -43,17 +43,17 @@ export default function HomeScreen({ onPlay }: { onPlay: () => void }) {
         <div className="flex items-start gap-2 portrait:flex-wrap">
           <div className="flex shrink-0 flex-col gap-2 portrait:order-1 portrait:flex-row">
             <button className="wb-nav-btn h-[62px] w-[66px] !text-[12px] portrait:h-[52px] portrait:w-[56px] portrait:!text-[10px]" onClick={tap(() => go('settings'))}>
-              <img src={ART.settings} alt="" className="h-9 w-11 object-contain" />
+              <Settings size={24} strokeWidth={1.6} className="text-[var(--gold)]" />
               Settings
             </button>
             <button className="wb-nav-btn h-[62px] w-[66px] !text-[12px] portrait:h-[52px] portrait:w-[56px] portrait:!text-[10px]" onClick={tap(() => go('leaderboard'))}>
-              <img src={ART.leaderboard} alt="" className="h-9 w-11 object-contain" />
+              <Trophy size={24} strokeWidth={1.6} className="text-[var(--gold)]" />
               Leaderboard
             </button>
           </div>
           <div className="wb-home-logo flex min-w-0 flex-1 flex-col items-center portrait:order-3 portrait:basis-full landscape:items-start">
             <Logo size={0.92} className="mt-3 portrait:scale-[0.8] landscape:ml-6" />
-            <div className="wb-title mt-1 text-[22px] italic wb-yellow wb-stroke landscape:ml-[64px]" style={{ transform: 'rotate(-4deg)' }}>
+            <div className="mt-2 text-[13px] font-semibold uppercase tracking-[0.36em] text-[var(--muted)] wb-shadow landscape:ml-[18px]">
               Run · Explore · Survive
             </div>
           </div>
@@ -62,7 +62,7 @@ export default function HomeScreen({ onPlay }: { onPlay: () => void }) {
             <div className="wb-hud-box !h-8 !px-3 text-[15px] portrait:hidden">
               <span className="wb-yellow">LV {lv.level}</span>
               <span className="h-2 w-20 overflow-hidden rounded-full bg-black/60">
-                <span className="block h-full rounded-full" style={{ width: `${(lv.xp / lv.need) * 100}%`, background: 'linear-gradient(90deg,#7dff3a,#2fb80f)' }} />
+                <span className="block h-full rounded-full" style={{ width: `${(lv.xp / lv.need) * 100}%`, background: 'linear-gradient(90deg,#a9d4b6,#3f7a5c)' }} />
               </span>
             </div>
             <button className="wb-hud-box !h-11 !pl-1 !pr-4" onClick={tap(() => go('select'))}>

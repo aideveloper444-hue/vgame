@@ -4,6 +4,8 @@ import * as THREE from 'three'
 import { ALL_COLORS, COLOR_GLOW } from './ludoBoardLayout'
 import { CLIP, buildHero, heroAnimations, useHeroAssets } from './ludoCharacters'
 import { useLudoPortraits } from './ludoPortraits'
+import { STYLE_ORDER, useCharacterStyle, type CharacterStyleId } from './ludoThemes'
+import type { LudoColor } from './ludoBoardLayout'
 
 const SIZE = 384
 const OUT = 192
@@ -17,6 +19,8 @@ export default function LudoPortraitStudio() {
   const gl = useThree((s) => s.gl)
   const assets = useHeroAssets()
   const setPortraits = useLudoPortraits((s) => s.setPortraits)
+  const setStyles = useLudoPortraits((s) => s.setStyles)
+  const styleId = useCharacterStyle((s) => s.styleId)
 
   useEffect(() => {
     const rt = new THREE.WebGLRenderTarget(SIZE, SIZE)
@@ -27,9 +31,9 @@ export default function LudoPortraitStudio() {
     const buf = new Uint8Array(SIZE * SIZE * 4)
     const out: Record<string, string> = {}
 
-    ALL_COLORS.forEach((color) => {
+    const shoot = (color: LudoColor, style: CharacterStyleId): string => {
       const scene = new THREE.Scene()
-      const { root: model } = buildHero(color, assets)
+      const { root: model } = buildHero(color, assets, style)
       const mixer = new THREE.AnimationMixer(model)
       const idle = heroAnimations(assets, color).find((a) => a.name === CLIP.idle)
       if (idle) mixer.clipAction(idle).play()
@@ -44,11 +48,12 @@ export default function LudoPortraitStudio() {
       cam.position.set(h * 0.2, focusY + h * 0.03, h * 0.9)
       cam.lookAt(0, focusY - h * 0.02, 0)
 
-      scene.add(new THREE.AmbientLight('#ffffff', 1))
+      scene.add(new THREE.AmbientLight('#ffffff', 0.55))
       const key = new THREE.DirectionalLight('#fff1dc', 2.6)
       key.position.set(1.4, 2, 2.4)
       scene.add(key)
-      const rim = new THREE.DirectionalLight(COLOR_GLOW[color], 4.5)
+      // strong coloured rim from behind: a moody, high-contrast studio look
+      const rim = new THREE.DirectionalLight(COLOR_GLOW[color], 6)
       rim.position.set(-1.6, 1.4, -2)
       scene.add(rim)
       const fill = new THREE.DirectionalLight('#9fb4ff', 0.8)
@@ -75,15 +80,26 @@ export default function LudoPortraitStudio() {
       const sctx = small.getContext('2d')!
       sctx.imageSmoothingQuality = 'high'
       sctx.drawImage(big, 0, 0, OUT, OUT)
-      out[color] = small.toDataURL('image/png')
       mixer.stopAllAction()
+      return small.toDataURL('image/png')
+    }
+
+    ALL_COLORS.forEach((color) => {
+      out[color] = shoot(color, styleId)
+    })
+    // one hero shot per warrior style for the picker, each lit in its own pop colour
+    const STYLE_COLOR: Record<CharacterStyleId, LudoColor> = { shadow: 'PINK', vanguard: 'CYAN', knight: 'YELLOW', ranger: 'GREEN' }
+    const styles: Partial<Record<CharacterStyleId, string>> = {}
+    STYLE_ORDER.forEach((st) => {
+      styles[st] = shoot(STYLE_COLOR[st], st)
     })
 
     gl.setRenderTarget(prevTarget)
     gl.setClearColor(prevClear, prevAlpha)
     rt.dispose()
     setPortraits(out)
-  }, [gl, assets, setPortraits])
+    setStyles(styles)
+  }, [gl, assets, setPortraits, setStyles, styleId])
 
   return null
 }

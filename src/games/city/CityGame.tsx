@@ -1,6 +1,6 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { WifiOff } from 'lucide-react'
-import { useCityStore, netWorthOf, type CityPhase, type CityPlayer, type TradeOffer } from './cityStore'
+import { useCityStore, netWorthOf, canBuildOn, type CityPhase, type CityPlayer, type TradeOffer } from './cityStore'
 import type { PropertyTile } from './cityBoardData'
 import CityScene3D, { type HudInsets } from './CityScene3D'
 import LudoBackdrop from '@/games/ludo/LudoBackdrop'
@@ -8,7 +8,7 @@ import CityTopHUD from './CityTopHUD'
 import { CITY_CHAT } from './CityChatPanel'
 import CityMenu from './CityMenu'
 import { CardRevealModal } from './CityEventCard'
-import { AuctionPanel, BuildPanel, BuyPanel, EventsPanel, ItemsPanel, TradeComposer, TradeInboxPanel } from './CityModals'
+import { AuctionPanel, BuildPanel, BuyPanel, EventsPanel, ItemsPanel, TileInfoPanel, TradeComposer, TradeInboxPanel } from './CityModals'
 import { LandingToastView, SoldView, TurnBannerView } from './CityFxOverlay'
 import { useCityBotAutomation } from './useCityBotAutomation'
 import { useCityFx } from './useCityFx'
@@ -151,6 +151,7 @@ function CityMatchView() {
   const [showEvents, setShowEvents] = useState(false)
   const [showItems, setShowItems] = useState(false)
   const [mapView, setMapView] = useState(false)
+  const [infoTileId, setInfoTileId] = useState<number | null>(null)
   const [rollKey, setRollKey] = useState(0)
   const startedAt = useRef(Date.now())
 
@@ -180,6 +181,7 @@ function CityMatchView() {
       buy: (buy: boolean) => (authoritative ? st().resolveBuyDecision(buy) : sendCityAction({ t: 'buy', buy })),
       auction: (playerId: string, action: 'BID' | 'PASS') => (authoritative ? st().submitAuctionAction(playerId, action) : sendCityAction({ t: 'auction', action })),
       upgrade: (tileId: number) => (authoritative ? st().upgradeProperty(tileId) : sendCityAction({ t: 'upgrade', tileId })),
+      redeem: (tileId: number) => (authoritative ? st().redeemProperty(tileId) : sendCityAction({ t: 'redeem', tileId })),
       trade: (offer: Omit<TradeOffer, 'id' | 'status'>) =>
         authoritative
           ? st().proposeTrade(offer)
@@ -277,7 +279,7 @@ function CityMatchView() {
   const localTrade = pendingTrades.find((t) => t.status === 'PENDING' && isLocal(t.toPlayerId))
   const ownedBy = (id: string) => tiles.filter((t): t is PropertyTile => t.type === 'PROPERTY' && t.ownerId === id)
   const yourOwned = you ? ownedBy(you.id) : []
-  const upgradable = yourOwned.filter((t) => t.level < t.maxLevel && (you?.cash ?? 0) >= t.upgradeCost)
+  const upgradable = you ? yourOwned.filter((t) => canBuildOn(you, t, tiles)) : []
   const canAct = myTurn && phase === 'POST_MOVE_ACTIONS'
   const auctionBidder = auction ? players.find((p) => p.id === auction.queue[0]) : undefined
   const auctionYou = auctionBidder && isLocal(auctionBidder.id) ? auctionBidder : you
@@ -309,6 +311,7 @@ function CityMatchView() {
       rollKey={rollKey}
       mapView={mapView}
       onMap={() => setMapView((v) => !v)}
+      onTileClick={setInfoTileId}
       canBuild={canAct && yourOwned.length > 0}
       buildCount={canAct ? upgradable.length : 0}
       onBuild={() => setShowBuild(true)}
@@ -332,7 +335,7 @@ function CityMatchView() {
       {fx.banner && <TurnBannerView banner={fx.banner} />}
 
       {phase === 'AWAITING_BUY_DECISION' && myTurn && currentTile.type === 'PROPERTY' && (
-        <BuyPanel tile={currentTile} cash={current.cash} onBuy={() => act.buy(true)} onSkip={() => act.buy(false)} />
+        <BuyPanel tile={currentTile} cash={current.cash} penalty={config.declinePenalty} onBuy={() => act.buy(true)} onSkip={() => act.buy(false)} />
       )}
       {phase === 'AUCTION' && auction && (
         <AuctionPanel
@@ -365,7 +368,10 @@ function CityMatchView() {
           onClose={() => setShowTrade(false)}
         />
       )}
-      {showBuild && you && canAct && <BuildPanel owned={yourOwned} cash={you.cash} onUpgrade={act.upgrade} onClose={() => setShowBuild(false)} />}
+      {showBuild && you && canAct && <BuildPanel owned={yourOwned} tiles={tiles} cash={you.cash} onUpgrade={act.upgrade} onRedeem={act.redeem} onClose={() => setShowBuild(false)} />}
+      {infoTileId !== null && tiles[infoTileId] && (
+        <TileInfoPanel tile={tiles[infoTileId]} tiles={tiles} players={players} config={config} onClose={() => setInfoTileId(null)} />
+      )}
       {showEvents && <EventsPanel events={activeEvents} onClose={() => setShowEvents(false)} />}
       {showItems && (
         <ItemsPanel

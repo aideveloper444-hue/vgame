@@ -468,6 +468,9 @@ const SCENES: Record<PropertyCategory, SceneFn> = {
   MALL: drawMall,
   STORE: drawStore,
   FACTORY: drawFactory,
+  TRAVEL: drawHotel,
+  TRANSIT: drawFactory,
+  MEDIA: drawOffice,
 }
 
 // ---------------------------------------------------------------- text helpers
@@ -631,12 +634,20 @@ function coinStack(ctx: Ctx, cx: number, cy: number, s: number) {
   ctx.fillText('₹', cx, cy - s * 0.42)
 }
 
+function emojiArt(ctx: Ctx, emoji: string, cx: number, cy: number, s: number) {
+  ctx.font = `${s}px "Segoe UI Emoji", "Apple Color Emoji", sans-serif`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(emoji, cx, cy)
+}
+
 function drawSimpleSide(ctx: Ctx, W: number, H: number, tile: SimpleTile, edge: InnerEdge) {
   const strip = Math.min(W, H) * 0.07
   const palette: Record<string, [string, string, string]> = {
     CHANCE: ['#f5edff', '#dccbff', '#7c3aed'],
     COMMUNITY: ['#fff8e6', '#ffe3a3', '#1d4ed8'],
     TAX: ['#eef2f7', '#cfd8e6', '#b45309'],
+    CLUB: ['#fdf2f8', '#fbcfe8', '#be185d'],
   }
   const [top, bottom, accent] = palette[tile.type] ?? ['#ffffff', '#e5e7eb', '#334155']
   drawCardBase(ctx, W, H, top, bottom)
@@ -647,9 +658,9 @@ function drawSimpleSide(ctx: Ctx, W: number, H: number, tile: SimpleTile, edge: 
   const cy = r.y + artH / 2
   if (tile.type === 'CHANCE') questionMark(ctx, cx, cy + 4, artH * 0.95)
   else if (tile.type === 'COMMUNITY') chest(ctx, cx, cy, Math.min(r.w * 0.7, artH * 0.9))
+  else if (tile.type === 'CLUB') emojiArt(ctx, tile.name === 'Milk Bar' ? '🥛' : '🎩', cx, cy, Math.min(r.w * 0.6, artH * 0.8))
   else coinStack(ctx, cx, cy + artH * 0.18, Math.min(r.w * 0.7, artH))
-  const label = tile.type === 'TAX' ? 'City Tax' : tile.type === 'COMMUNITY' ? 'Community Chest' : 'Chance'
-  drawNamePrice(ctx, label, tile.type === 'TAX' ? `₹${tile.amount ?? 0}` : null, r.x, r.y + artH, r.w, r.h - artH, accent)
+  drawNamePrice(ctx, tile.name, tile.type === 'TAX' ? '₹50 each' : null, r.x, r.y + artH, r.w, r.h - artH, accent)
 }
 
 function drawCorner(ctx: Ctx, S: number, tile: SimpleTile, goBonus: number) {

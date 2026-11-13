@@ -42,7 +42,7 @@ export function MissionsScreen({ onPlay }: { onPlay: () => void }) {
                       ({fmt(v)} / {fmt(target)})
                     </div>
                     <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-black/50">
-                      <div className="h-full rounded-full" style={{ width: `${(v / target) * 100}%`, background: 'linear-gradient(90deg,#ffe76a,#f2a20c)' }} />
+                      <div className="h-full rounded-full" style={{ width: `${(v / target) * 100}%`, background: 'linear-gradient(90deg,#f3e3bd,#a9864e)' }} />
                     </div>
                   </div>
                   <div className="flex w-[64px] items-center justify-end gap-1 text-[22px] font-bold">
@@ -99,7 +99,7 @@ export function WorldsScreen() {
                 {found} / {ZONE_COUNT} zones discovered
               </div>
               <div className="mx-auto mt-1.5 h-2.5 w-full max-w-[520px] overflow-hidden rounded-full bg-black/40">
-                <div className="h-full rounded-full bg-[#2fb80f]" style={{ width: `${(found / ZONE_COUNT) * 100}%` }} />
+                <div className="h-full rounded-full bg-[#3f7a5c]" style={{ width: `${(found / ZONE_COUNT) * 100}%` }} />
               </div>
               <div className="mt-1 text-[14px] text-white/75">
                 A new place every {ZONE_LEN} m, from 0 to {fmt(WORLD_LEN)} m. Your best run: {fmt(best)} m.
@@ -119,7 +119,7 @@ export function WorldsScreen() {
                           <img src={kitArt(z.kit)} alt="" className="h-full w-full object-cover" style={{ filter: reached ? VARIANT_FILTER[z.variant] || undefined : 'brightness(0.4) saturate(0.4)' }} />
                           <div className="absolute left-1 top-1 rounded bg-black/60 px-1.5 text-[13px] font-bold">{String(z.n).padStart(3, '0')}</div>
                           {reached ? (
-                            <div className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-[#2fb80f]">
+                            <div className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-[#3f7a5c]">
                               <Check size={13} strokeWidth={4} />
                             </div>
                           ) : (
@@ -263,11 +263,11 @@ export function RewardsScreen() {
                   const claimed = ready ? day < nextDay : day <= daily.streak
                   const today_ = ready && day === nextDay
                   return (
-                    <div key={i} className="wb-card flex flex-col items-center gap-0.5 py-2" style={today_ ? { boxShadow: 'inset 0 0 0 2.5px #ffd84a, 0 0 14px rgba(255,210,70,0.7)' } : undefined}>
+                    <div key={i} className="wb-card flex flex-col items-center gap-0.5 py-2" style={today_ ? { boxShadow: 'inset 0 0 0 2.5px #dcc08a, 0 0 14px rgba(255,210,70,0.7)' } : undefined}>
                       <div className="text-[13px] text-white/75">Day {day}</div>
                       {r.gems ? <Gem size={30} /> : <Coin size={30} />}
                       <div className="text-[15px] font-bold">{fmt(r.gems ?? r.coins ?? 0)}</div>
-                      {claimed && <Check size={16} strokeWidth={4} className="text-[#7dff3a]" />}
+                      {claimed && <Check size={16} strokeWidth={4} className="text-[#a9d4b6]" />}
                     </div>
                   )
                 })}
@@ -286,7 +286,7 @@ export function RewardsScreen() {
                   const claimed = !!got[a.id]
                   return (
                     <div key={a.id} className="wb-card flex items-center gap-2 px-2 py-2">
-                      <div className={`grid h-11 w-11 shrink-0 place-items-center rounded-full ${done ? 'bg-gradient-to-b from-[#ffe76a] to-[#f2a20c] text-[#3b1d00]' : 'bg-white/10 text-white/50'}`}>
+                      <div className={`grid h-11 w-11 shrink-0 place-items-center rounded-full ${done ? 'bg-gradient-to-b from-[#f3e3bd] to-[#a9864e] text-[#3b1d00]' : 'bg-white/10 text-white/50'}`}>
                         <Award size={24} />
                       </div>
                       <div className="min-w-0 flex-1 leading-tight">
@@ -351,7 +351,7 @@ export function MoreScreen({ onTutorial }: { onTutorial: () => void }) {
           <div className="wb-panel mx-auto flex max-w-[520px] flex-col gap-1.5 p-2">
             {items.map((i) => (
               <button key={i.label} className="wb-card flex h-14 items-center gap-3 px-3 text-left text-[20px] font-bold" onClick={() => (sfx.tap(), i.on())}>
-                <span className="text-[#ffd84a]">{i.icon}</span>
+                <span className="text-[#dcc08a]">{i.icon}</span>
                 <span className="flex-1">{i.label}</span>
                 <ChevronRight size={22} className="text-white/60" />
               </button>
@@ -372,7 +372,7 @@ function Toggle({ on, set, label, hint }: { on: boolean; set: (v: boolean) => vo
         <div className="text-[19px] font-bold">{label}</div>
         {hint && <div className="text-[14px] text-white/65">{hint}</div>}
       </div>
-      <span className="relative h-7 w-12 rounded-full transition" style={{ background: on ? '#2fb80f' : 'rgba(255,255,255,0.2)' }}>
+      <span className="relative h-7 w-12 rounded-full transition" style={{ background: on ? '#3f7a5c' : 'rgba(255,255,255,0.2)' }}>
         <span className="absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-all" style={{ left: on ? 22 : 2 }} />
       </span>
     </button>
@@ -386,7 +386,7 @@ function Choice<T extends string>({ label, hint, value, options, set }: { label:
       {hint && <div className="text-[14px] text-white/65">{hint}</div>}
       <div className="mt-1.5 grid gap-1.5" style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0,1fr))` }}>
         {options.map((o) => (
-          <button key={o.v} className={`h-9 rounded-lg text-[16px] font-bold ${o.v === value ? 'bg-[#ffd84a] text-[#2a1a00]' : 'bg-black/35 text-white/80'}`} onClick={() => (sfx.tap(), set(o.v))}>
+          <button key={o.v} className={`h-9 rounded-lg text-[16px] font-bold ${o.v === value ? 'bg-[#dcc08a] text-[#2a1a00]' : 'bg-black/35 text-white/80'}`} onClick={() => (sfx.tap(), set(o.v))}>
             {o.label}
           </button>
         ))}
@@ -430,7 +430,7 @@ export function SettingsScreen() {
               <div className="flex items-center justify-between text-[19px] font-bold">
                 Swipe sensitivity <span className="wb-yellow">{s.sensitivity <= 0.75 ? 'High' : s.sensitivity >= 1.3 ? 'Low' : 'Normal'}</span>
               </div>
-              <input type="range" min={0.6} max={1.6} step={0.1} value={1.6 + 0.6 - s.sensitivity} onChange={(e) => set({ sensitivity: Math.round((2.2 - Number(e.target.value)) * 10) / 10 })} className="w-full accent-[#ffd84a]" style={{ touchAction: 'pan-x' }} />
+              <input type="range" min={0.6} max={1.6} step={0.1} value={1.6 + 0.6 - s.sensitivity} onChange={(e) => set({ sensitivity: Math.round((2.2 - Number(e.target.value)) * 10) / 10 })} className="w-full accent-[#dcc08a]" style={{ touchAction: 'pan-x' }} />
             </div>
             <button
               className="wb-card flex h-12 items-center justify-center text-[17px] text-white/80"
@@ -443,6 +443,10 @@ export function SettingsScreen() {
             </button>
           </div>
           <p className="mx-auto mt-3 max-w-[560px] text-center text-[13px] text-white/55">Your progress is saved on this device.</p>
+          {/* CC-BY 4.0 attribution for the realistic animal models (also in public/models/wildbound/CREDITS.txt) */}
+          <p className="mx-auto mt-2 max-w-[560px] text-center text-[12px] leading-snug text-white/45">
+            3D models: “realistic Lion 3d model” by Tarun.Teja and “Elephant animated with transition animation” by theogilat, both on Sketchfab, licensed CC BY 4.0 (adapted for this game).
+          </p>
         </div>
       </div>
     </div>
@@ -467,7 +471,7 @@ export function LeaderboardScreen() {
               {runs.length === 0 && <div className="py-6 text-center text-[17px] text-white/70">No runs yet. Hit PLAY and set your first record!</div>}
               <div className="flex flex-col gap-1.5">
                 {runs.slice(0, 15).map((r, i) => (
-                  <div key={r.at} className="wb-card flex items-center gap-3 px-2 py-1.5" style={i < 3 ? { boxShadow: `inset 0 0 0 2px ${['#ffd84a', '#d9e2ea', '#d58a4a'][i]}` } : undefined}>
+                  <div key={r.at} className="wb-card flex items-center gap-3 px-2 py-1.5" style={i < 3 ? { boxShadow: `inset 0 0 0 2px ${['#dcc08a', '#d9e2ea', '#d58a4a'][i]}` } : undefined}>
                     <div className="wb-title w-8 text-center text-[24px] wb-stroke">{i + 1}</div>
                     <img src={headArt(r.animalId)} alt="" className="h-10 w-9 rounded-md object-cover" />
                     <div className="min-w-0 flex-1 leading-tight">
@@ -520,7 +524,7 @@ export function LevelUpModal({ level, onOk }: { level: number; onOk: () => void 
       <div className="wb-in w-full max-w-[380px] text-center">
         <div className="relative mx-auto w-full">
           <img src={ART.levelup} alt="Level up!" className="w-full drop-shadow-[0_10px_20px_rgba(0,0,0,0.6)]" />
-          <div className="wb-title absolute left-1/2 top-[56%] -translate-x-1/2 -translate-y-1/2 text-[64px] leading-none text-[#ffe36a]" style={{ textShadow: '0 3px 0 #5a3000, 0 0 3px #000, 0 6px 14px rgba(0,0,0,0.7)' }}>
+          <div className="wb-title absolute left-1/2 top-[56%] -translate-x-1/2 -translate-y-1/2 text-[64px] leading-none text-[#f3e3bd]" style={{ textShadow: '0 1px 2px rgba(0,0,0,0.6), 0 8px 24px rgba(0,0,0,0.5)' }}>
             {level}
           </div>
         </div>

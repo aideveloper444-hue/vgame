@@ -23,7 +23,7 @@ export async function socialToken(provider: Provider): Promise<string> {
     } as never)
     initialized = true
   }
-  const res = (await SocialLogin.login({ provider, options: provider === 'facebook' ? { permissions: ['email', 'public_profile'] } : {} } as never)) as { result: { idToken?: string | null; accessToken?: { token: string } | null } }
+  const res = (await SocialLogin.login({ provider, options: provider === 'facebook' ? { permissions: ['email', 'public_profile', 'user_friends'] } : {} } as never)) as { result: { idToken?: string | null; accessToken?: { token: string } | null } }
   const token = provider === 'facebook' ? res.result.accessToken?.token : res.result.idToken
   if (!token) throw new Error('Sign-in was cancelled')
   return token

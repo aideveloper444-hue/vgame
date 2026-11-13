@@ -53,7 +53,7 @@ export function RaceHud() {
       {/* progress to the finish line, every runner a dot */}
       <div className="pointer-events-none absolute left-1/2 top-[calc(env(safe-area-inset-top)+8px)] w-[min(46vw,360px)] -translate-x-1/2 portrait:top-[calc(env(safe-area-inset-top)+58px)] portrait:w-[78vw]">
         <div className="relative h-3 rounded-full bg-black/55 ring-1 ring-white/25">
-          <div className="h-full rounded-full" style={{ width: `${Math.min(100, ((me?.d ?? 0) / s.length) * 100)}%`, background: 'linear-gradient(90deg,#7dff3a,#ffd84a)' }} />
+          <div className="h-full rounded-full" style={{ width: `${Math.min(100, ((me?.d ?? 0) / s.length) * 100)}%`, background: 'linear-gradient(90deg,#a9d4b6,#dcc08a)' }} />
           {s.rows.map((r) => (
             <span
               key={r.id}
@@ -71,14 +71,14 @@ export function RaceHud() {
         {s.rows.map((r, i) => {
           const gap = me && !r.me ? Math.round(r.d - me.d) : 0
           return (
-            <div key={r.id} className={`flex h-8 items-center gap-1.5 rounded-lg pl-1 pr-2 text-[14px] ${r.me ? 'bg-[#ffd84a]/25 ring-1 ring-[#ffd84a]' : 'bg-black/50'} ${r.left ? 'opacity-45' : ''}`}>
+            <div key={r.id} className={`flex h-8 items-center gap-1.5 rounded-lg pl-1 pr-2 text-[14px] ${r.me ? 'bg-[#dcc08a]/25 ring-1 ring-[#dcc08a]' : 'bg-black/50'} ${r.left ? 'opacity-45' : ''}`}>
               <span className="wb-title w-4 text-center text-[17px]" style={{ color: r.color }}>
                 {i + 1}
               </span>
               <img src={headArt(r.animalId)} alt="" className="h-6 w-6 rounded-md object-cover" style={{ boxShadow: `0 0 0 2px ${r.color}` }} />
               <span className="min-w-0 flex-1 truncate font-bold">{r.me ? 'You' : r.name}</span>
               <span className="text-[12px] font-bold text-white/85">
-                {r.finishMs !== null ? <Flag size={13} className="inline text-[#9dff6a]" /> : r.left ? 'left' : r.down ? '💫' : r.me ? '' : `${gap > 0 ? '+' : ''}${gap} m`}
+                {r.finishMs !== null ? <Flag size={13} className="inline text-[#a9d4b6]" /> : r.left ? 'left' : r.down ? '💫' : r.me ? '' : `${gap > 0 ? '+' : ''}${gap} m`}
               </span>
             </div>
           )
@@ -141,7 +141,7 @@ export function RaceResults({ online, onAgain, onHome }: { online: boolean; onAg
             const h = i === 0 ? 92 : i === 1 ? 70 : 52
             return (
               <div key={r.id} className="flex flex-1 flex-col items-center">
-                {i === 0 && <Crown size={22} className="text-[#ffd84a]" fill="currentColor" />}
+                {i === 0 && <Crown size={22} className="text-[#dcc08a]" fill="currentColor" />}
                 <img src={headArt(r.animalId)} alt="" className="h-12 w-12 rounded-xl object-cover" style={{ boxShadow: `0 0 0 3px ${r.color}` }} />
                 <div className="mt-0.5 max-w-full truncate text-[14px] font-bold">{r.me ? 'You' : r.name}</div>
                 <div className="flex w-full items-start justify-center rounded-t-lg pt-1" style={{ height: h, background: `linear-gradient(180deg, ${r.color}, ${r.color}55)` }}>
@@ -153,7 +153,7 @@ export function RaceResults({ online, onAgain, onHome }: { online: boolean; onAg
         </div>
         <div className="mx-3 mt-0 flex flex-col gap-1 rounded-xl bg-black/35 p-2 text-[15px]">
           {s.rows.map((r, i) => (
-            <div key={r.id} className={`flex items-center gap-2 rounded-lg px-2 py-0.5 ${r.me ? 'bg-[#ffd84a]/20' : ''}`}>
+            <div key={r.id} className={`flex items-center gap-2 rounded-lg px-2 py-0.5 ${r.me ? 'bg-[#dcc08a]/20' : ''}`}>
               <span className="w-8 text-left font-bold" style={{ color: r.color }}>
                 {label(i + 1)}
               </span>
@@ -167,7 +167,7 @@ export function RaceResults({ online, onAgain, onHome }: { online: boolean; onAg
             <span className="flex items-center gap-1">
               <Coin size={20} /> +{fmt(reward.coins)} race bonus
             </span>
-            <span className="text-[#9dff6a]">+{fmt(reward.xp)} XP</span>
+            <span className="text-[#a9d4b6]">+{fmt(reward.xp)} XP</span>
           </div>
         )}
         <div className="grid grid-cols-2 gap-3 p-3">

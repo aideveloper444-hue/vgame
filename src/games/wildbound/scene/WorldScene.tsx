@@ -5,17 +5,19 @@ import { useState } from 'react'
 import { Bloom, BrightnessContrast, DepthOfField, EffectComposer, HueSaturation, N8AO, Noise, SMAA, Vignette } from '@react-three/postprocessing'
 import { BlendFunction } from 'postprocessing'
 import { SharpenEffect } from './sharpen'
+import { gradeToneMapping, installGrade } from './grade'
 import { useSave, type Quality } from '../state/progress'
 import type { Racer } from '../engine/race'
 import * as THREE from 'three'
 import { BIOMES, KIT_BASE, POWER_KINDS, ZONE_LEN, biomeAt, isObstacle, isPowerUp, type AnimalId, type BiomeId, type Flavor, type PowerUpKind, type Variant } from '../engine/content'
-import { LANE_W, ROUTE_BONUS_TEXT, ROUTE_RISK_TEXT, laneX, routeForLane, type Fork, type Item } from '../engine/run'
+import { LANE_W, ROUTE_BONUS_TEXT, ROUTE_RISK_TEXT, laneX, routeForLane, type Fork, type Item, type RunSim } from '../engine/run'
 import WildAnimal, { MODELS, type WildPoseState } from './WildAnimal'
 import { GlbSet, PropSet, hash01, preloadProps, useProcKits, worldUv, type Placement, type PropId } from './props'
 import { onSimEvent, run, showcase, tickRun } from './runController'
 import { CORNER_LEN, CORNER_R, TrackPath } from './trackPath'
 import { BRANCH_Y, Z_MAX, bendObject, bendPoint, branchGap, patchChunks, updateBend } from './bend'
 import { BIOME_NAME } from '../engine/content'
+import { makeBushPlane, type BushPlane } from './aircraft'
 import puMagnet from '../art/pu_magnet.webp'
 import puShield from '../art/pu_shield.webp'
 import puSpeed from '../art/pu_speed.webp'
@@ -33,6 +35,7 @@ import eventMask from '../art/event_mask.webp'
 
 preloadProps()
 patchChunks()
+installGrade()
 
 /** the winding trail of the current run (null in the menus: straight and flat) */
 /**
@@ -543,11 +546,20 @@ function itemPlacements(it: Item, z: number, now: number, out: Placement[]) {
 const view = { d: 0, behind: BEHIND, ahead: AHEAD, showcase: false }
 
 /** wind grass on the land beside the trail: which clump colour a kit grows, if any */
-const TUFT: Partial<Record<BiomeId, PropId>> = { forest: 'tuft', jungle: 'tuft', bamboo: 'tuft', blossom: 'tuft', birch: 'tuft', ruins: 'tuft', moonlit: 'tuftDark', pine: 'tuftDark', savannah: 'tuftGold', autumn: 'tuftAutumn' }
-const TUFT_N: Record<Quality, number> = { low: 0, medium: 6, high: 14, ultra: 24 }
+const TUFT: Partial<Record<BiomeId, PropId>> = {
+  forest: 'tuft', jungle: 'tuft', bamboo: 'tuft', blossom: 'tuft', birch: 'tuft', ruins: 'tuft', hills: 'tuft', river: 'tuft', waterfall: 'tuft',
+  moonlit: 'tuftDark', pine: 'tuftDark', swamp: 'tuftDark',
+  savannah: 'tuftGold', canyon: 'tuftGold', desert: 'tuftGold', coast: 'tuftGold',
+  autumn: 'tuftAutumn',
+}
+/** tufts per 5 m segment and side (High fills the verges; the instanced sets hold ~31 visible segments of this) */
+const TUFT_N: Record<Quality, number> = { low: 0, medium: 8, high: 22, ultra: 34 }
+/** sparse ground cover where the land is dry or sandy */
+const TUFT_SPARSE: Partial<Record<BiomeId, number>> = { desert: 0.35, coast: 0.45, canyon: 0.6 }
 function grassAt(k: number, b: BiomeId, out: (p: Placement) => void) {
-  const prop = TUFT[b]
-  const n = TUFT_N[useSave.getState().settings.quality] ?? 0
+  // newer zone types share their base kit's grass (mossy / flower forests, grassland, mangrove, lakeside …)
+  const prop = TUFT[b] ?? TUFT[KIT_BASE[b] ?? b]
+  const n = Math.round((TUFT_N[useSave.getState().settings.quality] ?? 0) * (TUFT_SPARSE[b] ?? TUFT_SPARSE[KIT_BASE[b] ?? b] ?? 1))
   if (!prop || !n) return
   for (const side of [-1, 1]) {
     for (let i = 0; i < n; i++) {
@@ -809,14 +821,20 @@ const fallFrag = /* glsl */ `
     return mix(mix(hs(i), hs(i + vec2(1.0, 0.0)), f.x), mix(hs(i + vec2(0.0, 1.0)), hs(i + vec2(1.0, 1.0)), f.x), f.y); }
   void main() {
     float t = uTime;
-    float s = ns(vec2(vUv.x * 14.0, vUv.y * 2.5 + t * 2.2)) * 0.6 + ns(vec2(vUv.x * 38.0, vUv.y * 6.0 + t * 3.4)) * 0.4;
-    float streak = smoothstep(0.32, 0.86, s);
-    vec3 col = mix(vec3(0.50, 0.72, 0.76), vec3(0.97, 1.0, 1.0), streak);
-    float edge = smoothstep(0.0, 0.16, vUv.x) * smoothstep(1.0, 0.84, vUv.x);
-    float lip = smoothstep(1.0, 0.95, vUv.y);
-    float foam = smoothstep(0.16, 0.0, vUv.y);
-    col = mix(col, vec3(1.0), foam * 0.85);
-    float a = edge * lip * (0.5 + streak * 0.5 + foam * 0.3);
+    // real falling water: a dark, see-through sheet with fine white ropes racing down it at several scales,
+    // ragged sides that waver, a bright lip where it pours over, and churned foam at the base
+    float side = ns(vec2(vUv.y * 3.0 - t * 0.7, 7.0)) * 0.13;
+    float edge = smoothstep(side, 0.2 + side, vUv.x) * smoothstep(1.0 - side, 0.8 - side, vUv.x);
+    float r1 = ns(vec2(vUv.x * 24.0, vUv.y * 1.4 + t * 2.7));
+    float r2 = ns(vec2(vUv.x * 64.0, vUv.y * 3.6 + t * 4.1));
+    float r3 = ns(vec2(vUv.x * 7.0, vUv.y * 0.7 + t * 1.3));
+    float streak = smoothstep(0.42, 0.86, r1 * 0.5 + r2 * 0.32 + r3 * 0.18);
+    vec3 col = mix(vec3(0.15, 0.22, 0.23), vec3(0.84, 0.89, 0.89), streak * 0.9 + 0.06);
+    float lip = smoothstep(1.0, 0.965, vUv.y);
+    col = mix(col, vec3(0.9, 0.93, 0.93), smoothstep(0.93, 0.985, vUv.y) * 0.6);
+    float foam = smoothstep(0.22, 0.0, vUv.y) * (0.55 + 0.45 * r2);
+    col = mix(col, vec3(0.9, 0.93, 0.93), foam);
+    float a = edge * lip * (0.32 + streak * 0.58 + foam * 0.45);
     gl_FragColor = vec4(col, a);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
@@ -935,13 +953,16 @@ function gemGeometry() {
   return g
 }
 
+/** kept as one object: useTexture returns a new result whenever its input object changes identity */
+const PICKUP_ICONS = { magnet: puMagnet, shield: puShield, speed: puSpeed, superjump: puJump, megajump: puMega, boost: puBoost, mask: eventMask }
+
 function Pickups() {
   const coins = useRef<THREE.InstancedMesh>(null)
   const gems = useRef<THREE.InstancedMesh>(null)
   const tokens = useRef<THREE.InstancedMesh>(null)
   const bubbles = useRef<THREE.InstancedMesh>(null)
   const icons = useRef<Record<PowerUpKind, THREE.InstancedMesh | null>>({ magnet: null, shield: null, speed: null, superjump: null, megajump: null, boost: null })
-  const tex = useTexture({ magnet: puMagnet, shield: puShield, speed: puSpeed, superjump: puJump, megajump: puMega, boost: puBoost, mask: eventMask })
+  const tex = useTexture(PICKUP_ICONS)
   const r = useMemo(() => {
     const coinMat = new THREE.MeshStandardMaterial({ color: '#ffc928', emissive: '#7a4a00', emissiveIntensity: 0.5, metalness: 1, roughness: 0.22 })
     const gemMat = new THREE.MeshPhysicalMaterial({ color: '#36c8ff', emissive: '#0b5bd6', emissiveIntensity: 0.55, metalness: 0.1, roughness: 0.05, clearcoat: 1, flatShading: true })
@@ -1188,7 +1209,8 @@ function poseNow(): WildPoseState {
   const sim = run.sim
   if (!sim) return { pose: 'idle', speed: 0, t: 0 }
   const s = sim.state
-  if (run.phase === 'countdown') return { pose: 'idle', speed: 0, t: 0 }
+  // the start action plays out over the countdown (held at its start while the scene warms up)
+  if (run.phase === 'countdown') return { pose: 'idle', speed: 0, t: 0, intro: run.warm ? THREE.MathUtils.clamp(1 - run.countdown / 2400, 0, 1) : 0 }
   // a clean finish (end of the training run) is a celebration, not a crash
   if (!s.alive) return s.crashKind === null ? { pose: 'victory', speed: 0, t: 0 } : { pose: 'dead', speed: 0, t: 1 }
   const blink = s.t < s.invulnUntil ? (Math.floor(s.t / 120) % 2 ? 0.55 : 0.15) : 0
@@ -1446,12 +1468,12 @@ const storm = { flash: 0, next: 4 }
 /** The look of each world: dark and cinematic, but the trail always lit enough to read. */
 interface Mood { sun: string; sunI: number; sky: string; ground: string; hemi: number; fogNear: number; fogFar: number; exposure: number; skyTop: string; env: number; trail: number; flies: number; leaves: number; leaf?: string; fall?: number }
 const MOOD = {
-  forest: { sun: '#e4f0c8', sunI: 2.1, sky: '#7f9c86', ground: '#22301a', hemi: 0.75, fogNear: 10, fogFar: 72, exposure: 1.0, skyTop: '#28403a', env: 0.35, trail: 9, flies: 0.4, leaves: 1 },
+  forest: { sun: '#e4f0c8', sunI: 2.3, sky: '#8fae92', ground: '#26361c', hemi: 0.95, fogNear: 10, fogFar: 72, exposure: 1.06, skyTop: '#28403a', env: 0.35, trail: 9, flies: 0.4, leaves: 1 },
   waterfall: { sun: '#d6e6ee', sunI: 1.7, sky: '#8fa7b0', ground: '#27332e', hemi: 0.95, fogNear: 6, fogFar: 62, exposure: 1.02, skyTop: '#3f5560', env: 0.45, trail: 7, flies: 0, leaves: 0.3 },
   hills: { sun: '#e6ecf4', sunI: 2.3, sky: '#9aa8b8', ground: '#2c3128', hemi: 0.95, fogNear: 16, fogFar: 100, exposure: 1.0, skyTop: '#4b5a6c', env: 0.45, trail: 5, flies: 0, leaves: 0 },
   river: { sun: '#d2e4dc', sunI: 1.9, sky: '#7f9e9c', ground: '#1f2d27', hemi: 0.8, fogNear: 12, fogFar: 82, exposure: 1.0, skyTop: '#2f4848', env: 0.5, trail: 7, flies: 0.3, leaves: 0.3 },
   ruins: { sun: '#f0c88a', sunI: 2.0, sky: '#9a8f70', ground: '#2e2618', hemi: 0.7, fogNear: 12, fogFar: 82, exposure: 1.0, skyTop: '#3e3a2c', env: 0.35, trail: 8, flies: 0.2, leaves: 0.5 },
-  jungle: { sun: '#cfe6a8', sunI: 1.7, sky: '#5f7f5c', ground: '#16220f', hemi: 0.6, fogNear: 8, fogFar: 60, exposure: 1.02, skyTop: '#1d3326', env: 0.3, trail: 11, flies: 0.8, leaves: 1 },
+  jungle: { sun: '#d6ecb0', sunI: 2.1, sky: '#7a9a72', ground: '#1c2a12', hemi: 0.88, fogNear: 8, fogFar: 60, exposure: 1.1, skyTop: '#1d3326', env: 0.3, trail: 11, flies: 0.8, leaves: 1 },
   moonlit: { sun: '#a8c0ff', sunI: 1.6, sky: '#5e6f9c', ground: '#121a26', hemi: 0.6, fogNear: 10, fogFar: 70, exposure: 1.05, skyTop: '#1a2440', env: 0.3, trail: 12, flies: 1, leaves: 0.2 },
   bamboo: { sun: '#e6f0c0', sunI: 2.0, sky: '#8aa878', ground: '#26331a', hemi: 0.8, fogNear: 9, fogFar: 66, exposure: 1.02, skyTop: '#33503a', env: 0.35, trail: 8, flies: 0.3, leaves: 0.7, leaf: '#9db04a' },
   pine: { sun: '#dfe8ec', sunI: 1.9, sky: '#8a9ea4', ground: '#1f2a24', hemi: 0.85, fogNear: 8, fogFar: 70, exposure: 1.0, skyTop: '#3c4e52', env: 0.35, trail: 8, flies: 0, leaves: 0.25, leaf: '#4a5a2a' },
@@ -1460,7 +1482,7 @@ const MOOD = {
   savannah: { sun: '#fff0c8', sunI: 2.9, sky: '#c8b888', ground: '#6a5a30', hemi: 1.1, fogNear: 30, fogFar: 140, exposure: 1.0, skyTop: '#5a90c8', env: 0.5, trail: 3, flies: 0, leaves: 0 },
   desert: { sun: '#fff4dc', sunI: 3.0, sky: '#e0c8a0', ground: '#8a6a40', hemi: 1.2, fogNear: 30, fogFar: 150, exposure: 0.97, skyTop: '#4a8ad0', env: 0.55, trail: 2, flies: 0, leaves: 0 },
   canyon: { sun: '#ffd8b0', sunI: 2.6, sky: '#c89878', ground: '#5a3020', hemi: 0.95, fogNear: 20, fogFar: 120, exposure: 1.0, skyTop: '#5a7aa8', env: 0.45, trail: 4, flies: 0, leaves: 0 },
-  swamp: { sun: '#c8d8a8', sunI: 1.6, sky: '#6a7a5a', ground: '#1a2214', hemi: 0.7, fogNear: 8, fogFar: 62, exposure: 1.02, skyTop: '#2a3a2a', env: 0.35, trail: 10, flies: 0.6, leaves: 0.3, leaf: '#5a6a2a' },
+  swamp: { sun: '#cfdcae', sunI: 1.9, sky: '#7a8a66', ground: '#1e2818', hemi: 0.85, fogNear: 8, fogFar: 62, exposure: 1.07, skyTop: '#2a3a2a', env: 0.35, trail: 10, flies: 0.6, leaves: 0.3, leaf: '#5a6a2a' },
   volcanic: { sun: '#ffb080', sunI: 1.9, sky: '#6a3a2a', ground: '#1a0e0a', hemi: 0.6, fogNear: 12, fogFar: 82, exposure: 1.05, skyTop: '#2a1a1a', env: 0.3, trail: 9, flies: 0, leaves: 0.7, leaf: '#ff6a20', fall: -0.35 },
   coast: { sun: '#fff4e0', sunI: 3.0, sky: '#a8d0e0', ground: '#c8b080', hemi: 1.2, fogNear: 30, fogFar: 150, exposure: 1.0, skyTop: '#3a8ad8', env: 0.6, trail: 3, flies: 0, leaves: 0 },
   blossom: { sun: '#fff0e8', sunI: 2.6, sky: '#e0c0d0', ground: '#4a5a3a', hemi: 1.1, fogNear: 18, fogFar: 100, exposure: 1.02, skyTop: '#7aa0d8', env: 0.5, trail: 4, flies: 0.1, leaves: 1, leaf: '#ffb0d0', fall: 0.5 },
@@ -1495,8 +1517,9 @@ function SkyDome() {
         uniforms: {
           top: { value: new THREE.Color('#5aa6e0') },
           mid: { value: new THREE.Color('#dcebd8') },
+          horizon: { value: new THREE.Color('#dcebd8') },
           bottom: { value: new THREE.Color('#6f8f5a') },
-          sun: { value: new THREE.Vector3(-0.35, 0.55, 0.75).normalize() },
+          sun: { value: new THREE.Vector3(-0.7, 0.4, 0.45).normalize() },
           // real photographed clouds (Poly Haven sky, upper hemisphere), lit in the zone's sky colours
           clouds: { value: cloudTex() },
           drift: { value: 0 },
@@ -1504,10 +1527,11 @@ function SkyDome() {
         },
         vertexShader: 'varying vec3 vP; void main(){ vP = normalize(position); vec4 p = projectionMatrix * modelViewMatrix * vec4(position, 1.0); gl_Position = p.xyww; }',
         fragmentShader: /* glsl */ `
-          uniform vec3 top; uniform vec3 mid; uniform vec3 bottom; uniform vec3 sun; uniform sampler2D clouds; uniform float drift; uniform float grey; varying vec3 vP;
+          uniform vec3 top; uniform vec3 mid; uniform vec3 horizon; uniform vec3 bottom; uniform vec3 sun; uniform sampler2D clouds; uniform float drift; uniform float grey; varying vec3 vP;
           void main() {
             float h = vP.y;
-            vec3 c = h > 0.0 ? mix(mid, top, pow(smoothstep(0.0, 0.7, h), 0.8)) : mix(mid, bottom, smoothstep(0.0, 0.25, -h));
+            // fog-coloured haze only in a thin band at the horizon (so the far trees melt into it), clear sky above
+            vec3 c = h > 0.0 ? mix(mix(horizon, mid, smoothstep(0.0, 0.12, h)), top, pow(smoothstep(0.05, 0.75, h), 0.85)) : mix(horizon, bottom, smoothstep(0.0, 0.25, -h));
             float g = max(0.0, dot(normalize(vP), sun));
             c += vec3(1.0, 0.92, 0.75) * (pow(g, 24.0) * 0.6 + pow(g, 4.0) * 0.12);
             if (h > 0.0) {
@@ -1536,8 +1560,14 @@ function SkyDome() {
     mat.uniforms.drift.value = (mat.uniforms.drift.value + dt * 0.0015) % 1
     mat.uniforms.grey.value += ((vName === 'storm' || vName === 'rain' ? 1 : vName === 'mist' || vName === 'snowfall' ? 0.6 : 0) - mat.uniforms.grey.value) * Math.min(1, dt)
     skyMid.copy(fogA).lerp(skyTop.set('#ffffff'), 0.08 + storm.flash * 0.6)
-    mat.uniforms.top.value.lerp(skyTop.set(M.skyTop).lerp(fogB.set(V.sky), V.skyMix), 0.03)
-    mat.uniforms.mid.value.lerp(skyMid, 0.05)
+    mat.uniforms.horizon.value.lerp(skyMid, 0.05)
+    // clear weather: the sky above the haze is a real blue (overcast and night keep their own greys and blues)
+    const clear = vName === 'day' || vName === 'golden' || vName === 'dawn' ? 1 : 0
+    skyTop.set(M.skyTop).lerp(fogB.set(V.sky), V.skyMix)
+    if (clear) skyTop.lerp(fogB.set(vName === 'day' ? '#3f86d4' : '#6a8ac8'), 0.45)
+    mat.uniforms.top.value.lerp(skyTop, 0.03)
+    // the sky's middle band leans from the haze toward the zenith colour, so the whole sky isn't fog-coloured
+    mat.uniforms.mid.value.lerp(fogA.copy(skyMid).lerp(skyTop, clear ? 0.45 : 0.2), 0.05)
     mat.uniforms.bottom.value.lerp(skyTop.set(M.ground), 0.05)
   })
   const ref = useRef<THREE.Mesh>(null)
@@ -1586,7 +1616,7 @@ function Atmosphere({ quality }: { quality: Quality }) {
     }
     storm.flash = Math.max(0, storm.flash - dt * 3.5)
     // fog, light and sky glide into each new zone (and route) over about a second
-    fogA.set(FOG[bid]).multiply(fogB.set(V.tint))
+    fogA.set(FOG[bid]).multiply(fogB.set(V.tint)).lerp(fogB.set(M.sky).multiply(skyTop.set(V.tint)), 0.3)
     const fog = scene.fog as THREE.Fog
     fog.color.lerp(fogA, k)
     // fog never closes in on the trail ahead: hazards stay readable at least ~80 m out in every zone and weather
@@ -1599,8 +1629,10 @@ function Atmosphere({ quality }: { quality: Quality }) {
       sun.current.color.lerp(fogB.set(M.sun).lerp(fogA.set(V.sun), V.sunMix), k)
       fogA.set(FOG[bid]).multiply(fogB.set(V.tint))
       sun.current.intensity += (M.sunI * V.sunK * (1 - ck * 0.6) - sun.current.intensity) * k + storm.flash * 0.4 * (1 - ck)
-      sun.current.position.set(-10, 20, 14)
-      target.position.set(0, 0, 10)
+      // the sun stands behind the camera, high on the left: the trail, the runner and the scenery ahead face the
+      // light (warm, saturated, readable) and shadows stretch forward along the path
+      sun.current.position.set(-11, 19, -5)
+      target.position.set(0, 0, 9)
       target.updateMatrixWorld()
     }
     if (hemi.current) {
@@ -1628,10 +1660,11 @@ function Atmosphere({ quality }: { quality: Quality }) {
         color="#fff1d6"
         intensity={3.3}
         castShadow={quality !== 'low'}
-        shadow-mapSize={quality === 'ultra' ? [2048, 2048] : quality === 'high' ? [1536, 1536] : [1024, 1024]}
-        shadow-camera-left={-14}
-        shadow-camera-right={14}
-        shadow-camera-top={26}
+        // the shadow area reaches ~50 m up the trail, so trees ahead throw dappled shade across the path
+        shadow-mapSize={quality === 'ultra' || quality === 'high' ? [2048, 2048] : [1024, 1024]}
+        shadow-camera-left={-18}
+        shadow-camera-right={18}
+        shadow-camera-top={44}
         shadow-camera-bottom={-10}
         shadow-camera-near={1}
         shadow-camera-far={70}
@@ -1672,6 +1705,9 @@ function ChaseCamera({ height }: { height: number }) {
   const portrait = size.width / size.height < 0.9
   const orbit = useRef(0)
   const reveal = useRef(0)
+  // a slight roll into lane changes, like a camera operator following the animal
+  const roll = useRef({ prevX: NaN, v: 0, r: 0 })
+  const fly = useRef(0)
   useLayoutEffect(() => {
     const cam = camera as THREE.PerspectiveCamera
     cam.near = 0.1
@@ -1699,9 +1735,13 @@ function ChaseCamera({ height }: { height: number }) {
     const target = jz > 0 ? THREE.MathUtils.clamp((95 - jz) / 45, 0, 1) : THREE.MathUtils.clamp(1 + jz / 18, 0, 1)
     reveal.current += (target - reveal.current) * Math.min(1, dt * 2.5)
     const rv = reveal.current * (1 - o)
-    const back = -(2.0 + 0.7 * height) * (portrait ? 1.25 : 1) * (1 - o * 0.25) - rv * 0.9
-    const up = 1.2 + 0.75 * height + (portrait ? 0.45 : 0) + (s?.y ?? 0) * 0.35 + rv * 1.1
-    const tx = x * 0.55 + o * 2.6
+    // flying: the camera drops back and rises for a wide view of the plane over the trail
+    const flying = s?.ride?.kind === 'plane' ? THREE.MathUtils.clamp((s.y - 1.4) / 3, 0, 1) : 0
+    fly.current += (flying - fly.current) * Math.min(1, dt * 2)
+    const fl = fly.current
+    const back = -(2.0 + 0.7 * height) * (portrait ? 1.25 : 1) * (1 - o * 0.25) - rv * 0.9 - fl * 4.2
+    const up = 1.2 + 0.75 * height + (portrait ? 0.45 : 0) + (s?.y ?? 0) * (0.35 + 0.55 * fl) + rv * 1.1 + fl * 1.2
+    const tx = x * 0.78 + o * 2.6
     camera.position.x += (tx - camera.position.x) * k
     camera.position.y += (up - camera.position.y) * k
     camera.position.z += (back - camera.position.z) * k
@@ -1709,6 +1749,14 @@ function ChaseCamera({ height }: { height: number }) {
     bendPoint(x * 0.8 * (1 - rv * 0.6) - o * 0.4, 0.2 * height + (s?.y ?? 0) * 0.5 + o * 0.3, (5 - o * 4.5) * (1 + 0.8 * (1 - o)) * (1 + rv * 1.3), tLook)
     look.current.lerp(tLook, Math.min(1, dt * 6))
     camera.lookAt(look.current)
+    if (dt > 0) {
+      const R = roll.current
+      const vx = Number.isNaN(R.prevX) ? 0 : (x - R.prevX) / dt
+      R.prevX = x
+      R.v += (vx - R.v) * Math.min(1, dt * 10)
+      R.r += (THREE.MathUtils.clamp(-R.v * 0.006, -0.035, 0.035) * (1 - o) - R.r) * Math.min(1, dt * 6)
+      camera.rotateZ(R.r)
+    }
     // dev-only test camera (animation checks): window.__wbCam = { pos: [x, y, z], look: [x, y, z] }
     const dbg = import.meta.env.DEV ? (window as unknown as { __wbCam?: { pos: number[]; look: number[] } }).__wbCam : undefined
     if (dbg) {
@@ -1772,6 +1820,7 @@ function Driver({ mode }: { mode: SceneMode }) {
     }
     worldUv.uD.value = view.d % 1000
     worldUv.uT.value = performance.now() / 1000
+    worldUv.uGrass.value = view.showcase ? 0.45 : 1
   })
   return null
 }
@@ -1847,18 +1896,31 @@ function Dust() {
 }
 
 /** Sonic in front, the others in a V behind him, all galloping toward the camera. */
+/**
+ * The home screen's pack along the trail: the chosen runner stands front and centre, large, just above the PLAY
+ * buttons; the others spread out behind and to the sides at natural, uneven distances, the big animals furthest back.
+ */
 const LINEUP: { id: AnimalId; x: number; z: number }[] = [
-  { id: 'sonic', x: 0, z: 0 },
-  { id: 'leo', x: 1.9, z: -2.2 },
-  { id: 'raja', x: -1.9, z: -2.2 },
-  { id: 'shadow', x: 3.7, z: -3.9 },
-  { id: 'jax', x: -3.7, z: -3.9 },
-  { id: 'arctic', x: 5.4, z: -5.4 },
-  { id: 'snow', x: -5.4, z: -5.4 },
-  { id: 'koda', x: 1.0, z: -4.6 },
-  { id: 'bruno', x: -1.2, z: -6.6 },
-  { id: 'titan', x: 1.9, z: -8.6 },
+  { id: 'sonic', x: 0, z: 2.2 },
+  { id: 'leo', x: 2.3, z: -0.9 },
+  { id: 'raja', x: -1.2, z: -5.4 },
+  { id: 'nova', x: -2.5, z: -1.4 },
+  { id: 'shadow', x: 0.35, z: -3.3 },
+  { id: 'blaze', x: 4.4, z: -2.9 },
+  { id: 'zara', x: 2.5, z: -3.7 },
+  { id: 'jax', x: -5.2, z: -4.6 },
+  { id: 'snow', x: -3.2, z: -7.4 },
+  { id: 'titan', x: 3.9, z: -6.8 },
 ]
+/** the lineup with the player's chosen animal swapped into the foreground spot */
+function lineupFor(selected: AnimalId) {
+  const out = LINEUP.map((a) => ({ ...a }))
+  const mine = out.findIndex((a) => a.id === selected)
+  if (mine > 0) out[mine].id = out[0].id
+  else if (mine < 0) out[out.length - 1].id = out[0].id
+  out[0].id = selected
+  return out
+}
 
 function ShowAnimal({ id, x, z, fur = false }: { id: AnimalId; x: number; z: number; fur?: boolean }) {
   const g = useRef<THREE.Group>(null)
@@ -1900,8 +1962,11 @@ function ShowCamera({ mode, height }: { mode: 'lineup' | 'preview'; height: numb
     const t = st.clock.elapsedTime
     const k = Math.min(1, dt * 2.5)
     if (mode === 'lineup') {
-      camera.position.lerp(tP.set(Math.sin(t * 0.12) * 0.8, portrait ? 2.2 : 1.55, portrait ? 8.4 : 5.2), k)
-      look.current.lerp(tS.set(0, portrait ? 0.35 : 1.05, -3), k)
+      // a low, cinematic camera at the pack's eye level that drifts slowly sideways and breathes in and out
+      const drift = Math.sin(t * 0.09)
+      camera.position.lerp(tP.set(drift * 0.45, portrait ? 1.3 : 1.05, (portrait ? 7.4 : 6.3) + Math.sin(t * 0.07) * 0.25), k)
+      // aimed a little low, so the front-centre runner stands above the PLAY buttons, not behind them
+      look.current.lerp(tS.set(drift * 0.15, portrait ? -0.12 : 0.12, -2.6), k)
     } else {
       // three-quarter front view, close enough to read the SONIC tag, slowly swinging between the two sides
       const a = 0.42 * Math.sin(t * 0.22)
@@ -2083,7 +2148,8 @@ function beamTexture() {
     for (let x = 0; x < 64; x++) {
       const u = (x / 63) * 2 - 1
       const v = y / 255
-      const a = Math.pow(1 - u * u, 2) * Math.pow(1 - v, 0.6) * Math.min(1, v * 6) * 0.9
+      // very soft across (no hard stripe edges), long fade toward the ground
+      const a = Math.pow(Math.max(0, 1 - u * u), 3.2) * Math.pow(1 - v, 0.9) * Math.min(1, v * 5) * 0.85
       const i = (y * 64 + x) * 4
       img.data[i] = img.data[i + 1] = img.data[i + 2] = 255
       img.data[i + 3] = Math.round(a * 255)
@@ -2100,7 +2166,7 @@ function beamTexture() {
 function SunBeams() {
   const ref = useRef<THREE.InstancedMesh>(null)
   const r = useMemo(() => {
-    const mat = new THREE.MeshBasicMaterial({ map: beamTexture(), color: '#fff2d0', transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, toneMapped: false, fog: false })
+    const mat = new THREE.MeshBasicMaterial({ map: beamTexture(), color: '#ffe9c4', transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, toneMapped: false, fog: false })
     const beams = Array.from({ length: BEAM_N }, (_, i) => ({ x: (hash01(i, 1) < 0.5 ? -1 : 1) * (PATH_HALF + 0.9 + hash01(i, 2) * 3.2), d: hash01(i, 3) * 70, w: 1.2 + hash01(i, 4) * 1.8, ph: hash01(i, 5) * 6.28 }))
     return { mat, beams, k: -1 }
   }, [])
@@ -2110,7 +2176,7 @@ function SunBeams() {
     const d = view.d
     const target = (BEAM_KIT[biomeId(d)] ?? 0) * (BEAM_VAR[biomeAt(d).variant] ?? 0.6)
     r.k = r.k < 0 ? target : r.k + (target - r.k) * Math.min(1, dt * 0.8)
-    r.mat.opacity = 0.34 * r.k
+    r.mat.opacity = 0.17 * r.k
     const t = st.clock.elapsedTime
     for (let i = 0; i < BEAM_N; i++) {
       const b = r.beams[i]
@@ -2141,16 +2207,31 @@ function Prewarm() {
   const { gl, scene, camera } = useThree()
   const state = useRef<'wait' | 'busy' | 'done'>('wait')
   const frames = useRef(0)
-  useLayoutEffect(() => {
+  /** the run the last warm-up was for: Retry starts a new run (in a new zone) while this scene stays mounted */
+  const warmedFor = useRef<RunSim | null>(null)
+  const cap = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const begin = () => {
+    state.current = 'wait'
+    frames.current = 0
     run.warm = false
     // never hold the start for long, even on a very slow device
-    const cap = setTimeout(() => (run.warm = true), 2000)
+    clearTimeout(cap.current)
+    cap.current = setTimeout(() => (run.warm = true), 2000)
+  }
+  useLayoutEffect(() => {
+    begin()
     return () => {
-      clearTimeout(cap)
+      clearTimeout(cap.current)
       run.warm = true
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   useFrame(() => {
+    // every new run warms up again: its start zone brings scenery that has never been drawn
+    if (run.sim && run.sim !== warmedFor.current) {
+      if (warmedFor.current) begin()
+      warmedFor.current = run.sim
+    }
     if (state.current !== 'wait') return
     // let the world and the runner mount and load first
     if (++frames.current < 3 || !run.sim || useProgress.getState().active) return
@@ -2192,14 +2273,14 @@ function Prewarm() {
 }
 
 function BendAll() {
-  const { scene } = useThree()
+  const { scene, gl } = useThree()
   const t = useRef(0)
   useFrame((_, dt) => {
     t.current -= dt
     if (t.current > 0) return
     t.current = 0.25
     bendObject(scene)
-    if (import.meta.env.DEV) (window as unknown as { __wbScene?: unknown }).__wbScene = scene
+    if (import.meta.env.DEV) Object.assign(window as unknown as Record<string, unknown>, { __wbScene: scene, __wbGl: gl })
   })
   return null
 }
@@ -2224,10 +2305,10 @@ function World() {
       <PropSet kit={kits.curb} prop="curb" capacity={260} source={source} />
       <PropSet kit={kits.bank} prop="bank" capacity={70} source={source} />
       <PropSet kit={kits.bankHill} prop="bankHill" capacity={70} source={source} />
-      <PropSet kit={kits.tuft} prop="tuft" capacity={900} source={source} />
-      <PropSet kit={kits.tuftDark} prop="tuftDark" capacity={900} source={source} />
-      <PropSet kit={kits.tuftGold} prop="tuftGold" capacity={900} source={source} />
-      <PropSet kit={kits.tuftAutumn} prop="tuftAutumn" capacity={900} source={source} />
+      <PropSet kit={kits.tuft} prop="tuft" capacity={2200} source={source} />
+      <PropSet kit={kits.tuftDark} prop="tuftDark" capacity={2200} source={source} />
+      <PropSet kit={kits.tuftGold} prop="tuftGold" capacity={2200} source={source} />
+      <PropSet kit={kits.tuftAutumn} prop="tuftAutumn" capacity={2200} source={source} />
       <PropSet kit={kits.post} prop="post" capacity={260} source={source} shadows />
       <PropSet kit={kits.rope} prop="rope" capacity={460} source={source} />
       <PropSet kit={kits.pillar} prop="pillar" capacity={60} source={source} shadows />
@@ -2298,25 +2379,350 @@ function World() {
   )
 }
 
+// ---------------------------------------------------------------- wild moments: life beyond the pickups
+
+/** a bird seen from below at distance: a shallow V of two wings; scaling it on Y flaps the wings */
+function birdGeometry() {
+  const g = new THREE.BufferGeometry()
+  // wing tips up at +y; a slim body at the centre
+  const v = new Float32Array([
+    0, 0, 0.06, -0.42, 0.16, -0.02, 0, 0, -0.08,
+    0, 0, 0.06, 0, 0, -0.08, 0.42, 0.16, -0.02,
+  ])
+  g.setAttribute('position', new THREE.BufferAttribute(v, 3))
+  g.computeVertexNormals()
+  return g
+}
+const BIRD_N = 72
+interface Flock { x: number; y: number; d: number; vx: number; vy: number; vd: number; t: number; n: number; seed: number; scale: number }
+
+/**
+ * Flocks of birds bursting out of the trees: now and then ahead of the runner in wooded country, and whenever
+ * something loud happens (a roar, a crash, a rock fall). Dark silhouettes against the sky, wings beating fast at
+ * take-off and settling into a glide as they climb away.
+ */
+function Birds({ mode }: { mode: SceneMode }) {
+  const ref = useRef<THREE.InstancedMesh>(null)
+  const st = useMemo(() => ({ flocks: [] as Flock[], nextD: 60 + Math.random() * 80, nextT: 3 + Math.random() * 4, q: new THREE.Quaternion(), e: new THREE.Euler() }), [])
+  const mat = useMemo(() => new THREE.MeshBasicMaterial({ color: '#15140f', side: THREE.DoubleSide, fog: true }), [])
+  const geo = useMemo(() => birdGeometry(), [])
+  useEffect(() => {
+    const spawn = (near: boolean, n = 10 + Math.floor(Math.random() * 10)) => {
+      if (st.flocks.length >= 4) st.flocks.shift()
+      const side = Math.random() < 0.5 ? -1 : 1
+      st.flocks.push({
+        x: side * (near ? 3 + Math.random() * 3 : 4 + Math.random() * 6),
+        y: near ? 2.2 + Math.random() * 1.5 : 4 + Math.random() * 3,
+        d: view.d + (near ? 10 + Math.random() * 8 : 28 + Math.random() * 22),
+        vx: side * (3 + Math.random() * 3),
+        vy: 2 + Math.random() * 1.5,
+        vd: 2 + Math.random() * 6,
+        t: 0,
+        n,
+        seed: Math.random() * 100,
+        scale: 0.8 + Math.random() * 0.5,
+      })
+    }
+    ;(st as unknown as { spawn: typeof spawn }).spawn = spawn
+    if (mode !== 'run') return
+    return onSimEvent((e) => {
+      if ((e.type === 'ability' && e.kind === 'roar') || e.type === 'crash' || e.type === 'rockfall') spawn(true, 14 + Math.floor(Math.random() * 8))
+    })
+  }, [mode, st])
+  useFrame((three, dtRaw) => {
+    const im = ref.current
+    if (!im) return
+    const dt = Math.min(dtRaw, 0.05)
+    const spawn = (st as unknown as { spawn?: (near: boolean, n?: number) => void }).spawn
+    if (mode === 'run') {
+      const v = biomeAt(view.d).variant
+      // wooded or open country by day; not at night, not in a storm
+      if (run.phase === 'running' && view.d > st.nextD && v !== 'night' && v !== 'storm') {
+        spawn?.(false)
+        st.nextD = view.d + 140 + Math.random() * 160
+      }
+    } else {
+      st.nextT -= dt
+      if (st.nextT <= 0) {
+        spawn?.(false, 8 + Math.floor(Math.random() * 8))
+        st.nextT = 9 + Math.random() * 9
+      }
+    }
+    const t = three.clock.elapsedTime
+    let n = 0
+    for (let f = st.flocks.length - 1; f >= 0; f--) {
+      const k = st.flocks[f]
+      k.t += dt
+      // take-off: climbing hard, then levelling out
+      const climb = Math.exp(-k.t * 0.6)
+      k.x += k.vx * dt
+      k.y += k.vy * climb * dt
+      k.d += k.vd * dt
+      if (k.t > 9 || k.d - view.d < -10) {
+        st.flocks.splice(f, 1)
+        continue
+      }
+      for (let i = 0; i < k.n && n < BIRD_N; i++) {
+        const h1 = hash01(i, k.seed)
+        const h2 = hash01(i, k.seed + 1)
+        const h3 = hash01(i, k.seed + 2)
+        // a loose, shifting cluster that spreads as it flies
+        const spread = 0.6 + k.t * 0.35
+        const bx = k.x + (h1 - 0.5) * 3 * spread + Math.sin(t * 0.9 + i) * 0.25
+        const by = k.y + (h2 - 0.5) * 1.4 * spread + Math.sin(t * 1.3 + i * 2) * 0.15
+        const bz = k.d - view.d + (h3 - 0.5) * 3 * spread
+        // wings: fast beats at take-off, glides later (each bird on its own beat)
+        const beat = 9 + h1 * 4
+        const glide = k.t > 2.5 && Math.sin(t * 0.8 + i) > 0.3
+        const flap = glide ? 0.35 : Math.sin(t * beat + i * 1.7)
+        r3.e.set(0, Math.atan2(k.vx, k.vd), Math.sign(k.vx) * -0.15)
+        tM.compose(tP.set(bx, by, bz), r3.q.setFromEuler(r3.e), tS.set(k.scale, k.scale * flap, k.scale))
+        im.setMatrixAt(n++, tM)
+      }
+    }
+    im.count = n
+    im.instanceMatrix.needsUpdate = true
+  })
+  return <instancedMesh ref={ref} args={[geo, mat, BIRD_N]} frustumCulled={false} />
+}
+const r3 = { q: new THREE.Quaternion(), e: new THREE.Euler() }
+
+/** butterflies over the trail edges on bright days in open, flowered or light woodland country */
+const BUTTERFLY_KIT: Partial<Record<BiomeId, number>> = { blossom: 1, savannah: 0.6, forest: 0.5, birch: 0.8, autumn: 0.5, coast: 0.4, hills: 0.7, river: 0.6, bamboo: 0.5, jungle: 0.7, ruins: 0.4 }
+const BUTTERFLY_VAR: Partial<Record<Variant, number>> = { day: 1, golden: 0.8, dawn: 0.5, mist: 0.2 }
+const FLY2_N = 18
+function butterflyTexture() {
+  const c = document.createElement('canvas')
+  c.width = 64
+  c.height = 32
+  const g = c.getContext('2d')!
+  for (const side of [-1, 1]) {
+    g.save()
+    g.translate(32, 16)
+    g.scale(side, 1)
+    // fore and hind wing, dark veined edge, a pale spot
+    g.fillStyle = '#ffffff'
+    g.beginPath()
+    g.ellipse(13, -5, 13, 9, -0.5, 0, Math.PI * 2)
+    g.fill()
+    g.beginPath()
+    g.ellipse(10, 7, 9, 7, 0.5, 0, Math.PI * 2)
+    g.fill()
+    g.strokeStyle = 'rgba(20,16,10,0.85)'
+    g.lineWidth = 2.2
+    g.beginPath()
+    g.ellipse(13, -5, 12, 8, -0.5, 0, Math.PI * 2)
+    g.stroke()
+    g.fillStyle = 'rgba(255,255,255,0.9)'
+    g.beginPath()
+    g.arc(19, -8, 2.4, 0, Math.PI * 2)
+    g.fill()
+    g.restore()
+  }
+  g.fillStyle = '#1a140c'
+  g.fillRect(31, 6, 2, 20)
+  const t = new THREE.CanvasTexture(c)
+  t.colorSpace = THREE.SRGBColorSpace
+  return t
+}
+function Butterflies({ mode }: { mode: SceneMode }) {
+  const ref = useRef<THREE.InstancedMesh>(null)
+  const r = useMemo(() => {
+    const COLORS = ['#e8873a', '#f2efe4', '#8fb0d8', '#e8c64a', '#c25a2a']
+    const list = Array.from({ length: FLY2_N }, (_, i) => ({
+      x: (hash01(i, 21) < 0.5 ? -1 : 1) * (PATH_HALF + 0.2 + hash01(i, 22) * 3.5),
+      y: 0.4 + hash01(i, 23) * 1.3,
+      d: hash01(i, 24) * 50,
+      ph: hash01(i, 25) * 6.28,
+      color: new THREE.Color(COLORS[i % COLORS.length]),
+    }))
+    const mat = new THREE.MeshBasicMaterial({ map: butterflyTexture(), transparent: true, alphaTest: 0.4, side: THREE.DoubleSide, fog: true })
+    return { list, mat, geo: new THREE.PlaneGeometry(0.16, 0.08), e: new THREE.Euler(), q: new THREE.Quaternion() }
+  }, [])
+  const colored = useRef(false)
+  useFrame((three) => {
+    const im = ref.current
+    if (!im) return
+    if (!colored.current) {
+      r.list.forEach((p, i) => im.setColorAt(i, p.color))
+      if (im.instanceColor) im.instanceColor.needsUpdate = true
+      colored.current = true
+    }
+    const t = three.clock.elapsedTime
+    const b = mode === 'run' ? biomeAt(view.d) : null
+    const amount = b ? (BUTTERFLY_KIT[b.biome.id] ?? 0) * (BUTTERFLY_VAR[b.variant] ?? 0) : 0.6
+    const count = Math.round(FLY2_N * amount)
+    const d = view.d
+    for (let i = 0; i < count; i++) {
+      const p = r.list[i]
+      if (p.d - d < -6) p.d += 56
+      if (p.d - d > 50) p.d -= 56
+      // erratic flight: wandering drift with quick little hops
+      const x = p.x + Math.sin(t * 0.9 + p.ph) * 0.7 + Math.sin(t * 2.7 + p.ph * 3) * 0.15
+      const y = p.y + Math.sin(t * 1.6 + p.ph) * 0.25 + Math.abs(Math.sin(t * 4.3 + p.ph)) * 0.12
+      const z = p.d - d + Math.cos(t * 0.7 + p.ph) * 0.8
+      // wings: a fast beat, folding (scale X towards 0) and opening
+      const flap = 0.15 + 0.85 * Math.abs(Math.sin(t * 15 + p.ph * 4))
+      r.e.set(-0.9, t * 0.6 + p.ph, 0)
+      tM.compose(tP.set(x, y, z), r.q.setFromEuler(r.e), tS.set(flap, 1, 1))
+      im.setMatrixAt(i, tM)
+    }
+    im.count = count
+    im.instanceMatrix.needsUpdate = true
+  })
+  return <instancedMesh ref={ref} args={[r.geo, r.mat, FLY2_N]} frustumCulled={false} />
+}
+
+/** low ground mist drifting across the trail at dawn, in mist and rain, and over swamps, rivers and waterfalls */
+const MIST_KIT: Partial<Record<BiomeId, number>> = { swamp: 1, waterfall: 0.8, river: 0.6, jungle: 0.5, pine: 0.4, moonlit: 0.7, bamboo: 0.4 }
+const MIST_VAR: Partial<Record<Variant, number>> = { mist: 1, dawn: 0.8, rain: 0.6, storm: 0.5, night: 0.5, snowfall: 0.4, dusk: 0.3 }
+const MIST_N = 26
+function GroundMist() {
+  const ref = useRef<THREE.InstancedMesh>(null)
+  const r = useMemo(() => {
+    const list = Array.from({ length: MIST_N }, (_, i) => ({ x: (hash01(i, 31) - 0.5) * 16, y: 0.12 + hash01(i, 32) * 0.45, d: hash01(i, 33) * 70, s: 4 + hash01(i, 34) * 5, ph: hash01(i, 35) * 6.28 }))
+    const mat = new THREE.MeshBasicMaterial({ map: softDot(), color: '#e4eae8', transparent: true, opacity: 0, depthWrite: false, fog: true })
+    return { list, mat, geo: new THREE.PlaneGeometry(1, 1), q: new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2 + 0.18, 0, 0)), amt: 0 }
+  }, [])
+  useFrame((three, dtRaw) => {
+    const im = ref.current
+    if (!im) return
+    const dt = Math.min(dtRaw, 0.05)
+    const b = biomeAt(view.d)
+    const want = Math.max(MIST_KIT[b.biome.id] ?? 0, MIST_VAR[b.variant] ?? 0) * (MIST_KIT[b.biome.id] || MIST_VAR[b.variant] ? 1 : 0)
+    r.amt += (want - r.amt) * Math.min(1, dt * 0.5)
+    r.mat.opacity = 0.16 * r.amt
+    const t = three.clock.elapsedTime
+    const d = view.d
+    let n = 0
+    if (r.amt > 0.02) {
+      for (const p of r.list) {
+        if (p.d - d < -8) p.d += 78
+        if (p.d - d > 70) p.d -= 78
+        const x = p.x + Math.sin(t * 0.05 + p.ph) * 3
+        const sc = p.s * (1 + 0.08 * Math.sin(t * 0.3 + p.ph))
+        tM.compose(tP.set(x, p.y, p.d - d), r.q, tS.set(sc * 1.6, sc, 1))
+        im.setMatrixAt(n++, tM)
+      }
+    }
+    im.count = n
+    im.instanceMatrix.needsUpdate = true
+  })
+  return <instancedMesh ref={ref} args={[r.geo, r.mat, MIST_N]} frustumCulled={false} renderOrder={3} />
+}
+
+// ---------------------------------------------------------------- aircraft
+
+/**
+ * The airstrip's bush plane (engine item 'plane'): idling on the strip with its propeller turning, then carrying the
+ * runner on its wing: it pitches up on the climb, banks into lane changes, settles on the glide in, and after landing
+ * its rider it climbs away. Up to two at once (a pool).
+ */
+function Planes() {
+  const pool = useMemo(() => [makeBushPlane(), makeBushPlane()], [])
+  const st = useMemo(() => new Map<number, { x: number; h: number; roll: number; pitch: number; spin: number }>(), [])
+  useFrame((_, dtRaw) => {
+    const dt = Math.min(dtRaw, 0.05)
+    const sim = run.sim
+    const planes = sim ? sim.items.filter((it) => it.kind === 'plane' && !it.gone && it.d - view.d > -30 && it.d - view.d < AHEAD) : []
+    pool.forEach((pl, i) => {
+      const it = planes[i]
+      pl.group.visible = !!it
+      if (!it) return
+      let k = st.get(it.id)
+      const riding = sim!.state.ride?.item === it.id
+      const tx = riding ? sim!.state.x : laneX(it.lane)
+      if (!k) {
+        k = { x: tx, h: it.h, roll: 0, pitch: 0, spin: 0 }
+        st.set(it.id, k)
+      }
+      const vx = (tx - k.x) / Math.max(dt, 1e-3)
+      k.x += (tx - k.x) * Math.min(1, dt * 10)
+      const climb = (it.h - k.h) / Math.max(dt, 1e-3)
+      k.h = it.h
+      k.roll += (THREE.MathUtils.clamp(-vx * 0.06, -0.45, 0.45) - k.roll) * Math.min(1, dt * 5)
+      const sp = Math.max(4, sim!.state.speed)
+      k.pitch += (THREE.MathUtils.clamp(-climb / sp, -0.3, 0.3) - k.pitch) * Math.min(1, dt * 4)
+      // the engine idles on the strip and runs up to full revs in the air
+      const revs = it.h > 0.05 || riding ? 1 : 0.55
+      k.spin += dt * (18 + 52 * revs)
+      pl.prop.rotation.z = k.spin
+      ;(pl.disc.material as THREE.MeshBasicMaterial).opacity = 0.18 * revs
+      pl.group.position.set(k.x, it.h, it.d - view.d)
+      pl.group.rotation.set(k.pitch, 0, k.roll)
+    })
+  })
+  return (
+    <>
+      {pool.map((pl, i) => (
+        <primitive key={i} object={pl.group} />
+      ))}
+    </>
+  )
+}
+
+/** Planes crossing the sky far off now and then over open country (and the home screen): life in the sky. */
+function Overflights({ mode }: { mode: SceneMode }) {
+  const pl = useMemo<BushPlane>(() => makeBushPlane(false), [])
+  const st = useMemo(() => ({ on: false, x: 0, y: 0, z: 0, dir: 1, nextD: 120 + Math.random() * 150, nextT: 6 + Math.random() * 6 }), [])
+  useFrame((_, dtRaw) => {
+    const dt = Math.min(dtRaw, 0.05)
+    if (!st.on) {
+      let go = false
+      if (mode === 'run') {
+        const b = biomeAt(view.d)
+        const open = !(BEAM_KIT[b.biome.id] ?? 0) || (BEAM_KIT[b.biome.id] ?? 0) < 0.6
+        if (run.phase === 'running' && view.d > st.nextD) {
+          go = open && b.variant !== 'storm' && b.variant !== 'night'
+          st.nextD = view.d + 220 + Math.random() * 260
+        }
+      } else {
+        st.nextT -= dt
+        if (st.nextT <= 0) {
+          go = true
+          st.nextT = 22 + Math.random() * 18
+        }
+      }
+      if (go) {
+        st.on = true
+        st.dir = Math.random() < 0.5 ? -1 : 1
+        st.x = -st.dir * 140
+        st.y = 30 + Math.random() * 14
+        st.z = 70 + Math.random() * 50
+      }
+    }
+    pl.group.visible = st.on
+    if (!st.on) return
+    // a gentle crossing at cruise speed, slightly banked, drifting with the runner
+    st.x += st.dir * 38 * dt
+    if (Math.abs(st.x) > 150) st.on = false
+    pl.prop.rotation.z += dt * 70
+    ;(pl.disc.material as THREE.MeshBasicMaterial).opacity = 0.18
+    pl.group.position.set(st.x, st.y + Math.sin(st.x * 0.02) * 1.2, st.z)
+    pl.group.rotation.set(0, st.dir * Math.PI / 2 + st.dir * 0.12, st.dir * -0.08)
+  })
+  return <primitive object={pl.group} />
+}
+
 export default function WorldScene({ animalId, mode = 'run', quality = 'high' }: { animalId: AnimalId; mode?: SceneMode; quality?: Quality }) {
   const hi = quality === 'high' || quality === 'ultra'
   const sharpen = useMemo(() => new SharpenEffect(0.55), [])
   const variant = useMemo(() => () => (mode === 'run' ? biomeAt(view.d).variant : ('day' as Variant)), [mode])
   return (
     <Canvas
-      shadows={quality !== 'low' ? { type: hi ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap } : false}
+      shadows={quality !== 'low' ? { type: THREE.PCFShadowMap } : false}
       dpr={quality === 'ultra' ? [1, 3] : quality === 'high' ? [1, 2] : quality === 'medium' ? [0.9, 1.5] : [0.75, 1]}
       gl={{ antialias: hi && quality !== 'ultra', powerPreference: 'high-performance' }}
       camera={{ position: [0, 3, -6], fov: 60 }}
       onCreated={({ gl }) => {
-        gl.toneMapping = THREE.ACESFilmicToneMapping
+        gl.toneMapping = gradeToneMapping()
         gl.toneMappingExposure = 1.2
       }}
     >
       <Driver mode={mode} />
       {mode === 'run' && <Prewarm />}
       <BendAll />
-      {mode === 'run' ? <ChaseCamera height={MODELS[animalId].height} /> : <ShowCamera mode={mode} height={MODELS[animalId].height} />}
+      {mode === 'run' ? <ChaseCamera height={MODELS[animalId].height} /> : <ShowCamera mode={mode} height={MODELS[animalId].height * (MODELS[animalId].view ?? 1)} />}
       <Atmosphere quality={quality} />
       <SkyDome />
       <Suspense fallback={null}>
@@ -2332,6 +2738,11 @@ export default function WorldScene({ animalId, mode = 'run', quality = 'high' }:
         {mode === 'run' && <Rivals />}
         <Dust />
         {mode === 'run' && <Streaks variant={variant} />}
+        {quality !== 'low' && <Birds mode={mode} />}
+        {quality !== 'low' && <Butterflies mode={mode} />}
+        {mode === 'run' && quality !== 'low' && <GroundMist />}
+        {mode === 'run' && <Planes />}
+        {mode !== 'preview' && <Overflights mode={mode} />}
       </Suspense>
       {mode !== 'run' && (
         // studio lighting for the line-up and the preview: a warm key from the front, a cool rim from behind that
@@ -2342,7 +2753,7 @@ export default function WorldScene({ animalId, mode = 'run', quality = 'high' }:
           <directionalLight position={[-7, 2, 4]} intensity={0.5} color="#ffe2c0" />
         </>
       )}
-      {mode === 'lineup' && LINEUP.map((a) => <ShowAnimal key={a.id} {...a} />)}
+      {mode === 'lineup' && lineupFor(animalId).map((a) => <ShowAnimal key={a.id} {...a} />)}
       {mode === 'preview' && <ShowAnimal key={animalId} id={animalId} x={0} z={0} fur />}
       {quality === 'ultra' && (
         // ultra: glow on coins, gems, fireflies, lava and crystals, soft edge darkening and clean edges
@@ -2353,7 +2764,7 @@ export default function WorldScene({ animalId, mode = 'run', quality = 'high' }:
           {/* camera depth: the far forest and skyline fall softly out of focus; the trail and everything on it
               (the first ~65 m) stays sharp */}
           <DepthOfField worldFocusDistance={30} worldFocusRange={70} bokehScale={2.2} resolutionScale={0.5} />
-          <HueSaturation saturation={0.08} />
+          <HueSaturation saturation={-0.03} />
           <BrightnessContrast brightness={0.01} contrast={0.07} />
           <Vignette offset={0.4} darkness={0.3} />
           <SMAA />

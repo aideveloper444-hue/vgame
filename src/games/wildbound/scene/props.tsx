@@ -139,7 +139,8 @@ export interface PropKit {
 }
 
 /** Shared uniform: the runner's distance (mod 1000), so world-UV textures scroll with the trail. */
-export const worldUv = { uD: { value: 0 }, uT: { value: 0 } }
+/** uGrass: grass brightness (the menu scenes' studio lights would bleach the up-facing blades) */
+export const worldUv = { uD: { value: 0 }, uT: { value: 0 }, uGrass: { value: 1 } }
 
 export function preloadProps() {
   for (const url of Object.values(GLB_PROPS)) useGLTF.preload(url)
@@ -175,6 +176,32 @@ const LEAF_TINT: Partial<Record<GlbProp, string>> = {
   grassGold: '#d4b45a',
 }
 
+/** big landforms: their unit height spans a whole cliff, so ground occlusion would darken half of it */
+const CLIFF = /mountain|rockface|redrock|icerock|cliff/
+
+/**
+ * Cheap contact occlusion for the scenery: kit geometry is normalised to a unit box (y 0 at the ground, 1 at the
+ * top), so the shader darkens each prop toward where it meets the ground (trunks, rocks and plants sit in the
+ * soil instead of floating on it), and foliage gets canopy depth (inner, lower leaves darker than the sunlit top).
+ */
+function groundOcclusion(mat: THREE.MeshStandardMaterial, foliage: boolean) {
+  const prev = mat.onBeforeCompile
+  const prevKey = mat.customProgramCacheKey()
+  mat.onBeforeCompile = (sh, r) => {
+    prev.call(mat, sh, r)
+    sh.vertexShader = 'varying float vGh;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vGh = position.y;')
+    sh.fragmentShader =
+      'varying float vGh;\n' +
+      sh.fragmentShader.replace(
+        '#include <map_fragment>',
+        foliage
+          ? '#include <map_fragment>\n diffuseColor.rgb *= mix(0.62, 1.06, smoothstep(0.05, 0.95, vGh));'
+          : '#include <map_fragment>\n diffuseColor.rgb *= mix(0.42, 1.0, smoothstep(0.0, 0.2, vGh));',
+      )
+  }
+  mat.customProgramCacheKey = () => `${prevKey}|gao${foliage ? 'f' : 's'}`
+}
+
 export function useGlbKit(id: GlbProp): PropKit {
   const { scene } = useGLTF(GLB_PROPS[id])
   return useMemo(() => {
@@ -203,7 +230,8 @@ export function useGlbKit(id: GlbProp): PropKit {
           mat.color.multiplyScalar(1.25)
           mat.emissive = new THREE.Color(LEAF_TINT[id] ?? '#5f8a45')
           mat.emissiveMap = mat.map
-          mat.emissiveIntensity = LEAF_TINT[id] ? 0.85 : 0.28
+          // a light self-glow keeps canopies green in shade without flattening them: the sun does the shaping
+          mat.emissiveIntensity = LEAF_TINT[id] ? 0.85 : 0.17
         }
         mat.envMapIntensity = 0.55
         if (GLB_TINT[id]) mat.color.multiply(new THREE.Color(GLB_TINT[id]))
@@ -225,6 +253,7 @@ export function useGlbKit(id: GlbProp): PropKit {
           }
           mat.customProgramCacheKey = () => 'leafTint'
         }
+        if (!CLIFF.test(id)) groundOcclusion(mat, mat.alphaTest > 0)
         parts.push({ geometry, material: mat })
       }
     })
@@ -235,12 +264,24 @@ export function useGlbKit(id: GlbProp): PropKit {
 // ---------------------------------------------------------------- materials
 
 let ANISO = 8
+/**
+ * Repeat-wrapped copies of loaded textures, made once per source texture and setting. A fresh copy is a
+ * fresh upload of the whole image to the GPU (up to 2K/4K), so building the kits again (a remount, or a
+ * new quality) must reuse the copies it made before instead of re-sending every trail scan.
+ */
+const prepped = new WeakMap<THREE.Texture, Map<string, THREE.Texture>>()
 function prepTex(t: THREE.Texture, color: boolean) {
+  const key = `${color ? 'c' : 'd'}${ANISO}`
+  let byKey = prepped.get(t)
+  if (!byKey) prepped.set(t, (byKey = new Map()))
+  const hit = byKey.get(key)
+  if (hit) return hit
   const c = t.clone()
   c.wrapS = c.wrapT = THREE.RepeatWrapping
   c.colorSpace = color ? THREE.SRGBColorSpace : THREE.NoColorSpace
   c.anisotropy = ANISO
   c.needsUpdate = true
+  byKey.set(key, c)
   return c
 }
 
@@ -327,7 +368,9 @@ export function useProcKits(): Record<ProcProp, PropKit> {
   const HD = ultra || q === 'high' ? '' : '_1k'
   const HDN = ultra ? '' : '_1k'
   ANISO = ultra ? 16 : 8
-  const tex = useTexture({
+  // the URL map must keep its identity between renders: useTexture hands back a new object whenever its input
+  // object changes, and a new object here rebuilt every kit (and re-uploaded every trail scan) on each render
+  const urls = useMemo(() => ({
     pathD: `${TX}/path_diff.jpg`,
     pathN: `${TX}/path_nor.jpg`,
     plankD: `${TX}/planks_diff.jpg`,
@@ -356,7 +399,8 @@ export function useProcKits(): Record<ProcProp, PropKit> {
     dryN: `${TX}/hd/drygrass_nor${HDN}.webp`,
     hdPlankD: `${TX}/hd/plank_diff${HD}.webp`,
     hdPlankN: `${TX}/hd/plank_nor${HDN}.webp`,
-  })
+  }), [HD, HDN])
+  const tex = useTexture(urls)
   return useMemo(() => {
     const stone = worldUvMaterial(tex.pathD, tex.pathN, 2.5, { color: '#d8d2c2' })
     const plank = worldUvMaterial(tex.hdPlankD, tex.hdPlankN, 2.2, { color: '#f2dcc4', roughness: 0.8 })
@@ -415,15 +459,55 @@ export function useProcKits(): Record<ProcProp, PropKit> {
     const birchTrunk = new THREE.CylinderGeometry(0.11, 0.15, 9, 8).translate(0, 4.5, 0)
     const birchCrown = mergeGeometries([new THREE.IcosahedronGeometry(1.5, 1).scale(1, 1.5, 1).translate(0, 8.6, 0), new THREE.IcosahedronGeometry(1.1, 1).translate(0.7, 7.2, 0.3)])!
     const birchBark = new THREE.MeshStandardMaterial({ color: '#ece6da', roughness: 0.8 })
-    // rail maintenance trolley: a rusty flatbed on four wheels with a push bar
-    const deck = box(1.5, 0.16, 2.1, 0, 0.62, 0)
-    const deckRim = mergeGeometries([box(1.5, 0.18, 0.08, 0, 0.78, 1.03), box(1.5, 0.18, 0.08, 0, 0.78, -1.03), box(0.08, 0.18, 2.1, 0.73, 0.78, 0), box(0.08, 0.18, 2.1, -0.73, 0.78, 0)])!
-    const frame = mergeGeometries([box(1.3, 0.14, 0.12, 0, 0.45, 0.7), box(1.3, 0.14, 0.12, 0, 0.45, -0.7), box(0.06, 0.9, 0.06, -0.55, 1.15, -0.9), box(0.06, 0.9, 0.06, 0.55, 1.15, -0.9), box(1.2, 0.07, 0.07, 0, 1.58, -0.9)])!
+    // railway handcar: a weathered plank deck on iron side beams, four flanged iron wheels on axles, and the pump
+    // frame at the front with its rocking cross handle (the animal rides on the open deck behind it)
+    const planks: THREE.BufferGeometry[] = []
+    for (let i = 0; i < 7; i++) planks.push(box(1.5, 0.06, 0.28, 0, 0.76, -0.93 + i * 0.31, 0, (i % 3) * 0.006 - 0.006).toNonIndexed())
+    const deck = mergeGeometries(planks)!
+    const iron = (geos: THREE.BufferGeometry[]) => mergeGeometries(geos.map((g) => (g.index ? g.toNonIndexed() : g)))!
+    const rod = (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, r = 0.03) => {
+      const a = new THREE.Vector3(x0, y0, z0)
+      const b = new THREE.Vector3(x1, y1, z1)
+      const g = new THREE.CylinderGeometry(r, r, a.distanceTo(b), 8)
+      g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize()))
+      return g.translate((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2)
+    }
+    const frame = iron([
+      // side beams and cross members under the deck
+      box(0.09, 0.15, 2.15, 0.56, 0.62, 0),
+      box(0.09, 0.15, 2.15, -0.56, 0.62, 0),
+      box(1.2, 0.1, 0.1, 0, 0.62, 0.95),
+      box(1.2, 0.1, 0.1, 0, 0.62, -0.95),
+      // axles
+      new THREE.CylinderGeometry(0.035, 0.035, 1.42, 8).rotateZ(Math.PI / 2).translate(0, 0.3, 0.68),
+      new THREE.CylinderGeometry(0.035, 0.035, 1.42, 8).rotateZ(Math.PI / 2).translate(0, 0.3, -0.68),
+      // pump A-frame at the front, its pivot and the rocking cross handle
+      rod(-0.42, 0.79, 0.62, 0, 1.24, 0.78),
+      rod(0.42, 0.79, 0.62, 0, 1.24, 0.78),
+      rod(-0.42, 0.79, 0.95, 0, 1.24, 0.78),
+      rod(0.42, 0.79, 0.95, 0, 1.24, 0.78),
+      new THREE.CylinderGeometry(0.06, 0.06, 0.16, 10).rotateX(Math.PI / 2).translate(0, 1.24, 0.78),
+      // the drive rod down to the front axle
+      rod(0, 1.2, 0.78, 0, 0.34, 0.68, 0.025),
+    ])
+    const handle = iron([
+      rod(-0.72, 1.36, 0.6, 0.72, 1.12, 0.96, 0.03),
+      rod(-0.72, 1.36, 0.6, -0.72, 1.42, 0.6, 0.032),
+      rod(0.72, 1.12, 0.96, 0.72, 1.18, 0.96, 0.032),
+      rod(0, 1.24, 0.78, 0, 1.25, 0.6, 0.03),
+    ])
     const wheels: THREE.BufferGeometry[] = []
-    for (const wx of [-0.72, 0.72]) for (const wz of [-0.7, 0.7]) wheels.push(new THREE.CylinderGeometry(0.3, 0.3, 0.1, 14).rotateZ(Math.PI / 2).translate(wx, 0.3, wz))
-    const rust = new THREE.MeshStandardMaterial({ color: '#9a4426', roughness: 0.75, metalness: 0.5 })
-    const ironDark = new THREE.MeshStandardMaterial({ color: '#2e2e30', roughness: 0.5, metalness: 0.8 })
-    const yellowBar = new THREE.MeshStandardMaterial({ color: '#e8b62a', roughness: 0.6, metalness: 0.3 })
+    for (const wx of [-0.66, 0.66]) {
+      for (const wz of [-0.68, 0.68]) {
+        // tread, a flange on the inside, a hub, and six spokes
+        wheels.push(new THREE.CylinderGeometry(0.29, 0.29, 0.09, 20).rotateZ(Math.PI / 2).translate(wx, 0.3, wz).toNonIndexed())
+        wheels.push(new THREE.CylinderGeometry(0.33, 0.33, 0.025, 20).rotateZ(Math.PI / 2).translate(wx - Math.sign(wx) * 0.05, 0.3, wz).toNonIndexed())
+        wheels.push(new THREE.CylinderGeometry(0.07, 0.07, 0.13, 10).rotateZ(Math.PI / 2).translate(wx, 0.3, wz).toNonIndexed())
+      }
+    }
+    const rust = new THREE.MeshStandardMaterial({ color: '#4a3226', roughness: 0.82, metalness: 0.55 })
+    const ironDark = new THREE.MeshStandardMaterial({ color: '#26272a', roughness: 0.55, metalness: 0.8 })
+    const yellowBar = new THREE.MeshStandardMaterial({ color: '#8f9296', roughness: 0.3, metalness: 0.9 })
     // cave: a rough rock vault over the trail, hanging spikes, glowing crystals
     const vault = new THREE.CylinderGeometry(6.5, 6.5, 1, 18, 1, true, -Math.PI / 2, Math.PI)
     vault.rotateX(Math.PI / 2)
@@ -445,8 +529,9 @@ export function useProcKits(): Record<ProcProp, PropKit> {
     }
     spikes2.push(box(2.1, 0.5, 0.7, 0, 2.2, 0))
     const crystalGeo = mergeGeometries([new THREE.ConeGeometry(0.18, 1.1, 6).translate(0, 0.55, 0), new THREE.ConeGeometry(0.12, 0.8, 6).rotateZ(0.4).translate(0.18, 0.35, 0.05), new THREE.ConeGeometry(0.1, 0.6, 6).rotateZ(-0.5).translate(-0.15, 0.28, -0.05)])!
-    const crystalMat = new THREE.MeshStandardMaterial({ color: '#7ae8ff', emissive: '#2ac8ff', emissiveIntensity: 1.6, roughness: 0.2, toneMapped: false })
-    const waterMat = new THREE.MeshStandardMaterial({ color: '#2f7f86', roughness: 0.08, metalness: 0.1, transparent: true, opacity: 0.85, emissive: '#0c3a44', emissiveIntensity: 0.6, envMapIntensity: 1.4 })
+    // quartz in the cave walls: milky, faintly lit from within
+    const crystalMat = new THREE.MeshStandardMaterial({ color: '#c4d8dc', emissive: '#4a8c9a', emissiveIntensity: 0.55, roughness: 0.18, metalness: 0.05 })
+    const waterMat = new THREE.MeshStandardMaterial({ color: '#284c50', roughness: 0.06, metalness: 0.1, transparent: true, opacity: 0.88, emissive: '#06191d', emissiveIntensity: 0.35, envMapIntensity: 1.5 })
     const shadowMat = new THREE.MeshBasicMaterial({ color: '#000000', transparent: true, opacity: 0.5, depthWrite: false })
     // 2026-11-06 forest kits: redwood, tree fern, baobab, cypress, glowing mushroom, dead tree, coral
     const redBark = new THREE.MeshStandardMaterial({ map: prepTex(tex.cliffD, true), color: '#b0583a', roughness: 1 })
@@ -686,7 +771,8 @@ export function useProcKits(): Record<ProcProp, PropKit> {
     const metal = new THREE.MeshStandardMaterial({ color: '#8d9399', metalness: 0.85, roughness: 0.35 })
     const rope = new THREE.MeshStandardMaterial({ color: '#b39a6a', roughness: 1 })
     const vine = new THREE.MeshStandardMaterial({ color: '#4d5a2a', roughness: 1 })
-    const ice = new THREE.MeshPhysicalMaterial({ color: '#bfe8ff', roughness: 0.08, metalness: 0, transmission: 0, transparent: true, opacity: 0.5, emissive: '#5fb8ff', emissiveIntensity: 0.25, clearcoat: 1, depthWrite: false })
+    // glacial ice: dense, pale grey-cyan, wet and glossy on the surface (not see-through candy)
+    const ice = new THREE.MeshPhysicalMaterial({ color: '#c3d7de', roughness: 0.2, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.12, emissive: '#0c2630', emissiveIntensity: 0.18, envMapIntensity: 1.15 })
 
     const kit = (geometry: THREE.BufferGeometry, material: THREE.Material): PropKit => {
       const size = unitize(geometry)
@@ -711,7 +797,10 @@ export function useProcKits(): Record<ProcProp, PropKit> {
         const lean = (hash01(b, 6) - 0.3) * 0.5
         const dx = Math.cos(yaw)
         const dz = Math.sin(yaw)
-        const shade = 0.75 + hash01(b, 7) * 0.5
+        const shade = 0.72 + hash01(b, 7) * 0.4
+        // a real tuft is never one colour: some blades are drying to straw, some are a deep fresh green
+        const kind = hash01(b, 8)
+        const tint = kind < 0.16 ? [1.25, 1.08, 0.72] : kind > 0.8 ? [0.78, 0.9, 0.82] : [1, 1, 1]
         const base = pos.length / 3
         for (let i = 0; i <= SEGS; i++) {
           const t = i / SEGS
@@ -719,8 +808,9 @@ export function useProcKits(): Record<ProcProp, PropKit> {
           const ww = w * (1 - t * 0.92)
           for (const side of [-1, 1]) {
             pos.push(bx + dz * ww * side + dx * bend, t * h, bz - dx * ww * side + dz * bend)
-            const k = (0.55 + 0.45 * t) * shade
-            col.push(k, k, k)
+            // dark at the root (the tuft shades itself), light only toward the tips
+            const k = (0.28 + 0.72 * t * t) * shade
+            col.push(k * tint[0], k * tint[1], k * tint[2])
             uvs.push(side < 0 ? 0 : 1, t)
           }
           if (i < SEGS) {
@@ -741,10 +831,12 @@ export function useProcKits(): Record<ProcProp, PropKit> {
       return g
     })()
     const tuftMat = (color: string) => {
-      const m = new THREE.MeshStandardMaterial({ color, vertexColors: true, roughness: 0.8, envMapIntensity: 0.4 })
+      const m = new THREE.MeshStandardMaterial({ color, vertexColors: true, roughness: 0.88, envMapIntensity: 0.28 })
       m.onBeforeCompile = (sh) => {
         sh.uniforms.uD = worldUv.uD
         sh.uniforms.uT = worldUv.uT
+        sh.uniforms.uGrass = worldUv.uGrass
+        sh.fragmentShader = 'uniform float uGrass;\n' + sh.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\n diffuseColor.rgb *= uGrass;')
         sh.vertexShader =
           'uniform float uD;\nuniform float uT;\n' +
           sh.vertexShader.replace(
@@ -828,10 +920,11 @@ export function useProcKits(): Record<ProcProp, PropKit> {
       ]),
       curb: kit(box(1, 1, 1), ruin),
       bank: kit(box(1, 1, 1), ground),
-      tuft: kit(tuftGeo, tuftMat('#86a24e')),
-      tuftDark: kit(tuftGeo.clone(), tuftMat('#7a9450')),
-      tuftGold: kit(tuftGeo.clone(), tuftMat('#f0d290')),
-      tuftAutumn: kit(tuftGeo.clone(), tuftMat('#d0a860')),
+      // natural meadow tones (the old bright yellow-greens read as plastic)
+      tuft: kit(tuftGeo, tuftMat('#62783c')),
+      tuftDark: kit(tuftGeo.clone(), tuftMat('#526638')),
+      tuftGold: kit(tuftGeo.clone(), tuftMat('#b49c68')),
+      tuftAutumn: kit(tuftGeo.clone(), tuftMat('#98794a')),
       bankHill: kit(box(1, 1, 1), hill),
       post: kit(new THREE.CylinderGeometry(0.09, 0.11, 1, 8), wood),
       rope: kit(new THREE.CylinderGeometry(0.03, 0.03, 1, 5).rotateX(Math.PI / 2), rope),
@@ -864,9 +957,10 @@ export function useProcKits(): Record<ProcProp, PropKit> {
         [birchCrown, birchLeaf],
       ]),
       trolley: multi([
-        [mergeGeometries([deck, deckRim])!, rust],
-        [mergeGeometries(wheels)!, ironDark],
-        [frame, yellowBar],
+        [deck, wood],
+        [frame, ironDark],
+        [mergeGeometries(wheels)!, rust],
+        [handle, yellowBar],
       ]),
       redwood: multi([
         [redwoodTrunk, redBark],

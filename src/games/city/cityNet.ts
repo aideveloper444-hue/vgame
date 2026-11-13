@@ -8,6 +8,8 @@ export type CityAction =
   | { t: 'buy'; buy: boolean }
   | { t: 'auction'; action: 'BID' | 'PASS' }
   | { t: 'upgrade'; tileId: number }
+  | { t: 'redeem'; tileId: number }
+  | { t: 'payFine' }
   | { t: 'trade'; toPlayerId: string; offerIds: number[]; requestIds: number[] }
   | { t: 'tradeReply'; tradeId: string; accept: boolean }
   | { t: 'end' }
@@ -31,10 +33,12 @@ const SNAPSHOT_KEYS = [
   'eventLog',
   'finalRanking',
   'config',
+  'doublesStreak',
+  'extraTurn',
 ] as const
 
 const room = createPeerRoom<CityAction, CityEvent>({
-  prefix: 'vgame-city-v1-',
+  prefix: 'vgame-city-v3-',
   botNames: CITY_BOT_NAMES,
   snapshot: () => {
     const st = useCityStore.getState() as unknown as Record<string, unknown>
@@ -91,6 +95,12 @@ export function setCityNetHandlers(h: { onChat: (playerId: string, name: string,
           break
         case 'upgrade':
           if (theirTurn && st.phase === 'POST_MOVE_ACTIONS') st.upgradeProperty(Number(a.tileId))
+          break
+        case 'redeem':
+          if (theirTurn && st.phase === 'POST_MOVE_ACTIONS') st.redeemProperty(Number(a.tileId))
+          break
+        case 'payFine':
+          if (theirTurn && st.phase === 'ROLLING') st.payJailFine()
           break
         case 'trade':
           if (theirTurn && st.phase === 'POST_MOVE_ACTIONS')

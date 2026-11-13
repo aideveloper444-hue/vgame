@@ -2,6 +2,7 @@ import { shade } from '@/games/shared/three/glowTextures'
 import { COLOR_DEEP, COLOR_GLOW, COLOR_HEX, type LudoColor } from './ludoBoardLayout'
 import { CELL, type LudoBoard, type RadialGeometry } from './ludoBoards'
 import { makeCanvas, roundRect, seeded, star, toTexture, veins, type BoardMaps } from './ludoBoardTexture'
+import { BOARD_THEMES, type BoardTheme } from './ludoThemes'
 
 export interface RadialBoardMaps extends BoardMaps {
   /** World half-size of the square the maps cover. */
@@ -16,7 +17,7 @@ type Pt = [number, number]
  * colored home lanes with chevrons, start arrows, safe-cell stars and a jeweled center polygon where
  * all the home lanes meet. Everything outside the board polygon is left transparent.
  */
-export function paintRadialBoard(board: LudoBoard, g: RadialGeometry, size = 2048): RadialBoardMaps {
+export function paintRadialBoard(board: LudoBoard, g: RadialGeometry, size = 2048, theme: BoardTheme = BOARD_THEMES.obsidian): RadialBoardMaps {
   const half = g.circumradius + 0.04
   const k = size / (2 * half)
   const c = CELL * k
@@ -48,16 +49,17 @@ export function paintRadialBoard(board: LudoBoard, g: RadialGeometry, size = 204
   ctx.save()
   pathPoly(ctx, poly)
   ctx.clip()
+  // premium palette, matching the classic board: near-black stone, jewel-toned team colours, gold inlay
+  const [GOLD_HI, GOLD, GOLD_LO] = theme.inlay
   const body = ctx.createLinearGradient(0, 0, size, size)
-  body.addColorStop(0, '#1d2140')
-  body.addColorStop(1, '#0c0e1f')
+  body.addColorStop(0, theme.body[0])
+  body.addColorStop(1, theme.body[1])
   ctx.fillStyle = body
   ctx.fillRect(0, 0, size, size)
 
   /* ---------- team zone wedges and base yards ---------- */
   for (let arm = 0; arm < n; arm++) {
     const color = colorOf(arm)
-    const main = COLOR_HEX[color]
     const pts: Pt[] = [
       polar(g.armAngle(arm), g.r0),
       polar(g.armAngle(arm), g.apothem),
@@ -66,12 +68,16 @@ export function paintRadialBoard(board: LudoBoard, g: RadialGeometry, size = 204
       polar(g.armAngle(arm + 1), g.r0),
     ]
     const [vx, vy] = polar(wedgeAngle(arm), g.circumradius)
+    // the wedge is the theme's base stone with only a faint team tint, as around the 4-player homes;
+    // the team colour lives on the home plate under the yard
     const grad = ctx.createLinearGradient(X(0), Z(0), vx, vy)
-    grad.addColorStop(0, COLOR_DEEP[color])
-    grad.addColorStop(0.5, main)
-    grad.addColorStop(1, shade(COLOR_GLOW[color], 0.15))
+    grad.addColorStop(0, theme.body[0])
+    grad.addColorStop(1, theme.body[1])
     pathPoly(ctx, pts)
     ctx.fillStyle = grad
+    ctx.fill()
+    pathPoly(ctx, pts)
+    ctx.fillStyle = `${COLOR_DEEP[color]}2a`
     ctx.fill()
     const xs = pts.map((p) => p[0])
     const ys = pts.map((p) => p[1])
@@ -80,16 +86,20 @@ export function paintRadialBoard(board: LudoBoard, g: RadialGeometry, size = 204
     ctx.save()
     pathPoly(ctx, pts)
     ctx.clip()
-    veins(ctx, bx, by, Math.max(...xs) - bx, Math.max(...ys) - by, shade(main, 0.6), 0.16, 7, rand)
-    veins(ctx, bx, by, Math.max(...xs) - bx, Math.max(...ys) - by, shade(main, -0.5), 0.12, 5, rand)
+    veins(ctx, bx, by, Math.max(...xs) - bx, Math.max(...ys) - by, theme.yardVein, 0.05, 6, rand)
     const sheen = ctx.createLinearGradient(bx, by, Math.max(...xs), Math.max(...ys))
-    sheen.addColorStop(0, 'rgba(255,255,255,0.28)')
-    sheen.addColorStop(0.4, 'rgba(255,255,255,0.03)')
+    sheen.addColorStop(0, 'rgba(255,255,255,0.1)')
+    sheen.addColorStop(0.4, 'rgba(255,255,255,0.02)')
     sheen.addColorStop(1, 'rgba(0,0,0,0.2)')
     ctx.fillStyle = sheen
     ctx.fillRect(bx, by, Math.max(...xs) - bx, Math.max(...ys) - by)
     ctx.restore()
-    glow.lineWidth = c * 0.08 * b
+    // gold edge around the wedge
+    pathPoly(ctx, pts)
+    ctx.lineWidth = c * 0.04
+    ctx.strokeStyle = GOLD_LO
+    ctx.stroke()
+    glow.lineWidth = c * 0.05 * b
     glow.strokeStyle = COLOR_GLOW[color]
     pathPoly(glow, pts, b)
     glow.stroke()
@@ -103,6 +113,37 @@ export function paintRadialBoard(board: LudoBoard, g: RadialGeometry, size = 204
     const yy = Z(ycz)
     const yw = g.yardHalf * 2 * k
     const rot = wedgeAngle(arm)
+    // jewel home plate with a metal bevel and a glowing team inlay, framing the yard
+    const pw = yw * 1.24
+    ctx.save()
+    ctx.translate(yx, yy)
+    ctx.rotate(rot)
+    const plate = ctx.createLinearGradient(-pw / 2, -pw / 2, pw / 2, pw / 2)
+    plate.addColorStop(0, shade(COLOR_DEEP[color], theme.plate[0]))
+    plate.addColorStop(0.55, shade(COLOR_DEEP[color], theme.plate[1]))
+    plate.addColorStop(1, shade(COLOR_DEEP[color], theme.plate[2]))
+    ctx.shadowColor = 'rgba(0,0,0,0.6)'
+    ctx.shadowBlur = c * 0.35
+    roundRect(ctx, -pw / 2, -pw / 2, pw, pw, c * 0.25)
+    ctx.fillStyle = plate
+    ctx.fill()
+    ctx.shadowBlur = 0
+    ctx.lineWidth = c * 0.06
+    ctx.strokeStyle = GOLD
+    ctx.stroke()
+    ctx.lineWidth = c * 0.035
+    ctx.strokeStyle = COLOR_GLOW[color]
+    roundRect(ctx, -pw / 2 + c * 0.13, -pw / 2 + c * 0.13, pw - c * 0.26, pw - c * 0.26, c * 0.2)
+    ctx.stroke()
+    ctx.restore()
+    glow.save()
+    glow.translate(yx * b, yy * b)
+    glow.rotate(rot)
+    glow.lineWidth = c * 0.06 * b
+    glow.strokeStyle = COLOR_GLOW[color]
+    roundRect(glow, (-pw / 2 + c * 0.13) * b, (-pw / 2 + c * 0.13) * b, (pw - c * 0.26) * b, (pw - c * 0.26) * b, c * 0.2 * b)
+    glow.stroke()
+    glow.restore()
     ctx.save()
     ctx.translate(yx, yy)
     ctx.rotate(rot)
@@ -112,9 +153,9 @@ export function paintRadialBoard(board: LudoBoard, g: RadialGeometry, size = 204
     ctx.shadowColor = 'rgba(0,0,0,0.45)'
     ctx.shadowBlur = c * 0.25
     const yard = ctx.createLinearGradient(yx - yw / 2, yy - yw / 2, yx + yw / 2, yy + yw / 2)
-    yard.addColorStop(0, '#fbfcff')
-    yard.addColorStop(0.55, shade(COLOR_GLOW[color], 0.88))
-    yard.addColorStop(1, shade(COLOR_GLOW[color], 0.7))
+    yard.addColorStop(0, theme.yard[0])
+    yard.addColorStop(0.6, theme.yard[1])
+    yard.addColorStop(1, theme.yard[2])
     ctx.fillStyle = yard
     ctx.fill()
     ctx.restore()
@@ -123,8 +164,8 @@ export function paintRadialBoard(board: LudoBoard, g: RadialGeometry, size = 204
     ctx.rotate(rot)
     roundRect(ctx, -yw / 2, -yw / 2, yw, yw, c * 0.4)
     ctx.clip()
-    veins(ctx, -yw / 2, -yw / 2, yw, yw, '#8e94aa', 0.22, 9, rand)
-    veins(ctx, -yw / 2, -yw / 2, yw, yw, shade(main, -0.2), 0.12, 4, rand)
+    veins(ctx, -yw / 2, -yw / 2, yw, yw, theme.yardVein, 0.1, 8, rand)
+    veins(ctx, -yw / 2, -yw / 2, yw, yw, shade(COLOR_GLOW[color], -0.1), 0.06, 3, rand)
     ctx.restore()
     ctx.save()
     ctx.translate(yx, yy)
@@ -132,7 +173,7 @@ export function paintRadialBoard(board: LudoBoard, g: RadialGeometry, size = 204
     roundRect(ctx, -yw / 2, -yw / 2, yw, yw, c * 0.4)
     ctx.restore()
     ctx.lineWidth = c * 0.05
-    ctx.strokeStyle = shade(COLOR_GLOW[color], 0.55)
+    ctx.strokeStyle = GOLD
     ctx.stroke()
     bump.save()
     bump.translate(yx * b, yy * b)
@@ -142,23 +183,31 @@ export function paintRadialBoard(board: LudoBoard, g: RadialGeometry, size = 204
     bump.fill()
     bump.restore()
 
+    // a waiting spot for each warrior, always visible (a waiting warrior's glowing base covers it)
     for (let i = 0; i < 4; i++) {
       const [px, pz] = board.basePos(color, i)
       const cx = X(px)
       const cy = Z(pz)
-      const pad = ctx.createRadialGradient(cx, cy - c * 0.1, c * 0.05, cx, cy, c * 0.5)
-      pad.addColorStop(0, shade(COLOR_GLOW[color], 0.55))
-      pad.addColorStop(1, shade(main, 0.2))
+      const R = c * 0.5
+      const well = ctx.createRadialGradient(cx, cy - R * 0.2, R * 0.1, cx, cy, R)
+      well.addColorStop(0, shade(theme.yard[2], -0.55))
+      well.addColorStop(0.75, theme.yard[2])
+      well.addColorStop(1, shade(COLOR_DEEP[color], -0.4))
       ctx.beginPath()
-      ctx.arc(cx, cy, c * 0.42, 0, Math.PI * 2)
-      ctx.fillStyle = pad
+      ctx.arc(cx, cy, R, 0, Math.PI * 2)
+      ctx.fillStyle = well
       ctx.fill()
       ctx.lineWidth = c * 0.05
-      ctx.strokeStyle = 'rgba(255,255,255,0.7)'
+      ctx.strokeStyle = GOLD
+      ctx.stroke()
+      ctx.beginPath()
+      ctx.arc(cx, cy, R - c * 0.08, 0, Math.PI * 2)
+      ctx.lineWidth = c * 0.035
+      ctx.strokeStyle = COLOR_GLOW[color]
       ctx.stroke()
       glow.beginPath()
-      glow.arc(cx * b, cy * b, c * 0.42 * b, 0, Math.PI * 2)
-      glow.lineWidth = c * 0.07 * b
+      glow.arc(cx * b, cy * b, (R - c * 0.08) * b, 0, Math.PI * 2)
+      glow.lineWidth = c * 0.05 * b
       glow.strokeStyle = COLOR_GLOW[color]
       glow.stroke()
     }
@@ -174,7 +223,7 @@ export function paintRadialBoard(board: LudoBoard, g: RadialGeometry, size = 204
     ctx.shadowColor = 'rgba(0,0,0,0.55)'
     ctx.shadowBlur = c * 0.3
     roundRect(ctx, -3 * c - c * 0.08, -1.5 * c - c * 0.08, 6 * c + c * 0.16, 3 * c + c * 0.16, c * 0.2)
-    ctx.fillStyle = '#10132a'
+    ctx.fillStyle = shade(theme.body[1], -0.3)
     ctx.fill()
     ctx.restore()
   }
@@ -196,18 +245,29 @@ export function paintRadialBoard(board: LudoBoard, g: RadialGeometry, size = 204
     ctx.shadowOffsetY = c * 0.05
     const grad = ctx.createLinearGradient(cx, cy - w / 2, cx, cy + w / 2)
     if (team) {
-      grad.addColorStop(0, shade(COLOR_GLOW[team], 0.12))
-      grad.addColorStop(1, COLOR_HEX[team])
+      // deep jewel glass
+      grad.addColorStop(0, shade(COLOR_HEX[team], -0.05))
+      grad.addColorStop(1, shade(COLOR_DEEP[team], -0.35))
     } else {
-      grad.addColorStop(0, '#f6f7fb')
-      grad.addColorStop(1, '#d3d7e4')
+      grad.addColorStop(0, theme.tile[0])
+      grad.addColorStop(1, theme.tile[2])
     }
     ctx.fillStyle = grad
     ctx.fill()
     ctx.restore()
     ctx.lineWidth = c * 0.035
-    ctx.strokeStyle = team ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.8)'
+    ctx.strokeStyle = team ? 'rgba(255,255,255,0.3)' : theme.neonGrid ? theme.engrave : theme.bevel
     ctx.stroke()
+    if (theme.neonGrid && !team) {
+      glow.save()
+      glow.translate(cx * b, cy * b)
+      glow.rotate(angle)
+      glow.lineWidth = c * 0.03 * b
+      glow.strokeStyle = theme.inlay[1]
+      roundRect(glow, (-w / 2) * b, (-w / 2) * b, w * b, w * b, c * 0.14 * b)
+      glow.stroke()
+      glow.restore()
+    }
     bump.save()
     bump.translate(cx * b, cy * b)
     bump.rotate(angle)
@@ -220,7 +280,7 @@ export function paintRadialBoard(board: LudoBoard, g: RadialGeometry, size = 204
       ctx.save()
       ctx.translate(cx, cy)
       ctx.rotate(Math.atan2(Z(markTo[1]) - cy, X(markTo[0]) - cx))
-      ctx.fillStyle = 'rgba(255,255,255,0.95)'
+      ctx.fillStyle = GOLD_HI
       ctx.beginPath()
       ctx.moveTo(c * 0.26, 0)
       ctx.lineTo(-c * 0.16, -c * 0.22)
@@ -233,8 +293,8 @@ export function paintRadialBoard(board: LudoBoard, g: RadialGeometry, size = 204
       ctx.save()
       ctx.translate(cx, cy)
       ctx.rotate(Math.atan2(Z(0) - cy, X(0) - cx))
-      ctx.strokeStyle = 'rgba(255,255,255,0.45)'
-      ctx.lineWidth = c * 0.07
+      ctx.strokeStyle = 'rgba(255,240,205,0.5)'
+      ctx.lineWidth = c * 0.05
       ctx.lineCap = 'round'
       ctx.lineJoin = 'round'
       ctx.beginPath()
@@ -255,13 +315,11 @@ export function paintRadialBoard(board: LudoBoard, g: RadialGeometry, size = 204
     } else if (mark === 'star') {
       star(ctx, cx, cy, c * 0.3, c * 0.13)
       const sg = ctx.createLinearGradient(cx, cy - c * 0.3, cx, cy + c * 0.3)
-      sg.addColorStop(0, '#d7dbe6')
-      sg.addColorStop(1, '#9aa1b6')
+      sg.addColorStop(0, GOLD_HI)
+      sg.addColorStop(0.55, GOLD)
+      sg.addColorStop(1, GOLD_LO)
       ctx.fillStyle = sg
       ctx.fill()
-      ctx.lineWidth = c * 0.025
-      ctx.strokeStyle = '#7b8196'
-      ctx.stroke()
     }
   }
 
@@ -281,20 +339,6 @@ export function paintRadialBoard(board: LudoBoard, g: RadialGeometry, size = 204
     }
   }
 
-  /* ---------- zone light spill ---------- */
-  ctx.save()
-  ctx.globalCompositeOperation = 'multiply'
-  for (let arm = 0; arm < n; arm++) {
-    const color = colorOf(arm)
-    const [zx, zz] = board.yardCenter(color)
-    const spill = ctx.createRadialGradient(X(zx), Z(zz), c * 2.5, X(zx), Z(zz), c * 7)
-    spill.addColorStop(0, shade(COLOR_GLOW[color], 0.6))
-    spill.addColorStop(1, 'rgba(255,255,255,1)')
-    ctx.fillStyle = spill
-    ctx.fillRect(0, 0, size, size)
-  }
-  ctx.restore()
-
   /* ---------- center: every home lane converges on one triangle of the polygon ---------- */
   const cornerR = g.r0 / Math.cos(Math.PI / n)
   const corners: Pt[] = Array.from({ length: n }, (_, i) => polar(g.armAngle(i) - Math.PI / n, cornerR))
@@ -304,8 +348,8 @@ export function paintRadialBoard(board: LudoBoard, g: RadialGeometry, size = 204
     const p1 = corners[arm]
     const p2 = corners[(arm + 1) % n]
     const grad = ctx.createLinearGradient((p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2, mid[0], mid[1])
-    grad.addColorStop(0, COLOR_HEX[color])
-    grad.addColorStop(1, shade(COLOR_GLOW[color], 0.35))
+    grad.addColorStop(0, shade(COLOR_DEEP[color], -0.45))
+    grad.addColorStop(1, shade(COLOR_HEX[color], -0.1))
     pathPoly(ctx, [p1, p2, mid])
     ctx.fillStyle = grad
     ctx.fill()

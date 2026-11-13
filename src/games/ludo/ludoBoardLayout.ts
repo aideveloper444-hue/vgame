@@ -86,11 +86,13 @@ export const HOME_STRETCH_COORDS: Record<ClassicColor, Cell[]> = {
 }
 
 // Token spots inside each base yard (fractional cell coordinates, 2 cells apart around the yard center).
+// Waiting spots sit close together in a compact home (the home plate is 4 of its 6 cells wide), just far
+// enough apart that the warriors' glowing bases don't overlap.
 export const BASE_SLOT_COORDS: Record<ClassicColor, Cell[]> = {
-  RED: [[1.5, 1.5], [1.5, 3.5], [3.5, 1.5], [3.5, 3.5]],
-  GREEN: [[1.5, 10.5], [1.5, 12.5], [3.5, 10.5], [3.5, 12.5]],
-  YELLOW: [[10.5, 10.5], [10.5, 12.5], [12.5, 10.5], [12.5, 12.5]],
-  BLUE: [[10.5, 1.5], [10.5, 3.5], [12.5, 1.5], [12.5, 3.5]],
+  RED: [[1.75, 1.75], [1.75, 3.25], [3.25, 1.75], [3.25, 3.25]],
+  GREEN: [[1.75, 10.75], [1.75, 12.25], [3.25, 10.75], [3.25, 12.25]],
+  YELLOW: [[10.75, 10.75], [10.75, 12.25], [12.25, 10.75], [12.25, 12.25]],
+  BLUE: [[10.75, 1.75], [10.75, 3.25], [12.25, 1.75], [12.25, 3.25]],
 }
 export const BASE_QUADRANT: Record<ClassicColor, { row: number; col: number }> = {
   RED: { row: 0, col: 0 },

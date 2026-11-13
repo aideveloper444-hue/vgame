@@ -27,7 +27,7 @@ import {
   userById,
   type UserRow,
 } from './accounts'
-import { handleRtdn, playEnabled, verifyPlayPurchase, verifySocial } from './store'
+import { facebookFriendIds, handleRtdn, playEnabled, verifyPlayPurchase, verifySocial } from './store'
 import { COSMETICS, PLAY_PRODUCTS, VIP_PERKS, VIP_PRICE_INR } from '../../src/games/poker/data/cosmetics'
 import { hub } from './game/hub'
 import { lobbyTiers, rooms, tables } from './game/lobby'
@@ -299,6 +299,29 @@ route('DELETE', '/v1/friends/:id', (c) => {
   hub.send(c.params.id, { type: 'FRIENDS_CHANGED' })
   return ok
 })
+
+/* ---------------------------------------------------------------- app-wide social (all games) */
+
+// the friend code this player's device uses in the social hub (Ludo, City, Poker, Wildbound)
+route('POST', '/v1/social/net-id', (c) => {
+  const netId = str(c.body, 'netId', { max: 8 }).toUpperCase()
+  if (!/^[A-Z0-9]{8}$/.test(netId)) throw new ApiError(400, 'INVALID_INPUT', 'Bad friend code')
+  run('UPDATE users SET net_id = ?, updated_at = ? WHERE id = ?', netId, Date.now(), me(c))
+  return ok
+}, { limit: 20 })
+
+// Facebook friends who play VIBO, with the friend codes to add them in the hub
+route('POST', '/v1/social/facebook-friends', async (c) => {
+  const u = userById(me(c))
+  if (!u?.facebook_id) throw new ApiError(400, 'INVALID_INPUT', 'Sign in with Facebook to find your friends')
+  const ids = await facebookFriendIds(str(c.body, 'token', { max: 4096 }), u.facebook_id)
+  if (!ids.length) return []
+  const rows = all<{ handle: string; net_id: string }>(
+    `SELECT handle, net_id FROM users WHERE status = 'active' AND net_id IS NOT NULL AND facebook_id IN (${ids.map(() => '?').join(',')})`,
+    ...ids,
+  )
+  return rows.map((r) => ({ name: r.handle, netId: r.net_id }))
+}, { limit: 10 })
 
 route('GET', '/v1/blocks', (c) => all<{ blocked_id: string }>('SELECT blocked_id FROM blocks WHERE user_id = ?', me(c)).map((b) => ({ id: b.blocked_id, name: userById(b.blocked_id)?.handle ?? '?' })))
 route('POST', '/v1/blocks', (c) => {

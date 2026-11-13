@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { Home } from 'lucide-react'
 import { useCityStore } from '../cityStore'
+import { CATEGORY_ICON, CATEGORY_TINT, TILE_ICON, type CityTile } from '../cityBoardData'
+import { money } from '../cityFormat'
 import { useCityMatch } from '../cityMatch'
 import { DICE_ROLL_MS, STEP_MS } from '../cityBoardLayout'
 import { BOARD_ART, SEATS, TILE_RECTS, tileSide, tokenAnchor } from './alphaLayout'
@@ -45,12 +47,13 @@ function useWalkStep() {
   return step
 }
 
-export default function AlphaBoard({ mapView }: { mapView: boolean }) {
+export default function AlphaBoard({ mapView, onTileClick }: { mapView: boolean; onTileClick?: (tileId: number) => void }) {
   const tiles = useCityStore((s) => s.tiles)
   const players = useCityStore((s) => s.players)
   const currentPlayerIndex = useCityStore((s) => s.currentPlayerIndex)
   const pendingMovePath = useCityStore((s) => s.pendingMovePath)
   const phase = useCityStore((s) => s.phase)
+  const goBonus = useCityStore((s) => s.config.goBonus)
   const step = useWalkStep()
 
   const walking = phase === 'MOVING' && pendingMovePath !== null && step > 0
@@ -103,6 +106,23 @@ export default function AlphaBoard({ mapView }: { mapView: boolean }) {
         />
         <CityLife />
 
+        {/* the 40-space ring, drawn over the ring painted on the board art */}
+        {tiles.map((t) => {
+          const [x0, y0, x1, y1] = TILE_RECTS[t.id] ?? [0, 0, 0, 0]
+          return (
+            <button
+              key={`cell-${t.id}`}
+              type="button"
+              onClick={() => onTileClick?.(t.id)}
+              aria-label={t.name}
+              className="absolute p-[2px]"
+              style={{ left: x0 - BOARD_ART.x, top: y0 - BOARD_ART.y, width: x1 - x0, height: y1 - y0, background: '#0b1452' }}
+            >
+              <BoardCell tile={t} side={t.id % 10 === 0 ? 'corner' : tileSide(t.id)} goBonus={goBonus} />
+            </button>
+          )
+        })}
+
         {/* ownership, upgrades and the landing highlight, drawn over the painted tiles */}
         {tiles.map((t) => {
           const [x0, y0, x1, y1] = TILE_RECTS[t.id] ?? [0, 0, 0, 0]
@@ -132,6 +152,11 @@ export default function AlphaBoard({ mapView }: { mapView: boolean }) {
                   className="absolute -right-1 -top-2 h-[30px] w-[30px] rounded-full"
                   style={{ border: `3px solid ${seat.color}`, boxShadow: `0 0 8px ${seat.glow}` }}
                 />
+              )}
+              {t.type === 'PROPERTY' && t.mortgaged && (
+                <div className="absolute inset-[2px] flex items-center justify-center rounded-[10px] bg-[#0b1240]/70">
+                  <span className="rounded-full bg-amber-300 px-1.5 py-[1px] text-[11px] font-black uppercase tracking-wide text-[#3d2200]">Mortgaged</span>
+                </div>
               )}
               {t.type === 'PROPERTY' && t.level > 0 && (
                 <div className="absolute -left-1 -top-2 flex gap-[1px] rounded-full bg-[#0b1240]/90 px-1 py-[2px]" style={{ border: '2px solid #34d399' }}>
@@ -195,6 +220,108 @@ export default function AlphaBoard({ mapView }: { mapView: boolean }) {
       </div>
     </div>
   )
+}
+
+/* ------------------------------------------------------------------ ring cells */
+
+type CellSide = 'bottom' | 'right' | 'top' | 'left' | 'corner'
+
+const SPECIAL_THEME: Record<string, { bg: string; ink: string }> = {
+  CHANCE: { bg: 'linear-gradient(180deg, #f6efff, #cfb2ff)', ink: '#5b21b6' },
+  COMMUNITY: { bg: 'linear-gradient(180deg, #fff3e2 0%, #ffffff 50%, #dcf5df 100%)', ink: '#1e3a8a' },
+  TAX: { bg: 'linear-gradient(180deg, #f1f5f9, #cbd5e1)', ink: '#92400e' },
+  CLUB: { bg: 'linear-gradient(180deg, #fff1f8, #f9c4dd)', ink: '#9d174d' },
+}
+
+const CARD_BG = 'linear-gradient(180deg, #fffaf0, #f6dfa0)'
+
+/** One board space: cream card, colour bar on the inner edge for properties, icon, name and price. */
+function BoardCell({ tile, side, goBonus }: { tile: CityTile; side: CellSide; goBonus: number }) {
+  const base = 'relative flex h-full w-full overflow-hidden rounded-[10px] text-[#14204a]'
+  const shell = { boxShadow: 'inset 0 0 0 1.5px rgba(255,255,255,0.9), inset 0 -3px 0 rgba(150,100,20,0.35)' }
+
+  if (side === 'corner') {
+    const c =
+      tile.type === 'GO'
+        ? { icon: '🏁', title: 'START', sub: `Collect ${money(goBonus)}`, bg: 'linear-gradient(160deg, #fff7ae, #f5b52a)' }
+        : tile.type === 'JAIL'
+          ? { icon: '🚔', title: 'JAIL', sub: 'Just visiting', bg: 'linear-gradient(160deg, #fef9c3, #fcd34d)' }
+          : tile.type === 'PARK'
+            ? { icon: '🅿️', title: 'FREE', sub: 'Parking', bg: 'linear-gradient(160deg, #d1fae5, #5eead4)' }
+            : { icon: '👮', title: 'GO TO', sub: 'Jail', bg: 'linear-gradient(160deg, #e0e7ff, #a5b4fc)' }
+    return (
+      <span className={`${base} items-center justify-center gap-1.5 px-1`} style={{ ...shell, background: c.bg }}>
+        <span className="text-[34px] leading-none">{c.icon}</span>
+        <span className="flex flex-col items-start leading-none">
+          <span className="text-[19px] font-black tracking-tight">{c.title}</span>
+          <span className="mt-0.5 text-[12px] font-extrabold uppercase text-[#7c2d12]">{c.sub}</span>
+        </span>
+      </span>
+    )
+  }
+
+  const isProp = tile.type === 'PROPERTY'
+  const special = !isProp ? SPECIAL_THEME[tile.type] : undefined
+  const icon = TILE_ICON[tile.name] ?? (isProp ? CATEGORY_ICON[tile.category] : '⭐')
+  const tint = isProp ? CATEGORY_TINT[tile.category] : null
+  const price = isProp ? money(tile.basePrice) : tile.type === 'TAX' ? '₹50 each' : null
+  const vertical = side === 'top' || side === 'bottom'
+  // the colour bar faces the city
+  const barEdge: 'top' | 'bottom' | 'left' | 'right' = side === 'bottom' ? 'top' : side === 'top' ? 'bottom' : side === 'left' ? 'right' : 'left'
+  const BAR_STYLE: Record<typeof barEdge, CSSProperties> = {
+    top: { left: 0, right: 0, top: 0, height: 12 },
+    bottom: { left: 0, right: 0, bottom: 0, height: 12 },
+    left: { top: 0, bottom: 0, left: 0, width: 12 },
+    right: { top: 0, bottom: 0, right: 0, width: 12 },
+  }
+  const PAD: Record<typeof barEdge, CSSProperties> = {
+    top: { paddingTop: 14 },
+    bottom: { paddingBottom: 14 },
+    left: { paddingLeft: 15 },
+    right: { paddingRight: 15 },
+  }
+  const barStyle = BAR_STYLE[barEdge]
+  const pad = PAD[barEdge]
+  const tricolour = tile.type === 'COMMUNITY'
+
+  return (
+    <span
+      className={`${base} ${vertical ? 'flex-col items-center justify-center px-[3px]' : 'flex-row items-center gap-1.5 px-1.5'}`}
+      style={{ ...shell, ...pad, background: special?.bg ?? CARD_BG }}
+    >
+      {(tint || tricolour) && (
+        <span
+          className="absolute"
+          style={{
+            ...barStyle,
+            background: tricolour
+              ? barEdge === 'top' || barEdge === 'bottom'
+                ? 'linear-gradient(90deg, #ff9933 33%, #ffffff 33% 66%, #138808 66%)'
+                : 'linear-gradient(180deg, #ff9933 33%, #ffffff 33% 66%, #138808 66%)'
+              : `linear-gradient(${barEdge === 'top' || barEdge === 'bottom' ? '180deg' : '90deg'}, ${tint}, ${tint}cc)`,
+            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.5)',
+          }}
+        />
+      )}
+      <span className={`shrink-0 leading-none ${vertical ? 'text-[22px]' : 'text-[26px]'}`}>{icon}</span>
+      <span className={`flex min-w-0 flex-col leading-none ${vertical ? 'mt-0.5 items-center text-center' : 'items-start text-left'}`}>
+        <span className="line-clamp-2 break-words text-[13px] font-black uppercase tracking-[-0.01em]" style={{ color: special?.ink }}>
+          {tile.name}
+        </span>
+        {price && (
+          <span className="mt-[2px] text-[13.5px] font-black" style={{ color: tint ? darkenHex(tint) : special?.ink }}>
+            {price}
+          </span>
+        )}
+      </span>
+    </span>
+  )
+}
+
+function darkenHex(hex: string) {
+  const n = parseInt(hex.slice(1), 16)
+  const f = (c: number) => Math.round(c * 0.62)
+  return `rgb(${f((n >> 16) & 255)}, ${f((n >> 8) & 255)}, ${f(n & 255)})`
 }
 
 /** Ambient life on the painted city: twinkling windows and a slow light sweep over the water. */

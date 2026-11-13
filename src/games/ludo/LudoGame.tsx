@@ -1,40 +1,47 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { WifiOff } from 'lucide-react'
-import { useLudoStore, botChooseMove, botChoosePower, strikePairs, type LegalMove, type LudoPlayer, type PowerKind } from './ludoStore'
+import { useLudoStore, botChooseMove, ordinal, ROLL_TIMEOUT_MS, type LegalMove, type LudoPlayer } from './ludoStore'
 import { getBoard, seatColors } from './ludoBoards'
 import { TEAM_BUILD } from './ludoCharacters'
-import { COLOR_GLOW, type LudoColor } from './ludoBoardLayout'
+import { COLOR_DEEP, COLOR_GLOW, type LudoColor } from './ludoBoardLayout'
 import LudoScene3D, { type BoardSlot } from './LudoScene3D'
 import LudoPlayerCard from './LudoPlayerCard'
 import LudoBackdrop from './LudoBackdrop'
 import LudoTopBar from './LudoTopBar'
-import LudoWinnerBanner from './LudoWinnerBanner'
+import LudoResultsBoard from './LudoResultsBoard'
+import LudoRankCelebration from './LudoRankCelebration'
+import LudoFireworks from './LudoFireworks'
 import GameResultScreen from '@/games/shared/GameResultScreen'
 import { GAME_REGISTRY } from '@/games/registry'
-import { ChatBar, EmoteBar, FloatingEmotes, GiftButton, GiftSheet, PowerUpsPanel, PowerUpsStrip, Toast, VoiceChip, type GiftDef } from './LudoControls'
-import { useLudoAim } from './ludoAim'
+import { ChatBar, EmoteBar, FloatingEmotes, GiftButton, GiftSheet, Toast, VoiceChip, type GiftDef } from './LudoControls'
 import { usePlayerStore } from '@/social/stores/usePlayerStore'
 import LudoDice from './LudoDice'
+import { ludoSfx } from '@/lib/sound'
 import LudoMenu from './LudoMenu'
 import LudoLoadingScreen from './LudoLoadingScreen'
 import { useLudoMatch } from './ludoMatch'
-import { broadcastSay, broadcastSpin, leaveRoom, sendToHost, setNetHandlers, useLudoRoom, type PowerAction } from './ludoNet'
+import { broadcastSay, broadcastSpin, leaveRoom, sendToHost, setNetHandlers, useLudoRoom } from './ludoNet'
 
 const BOT_GIRLS = ['Diya', 'Ananya', 'Meera', 'Priya']
 const BOT_BOYS = ['Rohan', 'Vikram', 'Arjun', 'Kabir']
 /** The lounge crew from the poster: each team's hero, when a computer player takes that seat. */
 const BOT_BY_COLOR: Partial<Record<LudoColor, string>> = { RED: 'Rabhindra Patra', GREEN: 'anishhh', BLUE: 'Geethika Chowdary', YELLOW: 'Doctor' }
 
-const CAPTURE_LINES = ['Nice move! 🔥', 'Got you! 💀', 'Boom! 💥', 'Ouch, that hurt! 😈']
+const CAPTURE_LINES = ['Nice move! 🔥', 'Got you! 💥', 'Boom! 💥', 'Ouch, that hurt! 😈']
 const FINISH_LINES = ['Home safe! ✅', 'Yes! 🎉', 'One down! 🙌']
+const RANK_LINES = ['All home! 🎆', 'Done! 🎉', 'Made it! 🏁']
 const BOT_REPLIES = ['Bring it on! 😎', 'Haha 😂', 'Good luck! 😜', 'GG 🤝', 'Watch this! 🎲']
 
 /** How long the die tumbles before the roll resolves in the store. */
 const ROLL_SPIN_MS = 650
 const game = GAME_REGISTRY.ludo
 
-const BOT_ROLL_DELAY_MS = 750
-const BOT_PICK_DELAY_MS = 700
+const BOT_ROLL_DELAY_MS = 550
+const BOT_PICK_DELAY_MS = 500
+/** How long the crackers play after a player finishes before play resumes (and before the results board, at the end). */
+const RANK_CELEBRATION_MS = 4200
+/** Small crackers when a single token reaches home. */
+const HOME_POP_MS = 2600
 
 /** Width / height of the match column, matching the lounge poster the table is styled after. */
 const COLUMN_ASPECT = 0.94
@@ -119,7 +126,7 @@ function LudoMatchView() {
   const legalMoves = useLudoStore((s) => s.legalMoves)
   const lastEvent = useLudoStore((s) => s.lastEvent)
   const pendingMove = useLudoStore((s) => s.pendingMove)
-  const winnerId = useLudoStore((s) => s.winnerId)
+  const rankings = useLudoStore((s) => s.rankings)
   const bestRoll = useLudoStore((s) => s.bestRoll)
   const startGame = useLudoStore((s) => s.startGame)
   const selectToken = useLudoStore((s) => s.selectToken)
@@ -145,11 +152,11 @@ function LudoMatchView() {
   const [statsRevealed, setStatsRevealed] = useState(false)
   const [giftOpen, setGiftOpen] = useState(false)
   const [toast, setToast] = useState<{ id: number; text: string } | null>(null)
+  const [celebration, setCelebration] = useState<{ id: string; playerId: string; rank: number } | null>(null)
+  const celebratingRef = useRef(false)
+  celebratingRef.current = !!celebration
+  const [homePop, setHomePop] = useState<string | null>(null)
   const [emotes, setEmotes] = useState<{ id: number; emoji: string; x: number }[]>([])
-  const speedActive = useLudoStore((s) => s.speedActive)
-  const powerUsed = useLudoStore((s) => s.powerUsed)
-  const aimMode = useLudoAim((s) => s.mode)
-  const botPowerKey = useRef('')
   const lastActorTokenId = useRef<string | null>(null)
   const { width: viewportWidth, height: viewportHeight } = useViewportSize()
   // the match is laid out in a column shaped like the lounge poster (a touch wider than tall) on every screen
@@ -244,15 +251,38 @@ function LudoMatchView() {
 
   useEffect(() => {
     if (!lastEvent) return
-    if (lastEvent.type === 'capture' || lastEvent.type === 'finish') {
+    if (lastEvent.type === 'capture' || lastEvent.type === 'finish' || lastEvent.type === 'win') {
       const tokenId = lastActorTokenId.current
       const actor = useLudoStore.getState().players.find((p) => p.tokens.some((t) => t.id === tokenId))
       if (actor) {
-        const lines = lastEvent.type === 'capture' ? CAPTURE_LINES : FINISH_LINES
+        const lines = lastEvent.type === 'capture' ? CAPTURE_LINES : lastEvent.type === 'win' ? RANK_LINES : FINISH_LINES
         say(actor.id, lines[Math.floor(Math.random() * lines.length)], 2600)
       }
     }
   }, [lastEvent, say])
+
+  // a player bringing their last warrior home: crackers and their place, then play resumes for the rest
+  useEffect(() => {
+    if (lastEvent?.type !== 'win' || !lastEvent.effectId || !lastEvent.playerId || !lastEvent.rank) return
+    setCelebration({ id: lastEvent.effectId, playerId: lastEvent.playerId, rank: lastEvent.rank })
+  }, [lastEvent])
+  const celebrationId = celebration?.id
+  useEffect(() => {
+    if (!celebrationId) return
+    const t = window.setTimeout(() => setCelebration((c) => (c?.id === celebrationId ? null : c)), RANK_CELEBRATION_MS)
+    return () => window.clearTimeout(t)
+  }, [celebrationId])
+
+  // every token that reaches home gets a little burst of crackers
+  useEffect(() => {
+    if (lastEvent?.type !== 'finish' || !lastEvent.effectId) return
+    setHomePop(lastEvent.effectId)
+  }, [lastEvent])
+  useEffect(() => {
+    if (!homePop) return
+    const t = window.setTimeout(() => setHomePop((h) => (h === homePop ? null : h)), HOME_POP_MS)
+    return () => window.clearTimeout(t)
+  }, [homePop])
 
   // a six celebrates on every device, whoever rolled it
   useEffect(() => {
@@ -284,7 +314,7 @@ function LudoMatchView() {
       if (!spinningRef.current) sendToHost({ t: 'roll' })
       return
     }
-    if (spinningRef.current || useLudoStore.getState().phase !== 'rolling') return
+    if (spinningRef.current || celebratingRef.current || useLudoStore.getState().phase !== 'rolling') return
     if (role === 'host') broadcastSpin()
     startSpin()
   }, [authoritative, role, startSpin])
@@ -319,35 +349,13 @@ function LudoMatchView() {
       onChat: (playerId, text) => handlersRef.current.postChat(playerId, text, playerId),
       onSpin: () => handlersRef.current.startSpin(),
       onSay: (playerId, text) => handlersRef.current.say(playerId, text, 2200),
-      onPower: (a) => {
-        const st = useLudoStore.getState()
-        if (a.kind === 'speed') st.useSpeed()
-        else if (a.kind === 'shield' && a.a) st.useShield(a.a)
-        else if (a.kind === 'bomb' && a.a) st.useBomb(a.a)
-      },
     })
     return () => setNetHandlers({})
   }, [])
 
   useEffect(() => {
-    if (!revealed || !authoritative || !currentPlayer || phase === 'gameOver' || !currentPlayer.isBot) return
+    if (!revealed || !authoritative || !currentPlayer || phase === 'gameOver' || !currentPlayer.isBot || celebration) return
     if (phase === 'rolling' && !spinning) {
-      // once per turn, a computer player may bomb, shield or speed up before it rolls
-      const key = `${currentPlayerIndex}:${useLudoStore.getState().rollCount}`
-      if (botPowerKey.current !== key && !useLudoStore.getState().powerUsed) {
-        botPowerKey.current = key
-        const st = useLudoStore.getState()
-        const choice = botChoosePower(getBoard(st.arms), st.players, st.currentPlayerIndex, botLevel)
-        if (choice) {
-          const t = window.setTimeout(() => {
-            const s2 = useLudoStore.getState()
-            if (choice.kind === 'speed') s2.useSpeed()
-            else if (choice.kind === 'shield') s2.useShield(choice.token)
-            else s2.useBomb(choice.target)
-          }, BOT_ROLL_DELAY_MS)
-          return () => window.clearTimeout(t)
-        }
-      }
       const t = window.setTimeout(performRoll, BOT_ROLL_DELAY_MS)
       return () => window.clearTimeout(t)
     }
@@ -355,7 +363,50 @@ function LudoMatchView() {
       const t = window.setTimeout(() => selectToken(pickBotMove(botLevel, legalMoves, players, currentPlayer.color)), BOT_PICK_DELAY_MS)
       return () => window.clearTimeout(t)
     }
-  }, [revealed, authoritative, phase, currentPlayerIndex, currentPlayer, legalMoves, players, spinning, performRoll, selectToken, botLevel])
+  }, [revealed, authoritative, phase, currentPlayerIndex, currentPlayer, legalMoves, players, spinning, performRoll, selectToken, botLevel, celebration])
+
+  // the countdown ring on the dice, shown on every device while a person is due to roll
+  const [rollClock, setRollClock] = useState<{ key: number; ms: number } | null>(null)
+  const awaitingHumanRoll = revealed && !!currentPlayer && !currentPlayer.isBot && phase === 'rolling' && !spinning && !celebration
+  useEffect(() => {
+    setRollClock(awaitingHumanRoll ? { key: Date.now(), ms: ROLL_TIMEOUT_MS } : null)
+  }, [awaitingHumanRoll, rollCount, currentPlayerIndex])
+
+  // a big banner sweeps in whenever the turn passes to someone new
+  const [turnBanner, setTurnBanner] = useState<{ id: number; text: string; color: LudoColor; mine: boolean } | null>(null)
+  // only once the loading screen has cleared (it used to flash over the intro)
+  const bannerSeat = revealed && introGone && phase !== 'gameOver' ? currentPlayer : undefined
+  useEffect(() => {
+    if (!bannerSeat) return
+    const mine = isLocal(bannerSeat.id)
+    const id = Date.now()
+    setTurnBanner({ id, text: mine ? 'YOUR TURN' : `${bannerSeat.name.split(' ')[0]}'s turn`, color: bannerSeat.color, mine })
+    const t = window.setTimeout(() => setTurnBanner((b) => (b?.id === id ? null : b)), 1500)
+    return () => window.clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bannerSeat?.id])
+
+  // a soft chime when it becomes this device's turn to roll
+  const myRollDue = awaitingHumanRoll && !!currentPlayer && isLocal(currentPlayer.id)
+  // nobody out on the board yet: remind the player that only a six brings a warrior out of home
+  const homeFinish = getBoard(useLudoStore.getState().arms).finish
+  const needSix =
+    myRollDue &&
+    !!currentPlayer &&
+    currentPlayer.tokens.some((t) => t.distance === -1) &&
+    currentPlayer.tokens.every((t) => t.distance === -1 || t.distance >= homeFinish)
+  useEffect(() => {
+    if (myRollDue) ludoSfx.yourTurn()
+  }, [myRollDue, currentPlayerIndex])
+
+  // people get 10 seconds to roll; after that the turn passes on (bots roll on their own schedule)
+  useEffect(() => {
+    if (!revealed || !authoritative || !currentPlayer || currentPlayer.isBot || phase !== 'rolling' || spinning || celebration) return
+    const t = window.setTimeout(() => {
+      if (!spinningRef.current) useLudoStore.getState().skipTurn()
+    }, ROLL_TIMEOUT_MS)
+    return () => window.clearTimeout(t)
+  }, [revealed, authoritative, currentPlayer, phase, spinning, celebration, rollCount, currentPlayerIndex])
 
   const speaker = currentPlayer && isLocal(currentPlayer.id) ? currentPlayer : players.find((p) => isLocal(p.id))
 
@@ -374,6 +425,19 @@ function LudoMatchView() {
     window.setTimeout(() => setToast((t) => (t?.id === id ? null : t)), 2600)
   }, [])
 
+  // a roll that wasn't a six while every warrior was still at home: say why nothing moved
+  useEffect(() => {
+    if (lastEvent?.type !== 'noMove') return
+    const st = useLudoStore.getState()
+    const entry = st.eventLog.find((e) => e.icon === '🚫')
+    const roller = entry && st.players.find((pl) => pl.color === entry.color)
+    if (!roller) return
+    const fin = getBoard(st.arms).finish
+    const allHome = roller.tokens.every((t) => t.distance === -1 || t.distance >= fin)
+    if (!allHome) return
+    showToast(isLocal(roller.id) ? 'You need a 6 to bring a warrior out!' : `${roller.name.split(' ')[0]} needs a 6 to leave home`)
+  }, [lastEvent, showToast, isLocal])
+
   function sendEmote(emoji: string) {
     setEmotes((list) => [...list.slice(-5), { id: Date.now() + Math.random(), emoji, x: 20 + Math.random() * 55 }])
     handleQuickChat(emoji)
@@ -387,53 +451,6 @@ function LudoMatchView() {
     handleQuickChat(`${gift.emoji} for ${to.name}!`)
     if (to.isBot) window.setTimeout(() => say(to.id, `Thanks! ${gift.emoji}`, 2200), 1200)
   }
-
-  /** Run a power-up here (host / offline) or ask the host to (guest). */
-  function doPower(a: PowerAction) {
-    useLudoAim.getState().cancel()
-    if (!authoritative) {
-      sendToHost({ t: 'power', ...a })
-      return
-    }
-    const st = useLudoStore.getState()
-    const ok = a.kind === 'speed' ? st.useSpeed() : a.kind === 'shield' ? st.useShield(a.a!) : st.useBomb(a.a!)
-    if (!ok) showToast('That power-up can’t be used right now')
-  }
-
-  const myTurnNow = !!currentPlayer && isLocal(currentPlayer.id)
-  const canPower = !!currentPlayer && myTurnNow && phase === 'rolling' && !spinning && !powerUsed && revealed
-  const strikeTargets = canPower ? strikePairs(getBoard(useLudoStore.getState().arms), players, currentPlayerIndex) : []
-  const myPowers = (myTurnNow ? currentPlayer : speaker)?.powers ?? { speed: 0, shield: 0, bomb: 0 }
-
-  function onPowerButton(kind: PowerKind) {
-    const aim = useLudoAim.getState()
-    if (aim.mode === kind) {
-      aim.cancel()
-      return
-    }
-    if (!canPower || !currentPlayer) return
-    if (kind === 'speed') {
-      doPower({ kind: 'speed' })
-      showToast('⚡ Speed! Your next move goes double')
-      return
-    }
-    const finish = getBoard(useLudoStore.getState().arms).finish
-    const targets =
-      kind === 'shield'
-        ? currentPlayer.tokens.filter((t) => t.distance >= 0 && t.distance < finish && !(t.shieldTurns ?? 0)).map((t) => t.id)
-        : strikeTargets.map((pr) => pr.defender.id)
-    if (!targets.length) {
-      showToast(kind === 'shield' ? 'Bring a token onto the board first' : 'No rival within 6 squares ahead of your tokens')
-      return
-    }
-    aim.start(kind, targets, (id) => doPower({ kind, a: id }))
-    showToast(kind === 'shield' ? '🛡️ Tap one of your tokens to shield it' : '💣 Tap a rival token to bomb it')
-  }
-
-  // aiming ends when the turn moves on
-  useEffect(() => {
-    if (!canPower) useLudoAim.getState().cancel()
-  }, [canPower])
 
   function leaveToMenu() {
     window.clearTimeout(spinTimer.current)
@@ -454,26 +471,38 @@ function LudoMatchView() {
     startGame(participants)
     setStatsRevealed(false)
     setSpeech({})
+    setCelebration(null)
+    setHomePop(null)
   }
 
 
-  const winner = phase === 'gameOver' && winnerId ? players.find((p) => p.id === winnerId) : undefined
+  const gameOver = phase === 'gameOver'
+  const standings = gameOver ? rankings.map((id) => players.find((p) => p.id === id)).filter((p): p is LudoPlayer => !!p) : []
+  const winner = standings[0]
+  const celebrated = celebration ? players.find((p) => p.id === celebration.playerId) : undefined
 
   if (winner && statsRevealed) {
-    const won = isLocal(winner.id)
+    // with several players on this device, the best-placed of them counts
+    const myRank = standings.findIndex((p) => isLocal(p.id)) + 1 || standings.length
+    const me = standings[myRank - 1]
+    const won = myRank === 1
+    const shared = localSeatIds.length > 1
+    const title = won ? (shared ? `🏆 ${winner.name} Wins!` : '🏆 You Win!') : shared ? `🏆 ${winner.name} Wins` : `You finished ${ordinal(myRank)}`
+    // rewards step down with each place
+    const share = standings.length > 1 ? (standings.length - myRank) / (standings.length - 1) : 1
     return (
       <div className="mx-auto max-w-2xl px-4 py-6">
         <GameResultScreen
           game={game}
           won={won}
-          title={won ? (localSeatIds.length > 1 ? `🏆 ${winner.name} Wins!` : '🏆 You Win!') : `😈 ${winner.name} Wins`}
-          coins={won ? 300 : 80}
-          xp={won ? 200 : 40}
+          title={title}
+          coins={Math.round(80 + 220 * share)}
+          xp={Math.round(40 + 160 * share)}
           stats={[
-            { label: 'Tokens Finished', value: `${winner.finishedCount}/4` },
-            { label: 'Captures', value: winner.captures },
+            { label: 'Your Place', value: `${ordinal(myRank)} of ${standings.length}` },
+            { label: 'Warriors Home', value: `${me.finishedCount}/4` },
+            { label: 'Captures', value: me.captures },
             { label: 'Best Roll', value: bestRoll },
-            { label: 'Players', value: players.length },
           ]}
           onRematch={handleRematch}
         />
@@ -483,11 +512,15 @@ function LudoMatchView() {
 
   const byColor = (c: LudoColor) => players.find((p) => p.color === c)
   const myTurn = !!currentPlayer && isLocal(currentPlayer.id)
-  const canRollNow = phase === 'rolling' && myTurn && !spinning
+  const canRollNow = phase === 'rolling' && myTurn && !spinning && !celebration
   const diceAccent = currentPlayer ? COLOR_GLOW[currentPlayer.color] : '#8b5cf6'
 
   // 5–8 players: every player gets a compact card in a grid above the board, in turn order
   const manyPlayers = players.length > 4
+  // 5+ players get the same full cards as the 4-player game (dice, turn ribbon, progress), split into a
+  // row above the board and a row below it in turn order, instead of a strip of tiny compact cards
+  const topRow = players.slice(0, Math.ceil(players.length / 2))
+  const bottomRow = players.slice(Math.ceil(players.length / 2))
 
   function card(color: LudoColor, bubble: 'below' | 'above', side: 'left' | 'right', compact = false) {
     const p = byColor(color)
@@ -510,7 +543,8 @@ function LudoMatchView() {
         side={side}
         controlledHere={isLocal(p.id)}
         compact={compact}
-        dice={!compact && idx === currentPlayerIndex && phase !== 'gameOver' ? cardDice : undefined}
+        // landscape side panels are narrow: the dice sits under the board there instead of crushing the card
+        dice={!compact && !landscape && idx === currentPlayerIndex && phase !== 'gameOver' ? cardDice : undefined}
         ribbon={!compact && idx === currentPlayerIndex && phase !== 'gameOver' ? ribbonFor(p) : null}
       />
     )
@@ -518,10 +552,8 @@ function LudoMatchView() {
 
   function ribbonFor(p: LudoPlayer) {
     if (!isLocal(p.id)) return `${p.name.split(' ')[0]}'s turn`
-    if (aimMode) return 'Tap a target'
     if (spinning) return 'Rolling…'
-    if (phase === 'selecting') return 'Pick a token'
-    if (speedActive) return '⚡ Speed on'
+    if (phase === 'selecting') return 'Pick a warrior'
     return 'Your turn'
   }
 
@@ -534,40 +566,41 @@ function LudoMatchView() {
           </span>
         </div>
       )}
+      {/* a round holder for the round dice (a square box around it read as a mismatched frame) */}
       <div
-        className="rounded-2xl p-1"
+        className="rounded-full p-[0.4rem] @min-[56rem]:p-[0.6rem]"
         style={{
-          background: 'linear-gradient(180deg, rgba(255,255,255,0.14), rgba(255,255,255,0) 50%), rgba(12,14,40,0.8)',
-          border: `2px solid ${diceAccent}`,
-          boxShadow: `0 0 ${canRollNow ? 22 : 12}px ${diceAccent}`,
+          background: 'radial-gradient(circle at 50% 30%, rgba(255,255,255,0.12), rgba(12,14,40,0.85) 70%)',
+          boxShadow: `0 0 0 2px ${diceAccent}, 0 0 ${canRollNow ? 22 : 12}px ${diceAccent}`,
         }}
       >
-        <LudoDice value={lastRoll ?? 6} spinning={spinning} accent={diceAccent} canRoll={canRollNow} onRoll={performRoll} sizeClassName="h-[3.4rem] w-[3.4rem] @min-[56rem]:h-[5.2rem] @min-[56rem]:w-[5.2rem]" />
+        <LudoDice value={lastRoll ?? 6} spinning={spinning} accent={diceAccent} canRoll={canRollNow} onRoll={performRoll} countdown={rollClock} sizeClassName="h-[3.4rem] w-[3.4rem] @min-[56rem]:h-[5.2rem] @min-[56rem]:w-[5.2rem]" />
       </div>
     </div>
   )
 
-  const armedPower = aimMode === 'shield' ? 'shield' : aimMode === 'bomb' ? 'bomb' : speedActive && myTurn ? 'speed' : null
-  // two compact rows, as in the reference: voice and emotes; then chat and gifts. The power-ups
-  // sit in a slim panel over the board slot's top-right corner, which the board's perspective leaves empty.
+  // "roll a 6" reminder, pinned to the bottom edge of the board area so it never covers the player cards
+  const needSixHint = needSix && !turnBanner && (
+    <div className="pointer-events-none absolute inset-x-0 bottom-1 z-30 flex justify-center px-4">
+      <div
+        className="ludo-pop flex items-center gap-2 rounded-full px-4 py-2 text-[13px] font-black text-white sm:text-[15px]"
+        style={{ background: 'linear-gradient(90deg, rgba(24,18,52,0.92), rgba(48,30,90,0.92))', boxShadow: '0 0 0 1.5px #ffd24a, 0 0 22px rgba(255,210,74,0.45)' }}
+      >
+        <span className="flex h-6 w-6 items-center justify-center rounded-md bg-white text-[12px] font-black text-slate-900 shadow">6</span>
+        Roll a 6 to bring a warrior out
+      </div>
+    </div>
+  )
+
+  // one slim row: voice, chat and emotes (the gift lives in the emote strip), so the board gets the height
   const controlsBlock = (
-    <div className="relative z-20 flex w-full flex-col gap-1.5">
-      <div className="flex items-center gap-1.5">
-        <VoiceChip onInfo={showToast} />
-        <div className="flex min-w-0 flex-1 justify-center">
-          <EmoteBar onEmote={sendEmote} onGift={() => setGiftOpen(true)} />
-        </div>
-      </div>
-      <div className="flex items-center gap-2">
-        <ChatBar onSend={handleQuickChat} />
-        <GiftButton onClick={() => setGiftOpen(true)} />
-      </div>
+    <div className="relative z-20 flex w-full items-center gap-1.5">
+      <VoiceChip compact onInfo={showToast} />
+      <ChatBar onSend={handleQuickChat} />
+      <EmoteBar inline onEmote={sendEmote} onGift={() => setGiftOpen(true)} />
     </div>
   )
 
-  const powersBlock = (
-    <PowerUpsPanel powers={myPowers} enabled={canPower} armed={armedPower} onUse={onPowerButton} />
-  )
 
   return (
     <div ref={rootRef} className="fixed inset-0 z-50 select-none overflow-hidden bg-[#080a12]">
@@ -589,10 +622,10 @@ function LudoMatchView() {
           <div className="mx-auto w-full max-w-[60rem]">
             <LudoTopBar onBack={leaveToMenu} onRestart={authoritative ? handleRematch : undefined} onLeave={leaveToMenu} />
           </div>
-          <div className="mt-2 grid min-h-0 flex-1 grid-cols-[clamp(12rem,25vw,22rem)_minmax(0,1fr)_clamp(12rem,25vw,22rem)] gap-3 lg:gap-5">
+          <div className="mt-2 grid min-h-0 flex-1 grid-cols-[clamp(12rem,19.5vw,21rem)_minmax(0,1fr)_clamp(12rem,19.5vw,21rem)] gap-3 lg:gap-5">
             <div className="relative z-20 flex min-h-0 flex-col justify-between gap-3 py-2">
               {manyPlayers ? (
-                <div className="flex flex-col gap-2">{players.slice(0, Math.ceil(players.length / 2)).map((p) => cardFor(p, 'below', 'left', true))}</div>
+                <div className="flex flex-col gap-2">{topRow.map((p) => <div key={p.id} className="w-full min-w-0">{cardFor(p, 'below', 'left', sideCompact)}</div>)}</div>
               ) : (
                 card('RED', 'below', 'left', sideCompact)
               )}
@@ -604,7 +637,8 @@ function LudoMatchView() {
             </div>
             <div className="flex min-h-0 flex-col">
               {/* the 3D board is framed into this slot by the scene's camera rig */}
-              <div ref={slotRef} className="relative my-2 min-h-0 flex-1" />
+              <div ref={slotRef} className="relative my-2 min-h-0 flex-1">{needSixHint}</div>
+              {phase !== 'gameOver' && <div className="pointer-events-none relative z-20 mb-2 flex justify-center">{cardDice}</div>}
               <div className="pointer-events-none relative z-20 flex items-center gap-2">
                 <ChatBar onSend={handleQuickChat} />
                 <GiftButton onClick={() => setGiftOpen(true)} />
@@ -612,16 +646,11 @@ function LudoMatchView() {
             </div>
             <div className="relative z-20 flex min-h-0 flex-col items-stretch justify-between gap-3 py-2">
               {manyPlayers ? (
-                <div className="flex flex-col gap-2">{players.slice(Math.ceil(players.length / 2)).map((p) => cardFor(p, 'below', 'right', true))}</div>
+                <div className="flex flex-col gap-2">{bottomRow.map((p) => <div key={p.id} className="w-full min-w-0">{cardFor(p, 'below', 'right', sideCompact)}</div>)}</div>
               ) : (
                 card('GREEN', 'below', 'right', sideCompact)
               )}
-              <div className="flex items-center justify-between gap-2">
-                {powersBlock}
-                <div className="flex flex-col items-center gap-3">
-                  {manyPlayers && cardDice}
-                          </div>
-              </div>
+              <div />
               {manyPlayers ? <div /> : card('YELLOW', 'above', 'right', sideCompact)}
             </div>
           </div>
@@ -635,11 +664,10 @@ function LudoMatchView() {
         <LudoTopBar onBack={leaveToMenu} onRestart={authoritative ? handleRematch : undefined} onLeave={leaveToMenu} />
 
         {manyPlayers ? (
-          <div
-            className="relative z-20 mt-2 grid gap-1.5 sm:mt-3 sm:gap-2"
-            style={{ gridTemplateColumns: `repeat(${players.length === 5 ? 5 : 4}, minmax(0, 1fr))` }}
-          >
-            {players.map((p, i) => cardFor(p, 'below', i < players.length / 2 ? 'left' : 'right', true))}
+          <div className="relative z-20 mt-1.5 grid gap-1.5" style={{ gridTemplateColumns: `repeat(${topRow.length}, minmax(0, 1fr))` }}>
+            {topRow.map((p, i) => (
+              <div key={p.id} className="min-w-0">{cardFor(p, 'below', i < topRow.length / 2 ? 'left' : 'right', false)}</div>
+            ))}
           </div>
         ) : (
           <div className={`relative z-20 grid grid-cols-2 mt-1.5 gap-2`}>
@@ -649,12 +677,15 @@ function LudoMatchView() {
         )}
 
         {/* the 3D board is framed into this slot by the scene's camera rig */}
-        <div ref={slotRef} className="relative min-h-0 flex-1">
-          {manyPlayers && <div className="absolute bottom-2 left-1/2 z-20 -translate-x-1/2">{cardDice}</div>}
-          <div className="pointer-events-none absolute right-1.5 top-1 z-20 max-w-[calc(100%-0.75rem)]">
-            <PowerUpsStrip powers={myPowers} enabled={canPower} armed={armedPower} onUse={onPowerButton} />
+        <div ref={slotRef} className="relative min-h-0 flex-1">{needSixHint}</div>
+
+        {manyPlayers && (
+          <div className="relative z-20 mb-2 grid gap-1.5" style={{ gridTemplateColumns: `repeat(${bottomRow.length}, minmax(0, 1fr))` }}>
+            {bottomRow.map((p, i) => (
+              <div key={p.id} className="min-w-0">{cardFor(p, 'above', i < bottomRow.length / 2 ? 'left' : 'right', false)}</div>
+            ))}
           </div>
-        </div>
+        )}
 
         {!manyPlayers && (
           <div className={`relative z-20 grid grid-cols-2 mb-2 gap-2`}>
@@ -668,10 +699,32 @@ function LudoMatchView() {
       </div>
       )}
 
+      {turnBanner && (
+        <div key={`banner-${turnBanner.id}`} className="pointer-events-none absolute inset-x-0 top-[38%] z-40 flex justify-center px-6">
+          <div
+            className="ludo-turn-banner rounded-2xl px-7 py-2.5 text-center sm:px-10 sm:py-3.5"
+            style={{
+              background: `linear-gradient(90deg, transparent, ${COLOR_DEEP[turnBanner.color]}e6 18%, ${COLOR_DEEP[turnBanner.color]}e6 82%, transparent)`,
+              boxShadow: `0 0 40px ${COLOR_GLOW[turnBanner.color]}66`,
+              borderTop: `1.5px solid ${COLOR_GLOW[turnBanner.color]}`,
+              borderBottom: `1.5px solid ${COLOR_GLOW[turnBanner.color]}`,
+            }}
+          >
+            <p
+              className={`font-black uppercase italic tracking-[0.12em] text-white ${turnBanner.mine ? 'text-[26px] sm:text-[40px]' : 'text-[20px] sm:text-[30px]'}`}
+              style={{ textShadow: `0 0 18px ${COLOR_GLOW[turnBanner.color]}, 0 2px 4px rgba(0,0,0,0.7)` }}
+            >
+              {turnBanner.text}
+            </p>
+          </div>
+        </div>
+      )}
       <FloatingEmotes items={emotes} />
-      {toast && <Toast key={toast.id} text={toast.text} />}
+      {toast && <Toast key={`toast-${toast.id}`} text={toast.text} />}
       {giftOpen && <GiftSheet players={players} fromId={speaker?.id} onSend={sendGift} onClose={() => setGiftOpen(false)} />}
-      {winner && <LudoWinnerBanner winner={winner} onContinue={() => setStatsRevealed(true)} onRematch={handleRematch} />}
+      {homePop && !celebration && <LudoFireworks key={`fireworks-${homePop}`} rockets={7} durationMs={2000} />}
+      {celebration && celebrated && <LudoRankCelebration key={`rank-${celebration.id}`} player={celebrated} rank={celebration.rank} />}
+      {winner && !celebration && <LudoResultsBoard standings={standings} isLocal={isLocal} onContinue={() => setStatsRevealed(true)} onRematch={handleRematch} />}
 
       {role === 'guest' && roomStatus === 'closed' && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 px-6 backdrop-blur-sm">

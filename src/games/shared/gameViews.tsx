@@ -6,9 +6,6 @@ import type { GameId } from '@/games/registry';
 export const GAME_VIEWS: Partial<Record<GameId, LazyExoticComponent<ComponentType>>> = {
   ludo: lazy(() => import('@/games/ludo/LudoGame')),
   city: lazy(() => import('@/games/city/CityGame')),
-  mess: lazy(() => import('@/games/mess/MessGame')),
-  amazon: lazy(() => import('@/games/amazon/AmazonGame')),
-  mystery: lazy(() => import('@/games/mystery/MysteryGame')),
   poker: lazy(() => import('@/games/poker/RoyalPokerApp')),
   wildbound: lazy(() => import('@/games/wildbound/WildboundGame')),
 };

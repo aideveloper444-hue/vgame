@@ -82,7 +82,7 @@ export default function HomeScreen() {
         <div className="relative max-w-[62%]">
           <p className="text-[10px] font-black uppercase tracking-[0.22em] text-brand-2">VIBO</p>
           <p className="mt-1 text-[1.45rem] font-black leading-[1.1] text-white">Play together. Talk together.</p>
-          <p className="mt-1.5 text-xs font-medium leading-snug text-slate-300">Five games, party chat and voice with your friends.</p>
+          <p className="mt-1.5 text-xs font-medium leading-snug text-slate-300">Four games, party chat and voice with your friends.</p>
         </div>
         <div className="relative mt-4 flex flex-wrap gap-2">
           <button type="button" onClick={() => navigate('/games')} className="inline-flex items-center gap-1.5 rounded-full bg-white px-4 py-2.5 text-sm font-black text-surface-0 active:scale-95">
