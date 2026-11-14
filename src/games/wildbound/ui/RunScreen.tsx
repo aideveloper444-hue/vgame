@@ -311,7 +311,20 @@ export default function RunScreen() {
             }
             break
           case 'ride':
-            if (e.on && e.kind === 'plane') {
+            if (e.on && e.skin === 'drone') {
+              setBanner({ id: Date.now(), big: 'Lift-off!', small: 'The drone has you – steer through the sky coins' })
+              sfx.power()
+              haptic(60)
+            } else if (e.on && e.skin === 'speedboat') {
+              setBanner({ id: Date.now(), big: 'Full throttle!', small: 'Weave the rocks · jump the logs · duck the branches' })
+              sfx.power()
+              haptic(50)
+              run.shake = Math.max(run.shake, 0.25)
+            } else if (e.on && e.skin === 'atv') {
+              setBanner({ id: Date.now(), big: 'Engine on!', small: 'Steer round the rocks · jump the ditches · duck the boughs' })
+              sfx.power()
+              haptic(50)
+            } else if (e.on && e.kind === 'plane') {
               setBanner({ id: Date.now(), big: 'Take-off!', small: 'Steer left and right through the sky coins' })
               sfx.power()
               haptic(60)
@@ -375,6 +388,12 @@ export default function RunScreen() {
             // tell the player about a slippery surface once per run, not every time it comes round again
             if (GRIP[e.grip].label && !gripSeen.current.has(e.grip) && gripSeen.current.add(e.grip)) setBanner({ id: Date.now(), big: e.grip === 'ice' ? 'Ice!' : e.grip === 'snow' ? 'Deep snow' : 'Mud!', small: GRIP[e.grip].label })
             break
+          case 'fragment':
+            setBanner({ id: Date.now(), big: e.n === e.of ? 'Treasure map complete!' : `Map fragment ${e.n}/${e.of}`, small: e.n === e.of ? `+${e.bonus} · +300 coins · +10 gems` : `+${e.bonus} · find all ${e.of} for the treasure` })
+            if (e.n === e.of) sfx.chest()
+            else sfx.power()
+            haptic(e.n === e.of ? 80 : 30)
+            break
           case 'chest':
             setBanner({ id: Date.now(), big: 'Golden chest!', small: `+${e.coins} coins · +${e.gems} gems` })
             sfx.chest()
@@ -392,7 +411,7 @@ export default function RunScreen() {
             break
           case 'swing':
             if (e.on) {
-              setBanner({ id: Date.now(), big: e.zip ? 'Hold on!' : 'Swing!', small: e.zip ? 'Change lane to switch cable · +100' : '+100' })
+              setBanner({ id: Date.now(), big: e.cab ? 'Doors closing!' : e.zip ? 'Hold on!' : 'Swing!', small: e.zip ? 'Change lane to switch cable · +100' : '+100' })
               sfx.jump()
               haptic(30)
             } else sfx.slide()

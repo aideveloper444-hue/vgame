@@ -486,14 +486,14 @@ The brief (gameplay & challenge design doc v1.0, 10 Nov 2026) is applied to Wild
 | §1 Vision, core loop | Done: event every ~35–45 s, warnings, rewards, return to run |
 | §2A Terrain | Done: swinging logs, collapsing bridge, rolling boulder, quicksand, falling trees, spike rollers, rockfall/rockslide, root/obstacle rows, stepping stones, broken bridge, hidden pits. Not: carnivorous plants, rotating stone bridge, mudslide slope, bamboo squeeze, trunk balance, windstorm debris |
 | §2B Animals | Swarms (bees/bats), webs, poison frogs done. Blocked on realistic models: jaguar, anaconda, croc, boar, gorilla, elephants, monkeys, eagle, hippo, dogs, leopard, buffalo |
-| §2C Vehicles | Done: mine cart, handcar, plane, raft, jeep, zipline, glider. Not: drone, speedboat race, ATV, truck, cable car, horse, barrel, helicopter |
+| §2C Vehicles | Done: mine cart, handcar, plane, raft, jeep, zipline, glider, speedboat race, quad bike (ATV), cable car, drone (2026-11-14). Not: truck, horse, barrel, helicopter |
 | §2D Traversal | Done: ziplines, vine swing, glider launch. Not: climbing, wall run, falling platforms, rope nets |
 | §2E Water | Done: river stones, flood surge, raft rapids. Not: underwater swim, whirlpool, dam gates, diving |
-| §2F Temple | Done: dart corridor, blade hallway, idol gem, golden chest. Not: symbol door/memory/pressure-plate puzzles, stone wheel, collapsing ceiling |
-| §2G Weather | Done: lightning, wildfire, flash flood, earthquake, 9 lighting variants incl. night/storm/fog. Not: sandstorm, toxic gas, volcano escape |
+| §2F Temple | Done: dart corridor, blade hallway, idol gem, golden chest, symbol doors (memory gate, 2026-11-14). Not: pressure plates, stone wheel, collapsing ceiling |
+| §2G Weather | Done: lightning, wildfire, flash flood, earthquake, sandstorm, toxic gas, volcano escape (2026-11-14), 9 lighting variants incl. night/storm/fog |
 | §2H Mini-games | Done: coin tunnel, coin storm, risky-route rewards. Not: time trial, target toss, precision landing, memory gate |
 | §2I Set-pieces | Done: Final Jungle Gauntlet. Animal bosses blocked on models |
-| §3 Surprise events | Done: golden chest, coin storm, supply crate, abandoned camp, weather shifts. Not: rival explorer, map fragments, glowing guide animal, photo mode |
+| §3 Surprise events | Done: golden chest, coin storm, supply crate, abandoned camp, weather shifts, treasure map fragments (2026-11-14). Not: rival explorer, glowing guide animal, photo mode |
 | §4 Pacing / §5 Fairness | Done (director, tiers, no-repeat, seeded, fair rows, telegraphs, tests) |
 | §6 Controls | Done: swipes/keys, assisted controls, steering speed, left-handed, text size |
 | §7 Rewards | Done: coins, gems, stars, missions, daily run, weekly expedition, achievements, upgrades, local records. Not: relics, cosmetics/skins, online leaderboards |
@@ -549,3 +549,27 @@ The brief (gameplay & challenge design doc v1.0, 10 Nov 2026) is applied to Wild
   loads (models/wildbound, models/amazon props and textures, icons): 77 MB. The old standalone build had no assets at
   all. wildbound.html gains theme colour, description and home-screen tags. Checked served from a static server:
   home, a run, no errors.
+
+## 2026-11-14: Amazon Run — steady speed, the brief's remaining vehicles and activities
+
+- **Name**: the game is now called **Amazon Run** (logo "AMAZON RUN · Into the Wild", page title, game list, badge,
+  profile line). Code folders, save keys and the game id stay `wildbound`, so nobody loses progress.
+- **Steady speed**: the run used to climb from 9 to 22 m/s, so it got too fast and ended early. Now a short warm-up
+  (9 → 12 m/s over ~100 m), then 12 m/s for the whole run; only speed power-ups, abilities and vehicles go faster.
+  Difficulty grows with challenges and density, not speed. The pacing director plans in seconds, so it adapts.
+- **Vehicles (brief §2C)**: built on proven, tested ride rules, each with its own model, sound and banner. Speedboat
+  race (raft rules, river kits; white hull, navy bottom, red stripe, windscreen, outboard), quad bike (jeep rules,
+  open and rocky kits), cable car (zipline rules, gorges and mountainsides; a red glazed cabin rides with the runner,
+  cabins wait at each station), drone lift (glider rules, open kits; a quadcopter with spinning rotors, navigation
+  lights, harness line). `Item.skin`, `SKIN_OF`, `RIDE_SECTIONS`.
+- **Activities**: symbol doors (brief §2F memory gate: the card names a symbol, each gate has three carved doors, only
+  the matching one rises, late; four gates, shuffled each time), sandstorm (sand haze closes in; drifts to jump,
+  flying branches to duck, rocks to steer round), toxic gas (green clouds over one or two lanes, green haze), volcano
+  escape (lava streams to jump, falling burning rocks, embers; red smoke). New hazards `door`, `gas`, `lava`.
+- **Treasure map fragments** (brief §3): one every 550–750 m on open trail; every fourth completes the map for
+  +2,500, 300 coins and 10 gems. Banner and sound per fragment.
+- The opening act keeps the real bush plane (a glider or drone ride no longer stands in for it), and a run that starts
+  in a railway or vine zone gets its plane and wildlife as soon as it leaves.
+- Tests 57 (new: all eight new challenges fair and survivable on 12 seeds; skins; symbol doors always have exactly one
+  open door bearing the symbol). Checked live: all four vehicles, cable car ride (frozen mid-line), symbol doors,
+  sandstorm, toxic gas, volcano. Not seen live: a map fragment pickup.

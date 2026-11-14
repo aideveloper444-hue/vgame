@@ -396,8 +396,8 @@ export function biomeAt(d: number): { biome: BiomeDef; index: number; variant: V
 
 // ---------------------------------------------------------------- obstacles & pickups
 
-export type ObstacleKind = 'log' | 'roots' | 'trap' | 'rock' | 'ruin' | 'branch' | 'barrier' | 'gap' | 'boulder' | 'trolley' | 'stream' | 'rubble' | 'stalactite' | 'plane' | 'quicksand' | 'darts' | 'swinglog' | 'minecart' | 'buffer' | 'beam' | 'bough' | 'raft' | 'jeep' | 'strike' | 'fire' | 'ember' | 'roller' | 'blade' | 'swarm' | 'web' | 'toxic' | 'elephant' | 'pounce'
-export type PickupKind = 'coin' | 'gem' | 'token' | 'magnet' | 'shield' | 'speed' | 'superjump' | 'megajump' | 'boost' | 'chest' | 'crate'
+export type ObstacleKind = 'log' | 'roots' | 'trap' | 'rock' | 'ruin' | 'branch' | 'barrier' | 'gap' | 'boulder' | 'trolley' | 'stream' | 'rubble' | 'stalactite' | 'plane' | 'quicksand' | 'darts' | 'swinglog' | 'minecart' | 'buffer' | 'beam' | 'bough' | 'raft' | 'jeep' | 'strike' | 'fire' | 'ember' | 'roller' | 'blade' | 'swarm' | 'web' | 'toxic' | 'elephant' | 'pounce' | 'door' | 'gas' | 'lava'
+export type PickupKind = 'coin' | 'gem' | 'token' | 'magnet' | 'shield' | 'speed' | 'superjump' | 'megajump' | 'boost' | 'chest' | 'crate' | 'fragment'
 /** a hanging vine at the lip of a ravine: jump into it to swing across */
 export type MarkerKind = 'vine' | 'zipline'
 export type ItemKind = ObstacleKind | PickupKind | MarkerKind
@@ -450,9 +450,14 @@ export const ESCAPES: Record<ObstacleKind, Escape[]> = {
   // wildlife (the game's own realistic models): an elephant charging down a lane, a jaguar springing into one
   elephant: ['lane'],
   pounce: ['lane'],
+  // temple symbol doors (a closed door: take the lane whose door bears the symbol), toxic gas clouds (keep out),
+  // lava streams in a volcano escape (jump)
+  door: ['lane'],
+  gas: ['lane'],
+  lava: ['jump'],
 }
 /** Obstacles that strength abilities can break. Gaps never break. */
-export const BREAKABLE: Record<ObstacleKind, boolean> = { log: true, roots: true, trap: true, rock: true, ruin: true, branch: true, barrier: true, gap: false, boulder: true, trolley: false, stream: false, rubble: true, stalactite: true, plane: false, quicksand: false, darts: false, swinglog: true, minecart: false, buffer: false, beam: true, bough: true, raft: false, jeep: false, strike: false, fire: false, ember: true, roller: true, blade: false, swarm: false, web: true, toxic: false, elephant: false, pounce: false }
+export const BREAKABLE: Record<ObstacleKind, boolean> = { log: true, roots: true, trap: true, rock: true, ruin: true, branch: true, barrier: true, gap: false, boulder: true, trolley: false, stream: false, rubble: true, stalactite: true, plane: false, quicksand: false, darts: false, swinglog: true, minecart: false, buffer: false, beam: true, bough: true, raft: false, jeep: false, strike: false, fire: false, ember: true, roller: true, blade: false, swarm: false, web: true, toxic: false, elephant: false, pounce: false, door: false, gas: false, lava: false }
 export const isObstacle = (k: ItemKind): k is ObstacleKind => k in ESCAPES
 
 export const OBSTACLES_BY_BIOME: Record<BiomeId, ObstacleKind[]> = {
@@ -519,7 +524,7 @@ export const POWER_KINDS: PowerUpKind[] = POWERUPS.map((p) => p.kind)
 export const isPowerUp = (k: string): k is PowerUpKind => (POWER_KINDS as string[]).includes(k)
 
 /** Challenge sections the generator drops into zones that suit them. */
-export type SectionKind = 'rail' | 'river' | 'bridge' | 'rockslide' | 'cave' | 'vines' | 'flight' | 'treefall' | 'quicksand' | 'temple' | 'swinglog' | 'minecart' | 'zipline' | 'raft' | 'jeep' | 'lightning' | 'wildfire' | 'flood' | 'quake' | 'coinstorm' | 'camp' | 'supply' | 'spikeroll' | 'pitfall' | 'blades' | 'swarm' | 'webs' | 'toxic' | 'cointunnel' | 'glider' | 'stampede' | 'jaguar'
+export type SectionKind = 'rail' | 'river' | 'bridge' | 'rockslide' | 'cave' | 'vines' | 'flight' | 'treefall' | 'quicksand' | 'temple' | 'swinglog' | 'minecart' | 'zipline' | 'raft' | 'jeep' | 'lightning' | 'wildfire' | 'flood' | 'quake' | 'coinstorm' | 'camp' | 'supply' | 'spikeroll' | 'pitfall' | 'blades' | 'swarm' | 'webs' | 'toxic' | 'cointunnel' | 'glider' | 'stampede' | 'jaguar' | 'speedboat' | 'atv' | 'cablecar' | 'drone' | 'symbols' | 'sandstorm' | 'toxicgas' | 'volcano'
 export const SECTION_TEXT: Record<SectionKind, { big: string; small: string }> = {
   rail: { big: 'Railway ahead!', small: 'Jump onto the trolley and ride it' },
   river: { big: 'River crossing!', small: 'Hop the stepping stones' },
@@ -553,6 +558,14 @@ export const SECTION_TEXT: Record<SectionKind, { big: string; small: string }> =
   coinstorm: { big: 'Coin storm!', small: 'Rich pickings – keep your eyes on the obstacles' },
   camp: { big: 'Abandoned camp', small: 'Supplies left behind – help yourself' },
   supply: { big: 'Supply drop!', small: 'A crate is coming down – catch it for a power-up' },
+  speedboat: { big: 'Speedboat race!', small: 'Jump in – weave through the rocks, jump the logs' },
+  atv: { big: 'Quad bike!', small: 'Jump on – steer round the rocks, jump the ditches' },
+  cablecar: { big: 'Cable car!', small: 'Ride the cabin – change lane to dodge the branches' },
+  drone: { big: 'Drone lift!', small: 'Grab the drone – steer through the sky coins' },
+  symbols: { big: 'Symbol doors!', small: 'Remember the symbol – run through its door' },
+  sandstorm: { big: 'Sandstorm!', small: 'Low visibility – jump the drifts, duck the debris' },
+  toxicgas: { big: 'Toxic gas!', small: 'Keep out of the green clouds' },
+  volcano: { big: 'Volcano escape!', small: 'Jump the lava, dodge the falling rocks' },
 }
 
 // ---------------------------------------------------------------- pacing director
@@ -586,6 +599,8 @@ export const SECTION_MIN_TIER: Record<SectionKind, number> = {
   blades: 3,
   stampede: 2,
   jaguar: 1,
+  speedboat: 2, atv: 2, cablecar: 2, drone: 1,
+  symbols: 2, sandstorm: 2, toxicgas: 2, volcano: 3,
 }
 /** surprise events: reward stretches announced as surprises rather than challenges */
 export const SURPRISE_SECTIONS: SectionKind[] = ['coinstorm', 'camp', 'supply']

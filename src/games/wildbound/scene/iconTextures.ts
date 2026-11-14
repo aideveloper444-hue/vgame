@@ -1,7 +1,7 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import * as THREE from 'three'
-import { ChevronsUp, Flame, Magnet, Rocket, Shield, Sparkles, Zap, type LucideIcon } from 'lucide-react'
+import { ChevronsUp, Eye, Flame, Leaf, Magnet, Moon, Rocket, Shield, Sparkles, Sun, Zap, type LucideIcon } from 'lucide-react'
 import type { PowerUpKind } from '../engine/content'
 
 /*
@@ -51,4 +51,11 @@ export function pickupTextures() {
     cache = { ...out, token: iconTexture(Sparkles) }
   }
   return cache
+}
+
+let symbols: THREE.CanvasTexture[] | null = null
+/** The four temple door carvings (sun, moon, eye, leaf, in DOOR_SYMBOLS order), as gold-on-dark plates. */
+export function symbolTextures() {
+  if (!symbols) symbols = [Sun, Moon, Eye, Leaf].map((I) => iconTexture(I))
+  return symbols
 }

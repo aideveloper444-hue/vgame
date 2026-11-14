@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Section } from '../engine/run'
+import { Eye, Leaf, Moon, Sun } from 'lucide-react'
+import { DOOR_SYMBOLS, type Section } from '../engine/run'
 import { onSimEvent, run } from '../scene/runController'
 import { haptic, sfx } from './sfx'
 import { SURPRISE_SECTIONS } from '../engine/content'
@@ -25,8 +26,8 @@ const STAR_BONUS = 100
 const DONE_MS = 2100
 
 type Card =
-  | { mode: 'ahead'; kind: string; dist: number; leg?: number }
-  | { mode: 'live'; kind: string; p: number; leg?: number }
+  | { mode: 'ahead'; kind: string; dist: number; leg?: number; sym?: number }
+  | { mode: 'live'; kind: string; p: number; leg?: number; sym?: number }
   | { mode: 'done'; kind: string; stars: number; bonus: number; id: number; leg?: number; conquered?: boolean }
 
 interface Track {
@@ -125,7 +126,7 @@ export default function ChallengeHud({ runKey, solo }: { runKey: number; solo: b
           window.dispatchEvent(new CustomEvent('wb-cleared', { detail: stars }))
           return show(c)
         }
-        return show({ mode: 'live', kind: t.sec.kind, leg: t.sec.gauntlet, p: Math.max(0, Math.min(1, (s.d - t.sec.from) / Math.max(1, t.sec.to - t.sec.from))) })
+        return show({ mode: 'live', kind: t.sec.kind, leg: t.sec.gauntlet, sym: t.sec.symbol, p: Math.max(0, Math.min(1, (s.d - t.sec.from) / Math.max(1, t.sec.to - t.sec.from))) })
       }
       if (!s.alive) return show(null)
       const next = sim.sections.filter((x) => x.announced && x.to > s.d && !finished.current.has(x)).sort((a, b) => a.from - b.from)[0]
@@ -135,10 +136,10 @@ export default function ChallengeHud({ runKey, solo }: { runKey: number; solo: b
         const coins = sim.items.filter((it) => it.kind === 'coin' && !it.gone && it.d >= next.from - 6 && it.d <= next.to + 2).length
         track.current = { sec: next, coins, got: 0, saved: false }
         challengeTally.seen++
-        return show({ mode: 'live', kind: next.kind, leg: next.gauntlet, p: 0 })
+        return show({ mode: 'live', kind: next.kind, leg: next.gauntlet, sym: next.symbol, p: 0 })
       }
       const dist = next.from - s.d
-      show(dist < 75 ? { mode: 'ahead', kind: next.kind, dist, leg: next.gauntlet } : null)
+      show(dist < 75 ? { mode: 'ahead', kind: next.kind, dist, leg: next.gauntlet, sym: next.symbol } : null)
     }
     raf = requestAnimationFrame(loop)
     return () => cancelAnimationFrame(raf)
@@ -168,7 +169,15 @@ export default function ChallengeHud({ runKey, solo }: { runKey: number; solo: b
         {card.mode === 'done' && card.bonus > 0 && <span className="wb-chal-dist">+{card.bonus}</span>}
       </div>
       <div className="wb-chal-name">{nameOf(card.kind)}</div>
-      {card.mode === 'ahead' && t.small && <div className="wb-chal-hint">{t.small}</div>}
+      {card.mode !== 'done' && card.sym !== undefined ? (
+        // symbol doors: the symbol to remember, large and clear, for the whole section
+        <div className="wb-chal-hint" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontSize: 15, color: 'var(--gold-hi, #f3e3bd)' }}>
+          <SymbolIcon n={card.sym} />
+          <span>Through the {DOOR_SYMBOLS[card.sym].toUpperCase()} door</span>
+        </div>
+      ) : (
+        card.mode === 'ahead' && t.small && <div className="wb-chal-hint">{t.small}</div>
+      )}
       {card.mode === 'live' && (
         <div className="wb-chal-bar">
           <span style={{ transform: `scaleX(${card.p})` }} />
@@ -183,6 +192,12 @@ export default function ChallengeHud({ runKey, solo }: { runKey: number; solo: b
       )}
     </div>
   )
+}
+
+const SYMBOL_ICON = [Sun, Moon, Eye, Leaf]
+export function SymbolIcon({ n, size = 22 }: { n: number; size?: number }) {
+  const I = SYMBOL_ICON[n] ?? Sun
+  return <I size={size} strokeWidth={1.8} />
 }
 
 export function Star({ on, delay = 0, size = 22 }: { on: boolean; delay?: number; size?: number }) {

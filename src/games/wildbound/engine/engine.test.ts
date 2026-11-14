@@ -66,7 +66,9 @@ test('rows are spaced by the reaction window and world boundaries stay clear', (
   const ds = new Set<number>()
   runFor(sim, 3000, () => {
     // (rides are not obstacle rows: the bush plane taxis on its strip, moored rafts and carts rock and roll)
-    for (const it of sim.items) if (isObstacle(it.kind) && !it.moving && !['plane', 'raft', 'minecart', 'jeep', 'trolley'].includes(it.kind)) ds.add(Math.round(it.d * 100) / 100)
+    // (nor is the ravine under a zipline or cable car: the runner rides the cable over it)
+    const cable = (d: number) => sim.sections.some((x) => (x.kind === 'zipline' || x.kind === 'cablecar') && d >= x.from && d <= x.to)
+    for (const it of sim.items) if (isObstacle(it.kind) && !it.moving && !['plane', 'raft', 'minecart', 'jeep', 'trolley'].includes(it.kind) && !cable(it.d)) ds.add(Math.round(it.d * 100) / 100)
   })
   const sorted = [...ds].sort((a, b) => a - b)
   for (let i = 1; i < sorted.length; i++) {
@@ -172,10 +174,11 @@ function lone(kind: ObstacleKind, lane: Lane = 1, animalId: AnimalId = 'titan') 
   ;(sim as unknown as { nextRow: number }).nextRow = 1e9
   ;(sim as unknown as { nextGem: number }).nextGem = 1e9
   ;(sim as unknown as { nextPower: number }).nextPower = 1e9
+  ;(sim as unknown as { nextFragment: number }).nextFragment = 1e9
   ;(sim as unknown as { nextSectionAt: number }).nextSectionAt = 1e9
   sim.sections = []
   sim.state.shieldUntil = 0
-  sim.items.push({ id: 1, d: 20, lane, kind, h: 0, len: { log: 0.45, roots: 0.45, trap: 0.5, rock: 0.75, ruin: 0.8, branch: 0.35, barrier: 0.3, gap: 1.2, boulder: 0.9, trolley: 1.1, stream: 1.3, rubble: 0.45, stalactite: 0.35, plane: 1.6, quicksand: 1.3, darts: 0.3, swinglog: 0.4, minecart: 1.0, buffer: 0.4, beam: 0.3, bough: 0.4, raft: 1.1, jeep: 1.3, strike: 0.6, fire: 0.9, ember: 0.35, roller: 0.45, blade: 0.3, swarm: 0.5, web: 0.3, toxic: 1.2, elephant: 1.7, pounce: 0.9 }[kind], gone: false, passed: false, broken: false, frozen: false, moving: 0 })
+  sim.items.push({ id: 1, d: 20, lane, kind, h: 0, len: { log: 0.45, roots: 0.45, trap: 0.5, rock: 0.75, ruin: 0.8, branch: 0.35, barrier: 0.3, gap: 1.2, boulder: 0.9, trolley: 1.1, stream: 1.3, rubble: 0.45, stalactite: 0.35, plane: 1.6, quicksand: 1.3, darts: 0.3, swinglog: 0.4, minecart: 1.0, buffer: 0.4, beam: 0.3, bough: 0.4, raft: 1.1, jeep: 1.3, strike: 0.6, fire: 0.9, ember: 0.35, roller: 0.45, blade: 0.3, swarm: 0.5, web: 0.3, toxic: 1.2, elephant: 1.7, pounce: 0.9, door: 0.35, gas: 0.9, lava: 1.2 }[kind], gone: false, passed: false, broken: false, frozen: false, moving: 0 })
   return sim
 }
 const until = (sim: RunSim, d: number) => runFor(sim, d - sim.state.d)
@@ -467,7 +470,8 @@ test('sections appear in zones that suit them, never at a junction, and a carefu
     }
   }
   // the pool is wide now (weather, surprises): the core sections still show up, among plenty of variety
-  for (const k of ['river', 'bridge', 'flight']) assert.ok(kinds.has(k), `${k} seen in the first 3 km (${[...kinds]})`)
+  for (const k of ['river', 'flight']) assert.ok(kinds.has(k), `${k} seen in the first 3 km (${[...kinds]})`)
+  assert.ok(kinds.size >= 12, `plenty of variety in the first 3 km (${[...kinds]})`)
   assert.ok(kinds.has('jaguar') || kinds.has('stampede'), `wildlife met in the first 3 km (${[...kinds]})`)
   assert.ok(kinds.size >= 8, `variety in the first 3 km (${[...kinds]})`)
 })
@@ -869,6 +873,37 @@ test('brief library batch: every new section is fair and a careful runner gets t
   assert.ok(g?.glider, 'glider craft')
 })
 
+test('brief vehicles and activities: speedboat, quad bike, cable car, drone, symbol doors, sandstorm, toxic gas, volcano', () => {
+  for (const kind of ['speedboat', 'atv', 'cablecar', 'drone', 'symbols', 'sandstorm', 'toxicgas', 'volcano'] as const)
+    for (let seed = 1; seed <= 12; seed++) {
+      const { sim, sec } = withSection(kind, seed)
+      const rows = new Map<number, Item[]>()
+      for (const it of sim.items) if (isObstacle(it.kind) && !['plane', 'raft', 'jeep'].includes(it.kind)) rows.set(it.d, [...(rows.get(it.d) ?? []), it])
+      for (const [d, row] of rows) {
+        const full = new Set(row.map((it) => it.lane)).size === 3
+        assert.ok(!full || row.every((it) => !ESCAPES[it.kind as ObstacleKind].includes('lane')), `${kind} seed ${seed}: row at ${d} is a wall`)
+      }
+      runFor(sim, sec.to + 10 - sim.state.d, () => autopilot(sim))
+      assert.ok(sim.state.alive, `${kind} seed ${seed}: crashed into ${sim.state.crashKind} at ${sim.state.d.toFixed(1)}`)
+    }
+  // each vehicle wears its own skin over the rules it borrows
+  const skinOf = (kind: 'speedboat' | 'atv' | 'cablecar' | 'drone', k: string) => withSection(kind, 1).sim.items.find((it) => it.kind === k)?.skin
+  assert.equal(skinOf('speedboat', 'raft'), 'speedboat')
+  assert.equal(skinOf('atv', 'jeep'), 'atv')
+  assert.equal(skinOf('cablecar', 'zipline'), 'cablecar')
+  assert.equal(skinOf('drone', 'plane'), 'drone')
+  // symbol doors: one open door per gate, and it bears the section's symbol
+  const { sim } = withSection('symbols', 4)
+  const sec = sim.sections.find((x) => x.kind === 'symbols')!
+  assert.ok(sec.gates && sec.gates.length === 4 && sec.symbol !== undefined)
+  for (const g of sec.gates!) {
+    assert.equal(g.symbols[g.lane], sec.symbol)
+    assert.equal(new Set(g.symbols).size, 3, 'three different carvings')
+    const doors = sim.items.filter((it) => it.kind === 'door' && it.d === g.d)
+    assert.deepEqual(doors.map((it) => it.lane).sort(), ([0, 1, 2] as Lane[]).filter((l) => l !== g.lane))
+  }
+})
+
 test('wildlife: a charging elephant must be dodged; a jaguar only threatens its lane once it springs (26 m out)', () => {
   const e = lone('elephant', 1)
   e.state.loyalUsed = true
@@ -1104,7 +1139,7 @@ test('every run opens with a challenge, the bush plane and a wildlife encounter 
     assert.ok(first < 500, `seed ${seed}: first challenge at ${first.toFixed(0)} m`)
     const zone = biomeAt(sim.origin + 800)
     const signature = zone.flavor === 'rail' || zone.biome.id === 'railway' || zone.flavor === 'vines'
-    if (!signature) assert.ok(seen.has('flight') || seen.has('glider'), `seed ${seed} (zone ${z + 1}): no flight (${[...seen.keys()]})`)
+    if (!signature) assert.ok(seen.has('flight'), `seed ${seed} (zone ${z + 1}): no flight (${[...seen.keys()]})`)
     assert.ok(seen.has('jaguar') || seen.has('stampede'), `seed ${seed} (zone ${z + 1}): no wildlife (${[...seen.keys()]})`)
   }
 })

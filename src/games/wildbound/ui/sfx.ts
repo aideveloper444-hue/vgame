@@ -270,6 +270,47 @@ export const sfx = {
         // a reward ahead: a light rising chime
         for (const [i, f] of [784, 988, 1175].entries()) tone(f, 0.22, 'triangle', 0.06, undefined, i * 0.08)
         break
+      case 'speedboat':
+        // an outboard revving up over the water
+        tone(110, 0.9, 'sawtooth', 0.05, 240)
+        noise(1.0, 0.08, 'bandpass', 900, 0.6, 1800)
+        break
+      case 'atv':
+        // a small engine buzzing up through the gears
+        tone(130, 0.3, 'sawtooth', 0.05, 200)
+        tone(150, 0.5, 'sawtooth', 0.05, 260, 0.3)
+        break
+      case 'cablecar':
+        // a cable humming, the cabin's chime
+        tone(98, 1.0, 'sine', 0.06, 104)
+        for (const [i, f] of [659, 523].entries()) tone(f, 0.3, 'triangle', 0.05, undefined, 0.2 + i * 0.25)
+        break
+      case 'drone':
+        // rotors spinning up
+        tone(180, 1.0, 'sawtooth', 0.025, 420)
+        tone(186, 1.0, 'sawtooth', 0.025, 430)
+        break
+      case 'symbols':
+        // stone grinding, then a low resonant note from the carvings
+        noise(0.6, 0.1, 'lowpass', 300, 1, 140)
+        tone(196, 0.9, 'sine', 0.07, undefined, 0.45)
+        tone(294, 0.9, 'sine', 0.04, undefined, 0.45)
+        break
+      case 'sandstorm':
+        // a howling wind full of sand
+        noise(1.6, 0.14, 'bandpass', 1200, 0.6, 500)
+        noise(1.4, 0.05, 'highpass', 4000, 1, undefined, 0.2)
+        break
+      case 'toxicgas':
+        // a long hiss of escaping gas
+        noise(1.4, 0.1, 'highpass', 3200, 0.7, 2400)
+        break
+      case 'volcano':
+        // a deep eruption rumble and spitting rock
+        noise(1.6, 0.26, 'lowpass', 110, 1, 45)
+        tone(34, 1.4, 'sine', 0.18, 28)
+        for (let i = 0; i < 4; i++) noise(0.05, 0.12, 'highpass', 2000, 1, undefined, 0.4 + i * 0.15)
+        break
       default:
         // anything newer: a low, neutral heads-up
         tone(330, 0.18, 'triangle', 0.06)

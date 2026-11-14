@@ -100,6 +100,12 @@ export type ProcProp =
   | 'minecart'
   | 'raft'
   | 'jeep'
+  | 'speedboat'
+  | 'atv'
+  | 'gondola'
+  | 'gasCloud'
+  | 'lavaPool'
+  | 'scroll'
   | 'chevron'
   | 'redwood'
   | 'treefern'
@@ -566,6 +572,111 @@ export function useProcKits(): Record<ProcProp, PropKit> {
     const olive = new THREE.MeshStandardMaterial({ color: '#5f6346', roughness: 0.78, metalness: 0.15 })
     const tyre = new THREE.MeshStandardMaterial({ color: '#1b1c1c', roughness: 0.95 })
     const lamp = new THREE.MeshStandardMaterial({ color: '#f4ecd8', emissive: '#f1e2b8', emissiveIntensity: 0.6, roughness: 0.2 })
+    // speedboat: a deep-V hull (bow raised to a point), white topsides over a navy bottom with an oxblood boot stripe,
+    // a raked windscreen, a wraparound chrome rail, two bucket seats and an outboard on the transom. Nose to +Z.
+    const hull = (top: number, bottom: number, narrow = 0) => {
+      const g = new THREE.BoxGeometry(1.7 - narrow, top - bottom, 4.2, 4, 2, 12)
+      g.translate(0, (top + bottom) / 2, 0)
+      const pos = g.attributes.position
+      for (let v = 0; v < pos.count; v++) {
+        const z = pos.getZ(v)
+        const y = pos.getY(v)
+        const f = Math.max(0, (z - 0.6) / 1.5) // 0 aft of midships, 1 at the bow
+        // the bow narrows to a point and its keel lifts; the bottom is a V
+        pos.setX(v, pos.getX(v) * (1 - 0.92 * f ** 1.6) * (y < (top + bottom) / 2 ? 0.86 : 1))
+        if (y < (top + bottom) / 2) pos.setY(v, y + 0.32 * f ** 1.4 + Math.abs(pos.getX(v)) * 0.12)
+      }
+      g.computeVertexNormals()
+      return g.toNonIndexed()
+    }
+    const boatTop = hull(0.95, 0.55)
+    const boatBottom = hull(0.55, 0.05, 0.04)
+    const boatStripe = hull(0.6, 0.5, -0.02)
+    const boatDeck = iron([box(1.5, 0.06, 2.5, 0, 0.9, -0.6)])
+    const boatGlass = iron([box(1.4, 0.42, 0.05, 0, 1.12, 0.62, 0, -0.5)])
+    const boatChrome = iron([
+      rod(-0.8, 1.0, -1.9, -0.8, 1.0, 0.9, 0.025),
+      rod(0.8, 1.0, -1.9, 0.8, 1.0, 0.9, 0.025),
+      rod(-0.8, 1.0, 0.9, 0, 1.0, 2.0, 0.025),
+      rod(0.8, 1.0, 0.9, 0, 1.0, 2.0, 0.025),
+      box(0.36, 0.5, 0.36, 0, 0.75, -2.25),
+      box(0.14, 0.6, 0.2, 0, 0.3, -2.3),
+    ])
+    // two low bucket seats up behind the windscreen (the rider stands in the cockpit aft of them)
+    const boatSeats = iron([box(0.46, 0.22, 0.4, -0.4, 1.0, 0.3), box(0.46, 0.22, 0.4, 0.4, 1.0, 0.3), box(0.46, 0.36, 0.1, -0.4, 1.18, 0.1), box(0.46, 0.36, 0.1, 0.4, 1.18, 0.1)])
+    const whitePaint = new THREE.MeshPhysicalMaterial({ color: '#f1eee8', roughness: 0.25, clearcoat: 0.9, clearcoatRoughness: 0.1 })
+    const navyPaint = new THREE.MeshPhysicalMaterial({ color: '#1b2a3a', roughness: 0.3, clearcoat: 0.8, clearcoatRoughness: 0.15 })
+    const redPaint = new THREE.MeshPhysicalMaterial({ color: '#8a1c16', roughness: 0.3, clearcoat: 0.8, clearcoatRoughness: 0.15 })
+    const teak = new THREE.MeshStandardMaterial({ color: '#8a5a34', roughness: 0.6 })
+    const smoked = new THREE.MeshPhysicalMaterial({ color: '#2b3a40', roughness: 0.05, transparent: true, opacity: 0.55, envMapIntensity: 1.5 })
+    const leather = new THREE.MeshStandardMaterial({ color: '#d9cdb4', roughness: 0.7 })
+    // quad bike (ATV): a moulded body in deep green with black plastics, a long seat, handlebars, front and rear
+    // racks, two headlights and four fat knobbly tyres. Nose to +Z.
+    const atvBody = iron([
+      box(1.0, 0.32, 1.5, 0, 0.72, 0.05),
+      box(1.22, 0.12, 0.7, 0, 0.86, 0.72, 0, 0.12),
+      box(1.22, 0.12, 0.6, 0, 0.86, -0.7, 0, -0.1),
+      box(0.5, 0.42, 0.5, 0, 0.75, 0.62),
+    ])
+    const atvBlack = iron([
+      box(0.46, 0.16, 1.0, 0, 1.0, -0.2),
+      rod(0, 0.95, 0.55, 0, 1.25, 0.45, 0.04),
+      rod(-0.42, 1.28, 0.42, 0.42, 1.28, 0.42, 0.03),
+      box(1.1, 0.05, 0.42, 0, 1.0, 0.85),
+      box(1.1, 0.05, 0.42, 0, 1.0, -0.85),
+      ...[-0.5, 0.5].flatMap((x) => [rod(x, 0.92, 0.66, x, 1.0, 1.05, 0.02), rod(x, 0.92, -0.66, x, 1.0, -1.05, 0.02)]),
+      box(1.2, 0.08, 0.1, 0, 0.55, 1.12),
+    ])
+    const atvTyres: THREE.BufferGeometry[] = []
+    for (const wx of [-0.62, 0.62]) for (const wz of [-0.68, 0.72]) {
+      // a fat balloon tyre: a rounded torus round a short drum
+      atvTyres.push(new THREE.TorusGeometry(0.25, 0.11, 12, 28).rotateY(Math.PI / 2).translate(wx, 0.36, wz).toNonIndexed())
+      atvTyres.push(new THREE.CylinderGeometry(0.27, 0.27, 0.26, 28).rotateZ(Math.PI / 2).translate(wx, 0.36, wz).toNonIndexed())
+    }
+    const atvHubs: THREE.BufferGeometry[] = []
+    for (const wx of [-0.78, 0.78]) for (const wz of [-0.68, 0.72]) atvHubs.push(new THREE.CylinderGeometry(0.16, 0.16, 0.03, 12).rotateZ(Math.PI / 2).translate(wx, 0.34, wz).toNonIndexed())
+    const atvLamps = iron([
+      new THREE.CylinderGeometry(0.08, 0.08, 0.05, 12).rotateX(Math.PI / 2).translate(0.25, 0.88, 1.08),
+      new THREE.CylinderGeometry(0.08, 0.08, 0.05, 12).rotateX(Math.PI / 2).translate(-0.25, 0.88, 1.08),
+    ])
+    const forest = new THREE.MeshPhysicalMaterial({ color: '#2f4a32', roughness: 0.4, clearcoat: 0.6, clearcoatRoughness: 0.25 })
+    const blackPlastic = new THREE.MeshStandardMaterial({ color: '#16171a', roughness: 0.6, metalness: 0.2 })
+    // cable car cabin: a glazed cabin on a steel frame (posts, roof, floor), the hanger arm and the grip to the cable.
+    // Floor at y 0, roof at 1.45, hanger up to the cable 0.45 m above.
+    const cabFrame = iron([
+      box(1.5, 0.08, 1.5, 0, 0.04, 0),
+      box(1.62, 0.14, 1.62, 0, 1.45, 0),
+      box(1.2, 0.1, 1.2, 0, 1.56, 0),
+      ...[-0.73, 0.73].flatMap((x) => [-0.73, 0.73].map((z) => box(0.07, 1.42, 0.07, x, 0.73, z))),
+      box(1.5, 0.06, 0.06, 0, 0.62, 0.74),
+      box(1.5, 0.06, 0.06, 0, 0.62, -0.74),
+      box(0.06, 0.06, 1.5, 0.74, 0.62, 0),
+      box(0.06, 0.06, 1.5, -0.74, 0.62, 0),
+    ])
+    const cabHanger = iron([rod(0, 1.6, 0, 0, 2.0, 0, 0.05), box(0.22, 0.16, 0.42, 0, 2.02, 0), new THREE.CylinderGeometry(0.09, 0.09, 0.12, 12).rotateZ(Math.PI / 2).translate(0, 2.08, 0.12), new THREE.CylinderGeometry(0.09, 0.09, 0.12, 12).rotateZ(Math.PI / 2).translate(0, 2.08, -0.12)])
+    const cabGlass = iron([
+      box(1.42, 0.78, 0.02, 0, 1.04, 0.72),
+      box(1.42, 0.78, 0.02, 0, 1.04, -0.72),
+      box(0.02, 0.78, 1.42, 0.72, 1.04, 0),
+      box(0.02, 0.78, 1.42, -0.72, 1.04, 0),
+    ])
+    const cabPaint = new THREE.MeshPhysicalMaterial({ color: '#8a1c16', roughness: 0.32, metalness: 0.2, clearcoat: 0.7 })
+    const clearGlass = new THREE.MeshPhysicalMaterial({ color: '#cfe0e6', roughness: 0.04, transparent: true, opacity: 0.22, envMapIntensity: 1.6, depthWrite: false })
+    // toxic gas: a low drifting cloud of soft green puffs
+    const gasPuffs: THREE.BufferGeometry[] = []
+    for (let i = 0; i < 9; i++) {
+      const a = i * 2.39
+      const r = 0.25 + (i % 3) * 0.12
+      gasPuffs.push(new THREE.IcosahedronGeometry(0.38 + (i % 4) * 0.08, 2).translate(Math.cos(a) * r * 1.6, 0.42 + (i % 3) * 0.28, Math.sin(a) * r * 1.4))
+    }
+    const gasMat = new THREE.MeshStandardMaterial({ color: '#8fbf3a', emissive: '#4f7a10', emissiveIntensity: 0.55, roughness: 1, transparent: true, opacity: 0.42, depthWrite: false })
+    // a lava stream: molten rock glowing through a dark basalt crust at its edges
+    const lavaFlow = new THREE.MeshStandardMaterial({ color: "#ff6a1a", emissive: "#ff4200", emissiveIntensity: 1.8, roughness: 0.55, toneMapped: false })
+    const basalt = new THREE.MeshStandardMaterial({ color: '#1d1a19', roughness: 0.95 })
+    // a treasure map fragment: a rolled parchment tied with a red ribbon, gold-capped ends
+    const parchment = new THREE.MeshStandardMaterial({ color: '#e7d3a4', roughness: 0.8, emissive: '#5a4320', emissiveIntensity: 0.25 })
+    const ribbon = new THREE.MeshStandardMaterial({ color: '#8a1c16', roughness: 0.6 })
+    const goldCap = new THREE.MeshStandardMaterial({ color: '#d8b56a', metalness: 0.9, roughness: 0.25 })
     // mine cart: a flared riveted iron tub with strap bands and a rolled rim, on a chassis and the handcar's wheels
     const cartTub = iron([
       box(1.24, 0.06, 1.74, 0, 0.62, 0),
@@ -1055,6 +1166,37 @@ export function useProcKits(): Record<ProcProp, PropKit> {
         [mergeGeometries(raftLogs)!, raftBark],
         [raftBeams, wood],
         [mergeGeometries(raftRope)!, rope],
+      ]),
+      speedboat: multi([
+        [boatTop, whitePaint],
+        [boatBottom, navyPaint],
+        [boatStripe, redPaint],
+        [boatDeck, teak],
+        [boatGlass, smoked],
+        [boatChrome, metal],
+        [boatSeats, leather],
+      ]),
+      atv: multi([
+        [atvBody, forest],
+        [atvBlack, blackPlastic],
+        [mergeGeometries(atvTyres)!, tyre],
+        [mergeGeometries(atvHubs)!, metal],
+        [atvLamps, lamp],
+      ]),
+      gondola: multi([
+        [cabFrame, cabPaint],
+        [cabHanger, ironDark],
+        [cabGlass, clearGlass],
+      ]),
+      gasCloud: kit(mergeGeometries(gasPuffs)!, gasMat),
+      lavaPool: multi([
+        [new THREE.CylinderGeometry(0.5, 0.5, 0.04, 40).toNonIndexed(), basalt],
+        [new THREE.CylinderGeometry(0.43, 0.43, 0.04, 40).translate(0, 0.012, 0).toNonIndexed(), lavaFlow],
+      ]),
+      scroll: multi([
+        [new THREE.CylinderGeometry(0.13, 0.13, 0.62, 20).rotateZ(Math.PI / 2).toNonIndexed(), parchment],
+        [new THREE.CylinderGeometry(0.135, 0.135, 0.07, 20).rotateZ(Math.PI / 2).toNonIndexed(), ribbon],
+        [mergeGeometries([new THREE.SphereGeometry(0.075, 12, 8).translate(0.34, 0, 0).toNonIndexed(), new THREE.SphereGeometry(0.075, 12, 8).translate(-0.34, 0, 0).toNonIndexed()])!, goldCap],
       ]),
       jeep: multi([
         [jeepBody, olive],

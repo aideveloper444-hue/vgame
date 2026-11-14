@@ -41,9 +41,11 @@ import {
 export const LANE_W = 2.1
 export const laneX = (lane: number) => (1 - lane) * LANE_W // camera looks down +Z, so +X is screen-left
 
+// a steady run: a short warm-up from the start line to the cruising speed (~100 m), then the same pace for the whole
+// run (only power-ups, abilities and vehicles go faster); difficulty grows with density and challenges, not speed
 export const BASE_SPEED = 9
-export const MAX_SPEED = 22
-export const ACCEL = 0.0065 // m/s per metre
+export const MAX_SPEED = 12
+export const ACCEL = 0.03 // m/s per metre
 export const JUMP_MS = 640
 export const JUMP_H = 1.45
 export const LOW_MS = 640
@@ -94,10 +96,26 @@ export interface Item {
   glider?: boolean
   /** jaguar ambush: waits on this side's verge (h 0) and springs into its lane 26 m ahead of the runner (h 1) */
   ambush?: 1 | -1
+  /** the vehicle's look: a speedboat (raft rules), quad bike (jeep rules), cable car (zipline), drone (glider) */
+  skin?: VehicleSkin
 }
+export type VehicleSkin = 'speedboat' | 'atv' | 'cablecar' | 'drone'
+/** a challenge built on another one's rules, with its own vehicle */
+const SKIN_OF: Partial<Record<SectionKind, { base: SectionKind; skin: VehicleSkin }>> = {
+  speedboat: { base: 'raft', skin: 'speedboat' },
+  atv: { base: 'jeep', skin: 'atv' },
+  cablecar: { base: 'zipline', skin: 'cablecar' },
+  drone: { base: 'glider', skin: 'drone' },
+}
+/** challenges ridden on a vehicle or line (the runner is set down at the end; planted in the middle lane) */
+export const RIDE_SECTIONS: SectionKind[] = ['rail', 'flight', 'glider', 'zipline', 'minecart', 'raft', 'jeep', 'speedboat', 'atv', 'cablecar', 'drone']
+/** the four temple door symbols (sun, moon, eye, leaf) */
+export const DOOR_SYMBOLS = ['Sun', 'Moon', 'Eye', 'Leaf'] as const
+/** treasure map fragments that make one map */
+export const FRAGMENTS = 4
 
 /** pits and pools: jumped, carried over by a shield hop, never broken */
-const PIT = (k: ObstacleKind) => k === 'gap' || k === 'stream' || k === 'quicksand' || k === 'toxic'
+const PIT = (k: ObstacleKind) => k === 'gap' || k === 'stream' || k === 'quicksand' || k === 'toxic' || k === 'lava'
 
 /** A challenge section: railway, river crossing, broken bridge, rockslide or cave. */
 export interface Section {
@@ -106,6 +124,9 @@ export interface Section {
   to: number
   /** railway: the lane the track runs in */
   lane: Lane
+  /** symbol doors: the symbol to follow (DOOR_SYMBOLS), and per gate the lane whose door bears it */
+  symbol?: number
+  gates?: { d: number; lane: Lane; symbols: number[] }[]
   built: boolean
   announced: boolean
   /** a leg of the Final Jungle Gauntlet (1, 2 or 3) */
@@ -180,16 +201,17 @@ export type SimEvent =
   | { type: 'fork'; fork: Fork }
   | { type: 'route'; fork: Fork; name: string; bonus: RouteBonus }
   | { type: 'section'; section: Section }
-  | { type: 'ride'; on: boolean; kind?: RideKind }
+  | { type: 'ride'; on: boolean; kind?: RideKind; skin?: VehicleSkin }
   | { type: 'rockfall'; d: number; lane: Lane }
   | { type: 'nearmiss'; kind: ObstacleKind }
   | { type: 'surface'; grip: Grip }
-  | { type: 'swing'; on: boolean; zip?: boolean }
+  | { type: 'swing'; on: boolean; zip?: boolean; cab?: boolean }
   | { type: 'chest'; coins: number; gems: number }
   | { type: 'crate'; kind: PowerUpKind }
   | { type: 'tier'; tier: number; name: string }
   | { type: 'collapse'; d: number; lane: Lane }
   | { type: 'pounce'; d: number; lane: Lane }
+  | { type: 'fragment'; n: number; of: number; bonus: number }
 
 export interface RunStats {
   jumps: number
@@ -222,6 +244,8 @@ export interface RunState {
   coins: number
   gems: number
   tokens: number
+  /** treasure map fragments found this run */
+  fragments: number
   score: number
   crashKind: ObstacleKind | null
   shieldUntil: number
@@ -234,7 +258,7 @@ export interface RunState {
   ride: { lane: Lane; end: number; item: number; kind?: RideKind; from?: number } | null
   /** swinging on a vine over a ravine */
   /** a vine swing, or a zipline (zip: the runner can switch cables, lane by lane) */
-  swing: { from: number; to: number; lane: Lane; zip?: boolean } | null
+  swing: { from: number; to: number; lane: Lane; zip?: boolean; cab?: boolean } | null
   /** how the trail under the paws handles (ice, snow, mud) */
   grip: Grip
   /** the last lane change: from which lane, when and where (close calls) */
@@ -361,9 +385,9 @@ export function mulberry32(seed: number) {
   }
 }
 
-const HALF_LEN: Record<ObstacleKind, number> = { log: 0.45, roots: 0.45, trap: 0.5, rock: 0.75, ruin: 0.8, branch: 0.35, barrier: 0.3, gap: 1.2, boulder: 0.9, trolley: 1.1, stream: 1.3, rubble: 0.45, stalactite: 0.35, plane: 1.6, quicksand: 1.3, darts: 0.3, swinglog: 0.4, minecart: 1.0, buffer: 0.4, beam: 0.3, bough: 0.4, raft: 1.1, jeep: 1.3, strike: 0.6, fire: 0.9, ember: 0.35, roller: 0.45, blade: 0.3, swarm: 0.5, web: 0.3, toxic: 1.2, elephant: 1.7, pounce: 0.9 }
+const HALF_LEN: Record<ObstacleKind, number> = { log: 0.45, roots: 0.45, trap: 0.5, rock: 0.75, ruin: 0.8, branch: 0.35, barrier: 0.3, gap: 1.2, boulder: 0.9, trolley: 1.1, stream: 1.3, rubble: 0.45, stalactite: 0.35, plane: 1.6, quicksand: 1.3, darts: 0.3, swinglog: 0.4, minecart: 1.0, buffer: 0.4, beam: 0.3, bough: 0.4, raft: 1.1, jeep: 1.3, strike: 0.6, fire: 0.9, ember: 0.35, roller: 0.45, blade: 0.3, swarm: 0.5, web: 0.3, toxic: 1.2, elephant: 1.7, pounce: 0.9, door: 0.35, gas: 0.9, lava: 1.2 }
 /** height the runner must be above the trail to clear a jump obstacle */
-const CLEARANCE: Partial<Record<ObstacleKind, number>> = { log: 0.55, roots: 0.4, trap: 0.45, gap: 0.02, rock: 1.2, ruin: 1.5, boulder: 1.2, trolley: 1.2, stream: 0.02, rubble: 0.45, quicksand: 0.02, roller: 0.55, toxic: 0.02 }
+const CLEARANCE: Partial<Record<ObstacleKind, number>> = { log: 0.55, roots: 0.4, trap: 0.45, gap: 0.02, rock: 1.2, ruin: 1.5, boulder: 1.2, trolley: 1.2, stream: 0.02, rubble: 0.45, quicksand: 0.02, roller: 0.55, toxic: 0.02, lava: 0.02 }
 
 export class RunSim {
   readonly animal: AnimalDef
@@ -379,6 +403,8 @@ export class RunSim {
   private nextGem = 120
   private nextPower = 200
   private nextToken = 40
+  /** the next treasure map fragment (one every 550-750 m, four make the map) */
+  private nextFragment = 420
   private nextMilestone = 100
   /** where the last obstacle row was placed */
   private lastRowD = -1000
@@ -403,6 +429,8 @@ export class RunSim {
   private flown = false
   /** challenges planned so far this run (outside the gauntlet): the first three are the run's opening act */
   private planned = 0
+  /** this run has met its first wildlife encounter */
+  private metWild = false
   private nextGauntletT = GAUNTLET.firstAt
   /** where on the 40 km world the run starts (metres); the run's own distance is state.d - origin */
   readonly origin: number
@@ -432,6 +460,7 @@ export class RunSim {
       coins: 0,
       gems: 0,
       tokens: 0,
+      fragments: 0,
       score: 0,
       crashKind: null,
       shieldUntil: startShield,
@@ -462,6 +491,7 @@ export class RunSim {
       this.nextGem += o
       this.nextPower += o
       this.nextToken += o
+      this.nextFragment += o
       this.nextMilestone += o
       this.nextSectionAt += o
       // the zone banner announces where this run starts
@@ -480,7 +510,7 @@ export class RunSim {
     }
     if (opts.debugSection && !opts.tutorial) {
       const from = this.origin + (opts.debugSectionAt ?? 70)
-      this.sections.push({ kind: opts.debugSection, from, to: from + 90, lane: (['flight', 'glider', 'minecart', 'zipline', 'raft', 'jeep'] as SectionKind[]).includes(opts.debugSection) ? 1 : 0, built: false, announced: false })
+      this.sections.push({ kind: opts.debugSection, from, to: from + 90, lane: RIDE_SECTIONS.includes(opts.debugSection) && opts.debugSection !== 'rail' ? 1 : 0, built: false, announced: false })
       this.nextSectionAt = from + 200
       this.nextForkAt = from + 300
     }
@@ -873,7 +903,7 @@ export class RunSim {
           s.ride = { lane: it.lane, end: sec ? sec.to - 6 : it.d + 90, item: it.id, kind: 'plane', from: it.d }
           s.pose = 'run'
           s.actionMs = 0
-          this.events.push({ type: 'ride', on: true, kind: 'plane' })
+          this.events.push({ type: 'ride', on: true, kind: 'plane', skin: it.skin })
         }
         continue
       }
@@ -885,7 +915,7 @@ export class RunSim {
           s.ride = { lane: it.lane, end: sec ? sec.to - 4 : it.d + 80, item: it.id, kind }
           s.pose = 'run'
           s.actionMs = 0
-          this.events.push({ type: 'ride', on: true, kind })
+          this.events.push({ type: 'ride', on: true, kind, skin: it.skin })
         }
         continue
       }
@@ -988,6 +1018,19 @@ export class RunSim {
           s.gems += gems
           s.score += 1500
           this.events.push({ type: 'chest', coins, gems })
+          break
+        }
+        case 'fragment': {
+          // a torn piece of an explorer's map; the fourth completes it for a treasure bonus
+          s.fragments++
+          const done = s.fragments % FRAGMENTS === 0
+          const bonus = done ? 2500 : 250
+          s.score += bonus
+          if (done) {
+            s.gems += 10
+            s.coins += 300
+          }
+          this.events.push({ type: 'fragment', n: ((s.fragments - 1) % FRAGMENTS) + 1, of: FRAGMENTS, bonus })
           break
         }
         case 'crate': {
@@ -1102,9 +1145,9 @@ export class RunSim {
       const zl = this.items.find((it) => it.kind === 'zipline' && !it.passed && it.lane === bodyLane && Math.abs(it.d - s.d) < 1.5)
       if (zl) {
         for (const it of this.items) if (it.kind === 'zipline' && Math.abs(it.d - zl.d) < 0.5) it.passed = true
-        s.swing = { from: s.d, to: zl.swingTo ?? s.d + 30, lane: zl.lane, zip: true }
+        s.swing = { from: s.d, to: zl.swingTo ?? s.d + 30, lane: zl.lane, zip: true, cab: zl.skin === 'cablecar' }
         s.score += 100
-        this.events.push({ type: 'swing', on: true, zip: true })
+        this.events.push({ type: 'swing', on: true, zip: true, cab: zl.skin === 'cablecar' })
         return
       }
       if (s.pose !== 'jump') return
@@ -1228,7 +1271,7 @@ export class RunSim {
         this.nextRow = this.lastRowD + this.rowGap(this.lastRowD) + 2
         // a ride (trolley, plane, glider, zipline, cart, raft, jeep) sets the runner down at the section's end:
         // the next row keeps a full reaction gap from there
-        if ((['rail', 'flight', 'glider', 'zipline', 'minecart', 'raft', 'jeep'] as SectionKind[]).includes(sec.kind)) this.nextRow = Math.max(this.nextRow, sec.to + this.rowGap(sec.to))
+        if (RIDE_SECTIONS.includes(sec.kind)) this.nextRow = Math.max(this.nextRow, sec.to + this.rowGap(sec.to))
         continue
       }
       // a clear blend strip at every zone boundary and where a junction's routes end
@@ -1245,6 +1288,16 @@ export class RunSim {
     const skip = (d: number) => {
       const f = this.forkAt(d)
       return !!f && d < f.d + FORK_CLEAR_AFTER
+    }
+    while (this.nextFragment < ahead) {
+      // on open trail only (not in a challenge or a junction), in the lane a fixed step picks (no rng: races agree)
+      if (skip(this.nextFragment) || this.sectionAt(this.nextFragment) || this.atSeam(this.nextFragment)) {
+        this.nextFragment += 40
+        continue
+      }
+      const lane = (Math.floor(this.nextFragment / 7) % 3) as Lane
+      this.add(this.nextFragment, lane, 'fragment', 0.9)
+      this.nextFragment += 550 + (Math.floor(this.nextFragment / 13) % 5) * 50
     }
     while (this.nextGem < ahead) {
       if (skip(this.nextGem)) {
@@ -1369,6 +1422,19 @@ export class RunSim {
       if (has(['savannah', 'grassland', 'baobab', 'desert', 'beach', 'coast', 'lakeside'])) W.push(['stampede', 1.4])
       if (has(['jungle', 'forest', 'moonlit', 'fern', 'mossy', 'giantroot', 'redwood', 'mangrove'])) W.push(['jaguar', 1.3])
       if (has(['forest', 'jungle', 'redwood', 'giantroot', 'cliffside', 'cedar', 'pine', 'fern'])) W.push(['zipline', 1.2])
+      // more of the brief's vehicles: a speedboat race on the big rivers, a quad bike over rough open ground, a cable
+      // car across gorges and mountainsides, a cargo drone that lifts the runner over open country
+      if (has(['river', 'lagoon', 'lakeside', 'mangrove', 'coast', 'swamp'])) W.push(['speedboat', 1.3])
+      if (has(['savannah', 'desert', 'canyon', 'hills', 'grassland', 'baobab', 'volcanic', 'beach'])) W.push(['atv', 1.2])
+      if (has(['cliffside', 'hills', 'waterfall', 'canyon', 'snow', 'ice', 'pine', 'mist', 'cedar'])) W.push(['cablecar', 1.1])
+      if (has(['savannah', 'grassland', 'desert', 'coast', 'beach', 'lakeside', 'hills', 'birch', 'snow', 'baobab', 'blossom'])) W.push(['drone', 0.9])
+      // more of its activities: temple symbol doors, sandstorms, toxic gas in the swamps and caves, a volcano escape
+      if (has(['ruins', 'temple'])) W.push(['symbols', 2])
+      else if (has(['mossy', 'glow', 'jungle', 'giantroot'])) W.push(['symbols', 0.7])
+      if (has(['desert', 'canyon', 'savannah', 'baobab', 'beach', 'grassland'])) W.push(['sandstorm', 1.1])
+      if (has(['swamp', 'mangrove', 'glow', 'mossy', 'volcanic', 'deadwood', 'mist', 'fern'])) W.push(['toxicgas', 1])
+      if (has(['volcanic'])) W.push(['volcano', 3])
+      else if (has(['canyon', 'cliffside', 'hills'])) W.push(['volcano', 0.6])
       // weather and disasters (brief §G): lightning in storms and rain, wildfire in dry country, flash floods along the
       // water and in the rain, earthquakes among the ruins; surprise events (brief §3) anywhere, a little rarer
       if (z.variant === 'storm') W.push(['lightning', 3])
@@ -1395,7 +1461,8 @@ export class RunSim {
       // the animal that lives here: a jaguar under the trees, an elephant herd anywhere open
       const wild: SectionKind = has(['jungle', 'forest', 'moonlit', 'fern', 'mossy', 'giantroot', 'redwood', 'mangrove', 'bamboo', 'temple', 'glow', 'pine', 'cedar', 'autumn', 'birch', 'deadwood', 'swamp', 'mist', 'flower']) ? 'jaguar' : 'stampede'
       const kind = this.gauntletQueue[0] ?? this.pickSection(W, this.runD(d0), (z.flavor === 'rail' || kit === 'railway' ? 'rail' : z.flavor === 'vines' ? 'vines' : null), wild)
-      const rows = kind === 'minecart' || kind === 'raft' || kind === 'jeep' ? 8 : kind === 'flight' || kind === 'zipline' || kind === 'glider' ? 6 : kind === 'spikeroll' || kind === 'pitfall' || kind === 'blades' || kind === 'webs' || kind === 'cointunnel' || kind === 'stampede' ? 5 : kind === 'jaguar' ? 4 : kind === 'cave' || kind === 'rail' || kind === 'temple' || kind === 'lightning' || kind === 'wildfire' || kind === 'flood' || kind === 'coinstorm' ? 4 : kind === 'camp' ? 2 : 3
+      const base = SKIN_OF[kind]?.base ?? kind
+      const rows = base === 'minecart' || base === 'raft' || base === 'jeep' ? 8 : base === 'flight' || base === 'zipline' || base === 'glider' ? 6 : kind === 'symbols' || kind === 'volcano' || kind === 'sandstorm' ? 5 : kind === 'toxicgas' ? 4 : kind === 'spikeroll' || kind === 'pitfall' || kind === 'blades' || kind === 'webs' || kind === 'cointunnel' || kind === 'stampede' ? 5 : kind === 'jaguar' ? 4 : kind === 'cave' || kind === 'rail' || kind === 'temple' || kind === 'lightning' || kind === 'wildfire' || kind === 'flood' || kind === 'coinstorm' ? 4 : kind === 'camp' ? 2 : 3
       const len = (this.rowGap(d0 + 60) + 1) * rows + 40
       // keep inside the zone (clear of its 400 m boundaries) and clear of every junction
       let from = d0
@@ -1409,11 +1476,13 @@ export class RunSim {
       }
       const gauntlet = this.gauntletQueue.length ? ++this.gauntletStep : undefined
       if (gauntlet) this.gauntletQueue.shift()
-      this.sections.push({ kind, from, to: from + len, lane: kind === 'flight' || kind === 'glider' || kind === 'minecart' || kind === 'zipline' || kind === 'raft' || kind === 'jeep' ? 1 : this.rng() < 0.5 ? 0 : 2, built: false, announced: false, gauntlet })
+      this.sections.push({ kind, from, to: from + len, lane: RIDE_SECTIONS.includes(kind) && kind !== 'rail' ? 1 : this.rng() < 0.5 ? 0 : 2, built: false, announced: false, gauntlet })
       this.sectionLog.push(kind)
       if (this.sectionLog.length > 8) this.sectionLog.shift()
       if (!gauntlet) this.planned++
-      if (kind === 'flight' || kind === 'glider') this.flown = true
+      // (only the bush plane counts: a glider or drone ride does not stand in for the run's flight)
+      if (kind === 'flight') this.flown = true
+      if (kind === 'stampede' || kind === 'jaguar') this.metWild = true
       this.nextSectionAt = this.nextChallengeAt(from + len)
     }
     if (this.sections.length > 8) this.sections = this.sections.filter((x) => x.to > this.state.d - 80)
@@ -1428,8 +1497,9 @@ export class RunSim {
     // every run's opening act (outside the signature zones, which keep their railway or vines): a first real
     // challenge, then the bush plane, then a wildlife encounter; after that the director's normal picks
     if (!signature) {
-      if (this.planned === 1 && !this.flown) return 'flight'
-      if (this.planned === 2 && !this.sectionLog.some((k) => k === 'stampede' || k === 'jaguar')) return wild
+      // (a run that starts in a signature zone gets them as soon as it leaves it)
+      if (this.planned >= 1 && !this.flown) return 'flight'
+      if (this.planned >= 2 && !this.metWild) return wild
     }
     // the plane comes back now and then wherever there is room to take off
     if (!signature && this.planned >= 5 && this.planned % 5 === 0 && W.some(([k]) => k === 'flight' || k === 'glider')) return W.some(([k]) => k === 'glider') && this.rng() < 0.5 ? 'glider' : 'flight'
@@ -1489,13 +1559,15 @@ export class RunSim {
     const gapAt = (d: number) => this.rowGap(d) + 1
     switch (sec.kind) {
       case 'glider':
+      case 'drone':
       case 'flight': {
         // a bush plane waits on the airstrip in the middle lane: run into it to take off. In the air the coins are
         // strung along the flight path, weaving across the lanes (steer to collect them). The ground lanes stay
         // runnable for anyone who skips the plane: one obstacle at a time, never both side lanes.
         const at = from + 6
         const craft = this.add(at, sec.lane, 'plane', 0)
-        if (sec.kind === 'glider') craft.glider = true
+        if (sec.kind !== 'flight') craft.glider = true
+        if (sec.kind === 'drone') craft.skin = 'drone'
         this.lastRowD = at
         const end = to - 6
         for (let d = at + 8, i = 0; d < end - 6; d += 2.4, i++) {
@@ -1703,17 +1775,25 @@ export class RunSim {
         break
       }
       case 'raft':
-      case 'jeep': {
+      case 'jeep':
+      case 'speedboat':
+      case 'atv': {
         // a vehicle run, like the mine line: a vehicle parked in every lane (run into one), then rows the rider steers
         // through. Raft: rocks in the rapids (steer), floating logs (jump the raft over), low branches (duck). Jeep:
         // boulders and acacia trunks (steer), gullies off a ramp (jump), low acacia boughs (duck). Every row leaves one
         // clean lane; rows are 1.3x the reaction gap apart because the vehicle is faster than running.
-        const raft = sec.kind === 'raft'
+        // (a speedboat races the raft's river, a quad bike rides the jeep's ground: same rules, their own vehicle)
+        const vk: ObstacleKind = sec.kind === 'speedboat' ? 'raft' : sec.kind === 'atv' ? 'jeep' : (sec.kind as ObstacleKind)
+        const skin = SKIN_OF[sec.kind]?.skin
+        const raft = vk === 'raft'
         const at = from + 5
-        for (const l of [0, 1, 2] as Lane[]) this.add(at, l, sec.kind as ObstacleKind, 0)
+        for (const l of [0, 1, 2] as Lane[]) {
+          const v = this.add(at, l, vk, 0)
+          if (skin) v.skin = skin
+        }
         this.lastRowD = at
         const sp = (d: number) => gapAt(d) * 1.3
-        const H = RIDE_BASE[sec.kind as RideKind] ?? RIDE_H
+        const H = RIDE_BASE[vk as RideKind] ?? RIDE_H
         let d = at + sp(at) + 2
         let clean = Math.floor(this.rng() * 3) as Lane
         const wall: ObstacleKind = raft ? 'rock' : this.rng() < 0.5 ? 'rock' : 'boulder'
@@ -1964,7 +2044,8 @@ export class RunSim {
         sec.to = this.lastRowD + 10
         break
       }
-      case 'zipline': {
+      case 'zipline':
+      case 'cablecar': {
         // a zipline chain over two ravines: a cable over every lane, grabbed automatically at the start gantry (no
         // way to miss it). Halfway across, boughs hang over one or two cables: change lane to switch cable. A short
         // landing ledge between the two lines; coins strung along a clear cable.
@@ -1974,6 +2055,7 @@ export class RunSim {
           for (const l of [0, 1, 2] as Lane[]) {
             const z = this.add(d, l, 'zipline', 0)
             z.swingTo = d + span + 1.5
+            if (sec.kind === 'cablecar') z.skin = 'cablecar'
             const g = this.add(d + 1 + span / 2, l, 'gap')
             g.len = span / 2
           }
@@ -1988,6 +2070,82 @@ export class RunSim {
           }
           this.lastRowD = d + span + 1.5
           d = this.lastRowD + Math.max(12, gapAt(d) * 0.8)
+        }
+        sec.to = this.lastRowD + 10
+        break
+      }
+      case 'symbols': {
+        // temple symbol doors (brief §2F memory puzzle): the card names a symbol as the section comes up; each gate is
+        // three stone doors carved with symbols, and only the door with that symbol opens (late, as the runner comes
+        // within reach). The others stay shut: a door is a wall, so the runner must read the carvings and pick the lane.
+        // Every gate shuffles the symbols, so it is a real read each time; one door is always right.
+        const sym = Math.floor(this.rng() * DOOR_SYMBOLS.length)
+        sec.symbol = sym
+        sec.gates = []
+        let d = from + 6
+        for (let i = 0; i < 4; i++, d += gapAt(d) * 1.1) {
+          const lane = Math.floor(this.rng() * 3) as Lane
+          const others = [0, 1, 2, 3].filter((k) => k !== sym).sort(() => this.rng() - 0.5)
+          const symbols = ([0, 1, 2] as Lane[]).map((l) => (l === lane ? sym : others.pop()!))
+          sec.gates.push({ d, lane, symbols })
+          for (const l of [0, 1, 2] as Lane[]) if (l !== lane) this.add(d, l, 'door')
+          this.coinLine(d - 7, lane, 4)
+          if (i === 3) this.add(d + 3, lane, 'gem', 0.9)
+          this.lastRowD = d
+        }
+        sec.to = this.lastRowD + 10
+        break
+      }
+      case 'sandstorm': {
+        // a sandstorm (brief §2G): the air thickens with sand (the view closes in), drifts pile across the trail
+        // (jump), wind-blown branches fly at head height (duck) and rocks loom out of the haze (steer)
+        let d = from + 6
+        for (let i = 0; i < 5; i++, d += gapAt(d) * 1.1) {
+          const lanes = ([0, 1, 2] as Lane[]).sort(() => this.rng() - 0.5)
+          if (i === 1 || i === 3) {
+            const k: ObstacleKind = i === 1 ? 'rubble' : 'branch'
+            for (const l of lanes) this.add(d, l, k)
+          } else {
+            this.add(d, lanes[0], 'rock')
+            this.add(d, lanes[1], this.rng() < 0.5 ? 'rubble' : 'rock')
+            this.coinLine(d - 6, lanes[2], 4)
+          }
+          this.lastRowD = d
+        }
+        sec.to = this.lastRowD + 10
+        break
+      }
+      case 'toxicgas': {
+        // toxic gas (brief §2G): low green clouds drift over one or two lanes (keep out), fallen trunks across the
+        // others (jump); never all three lanes gassed
+        let d = from + 6
+        for (let i = 0; i < 4; i++, d += gapAt(d) * 1.05) {
+          const lanes = ([0, 1, 2] as Lane[]).sort(() => this.rng() - 0.5)
+          this.add(d, lanes[0], 'gas')
+          if (i % 2 === 1) this.add(d, lanes[1], 'gas')
+          else this.add(d, lanes[1], 'log')
+          this.coinLine(d - 6, lanes[2], 4)
+          this.lastRowD = d
+        }
+        sec.to = this.lastRowD + 10
+        break
+      }
+      case 'volcano': {
+        // a volcano escape (brief §2G): lava streams across the trail (jump), burning rocks crashing down into a lane
+        // as the runner nears (steer), embers flying low (duck)
+        let d = from + 6
+        for (let i = 0; i < 5; i++, d += gapAt(d) * 1.1) {
+          const lanes = ([0, 1, 2] as Lane[]).sort(() => this.rng() - 0.5)
+          if (i % 2 === 0) {
+            for (const l of lanes) this.add(d, l, 'lava').len = 0.9
+            for (let c = -2; c <= 2; c++) this.add(d + c * 1.6, lanes[0], 'coin', 0.7 + 1.2 * (1 - (c / 2.5) ** 2))
+          } else {
+            const r = this.add(d, lanes[0], 'rock')
+            r.fall = true
+            this.add(d, lanes[1], i === 3 ? 'ember' : 'rock').fall = i !== 3
+            this.coinLine(d - 6, lanes[2], 4)
+          }
+          this.lastRowD = d
         }
         sec.to = this.lastRowD + 10
         break

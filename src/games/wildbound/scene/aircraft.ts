@@ -364,3 +364,64 @@ export function makeHangGlider(castShadow = true): THREE.Group {
   group.traverse((o) => ((o as THREE.Mesh).frustumCulled = false))
   return group
 }
+
+/**
+ * A heavy-lift cargo drone for the drone lift (glider rules): a carbon body with a gold accent band, four arms with
+ * motors and two-blade rotors (spin `rotors` about Y), translucent blur discs, landing skids, navigation lights and a
+ * harness line down to the rider. Like the hang-glider it sits above the origin; the line hangs to the rider's grip.
+ */
+export function makeDrone(castShadow = true): { group: THREE.Group; rotors: THREE.Object3D[] } {
+  const group = new THREE.Group()
+  const carbon = new THREE.MeshPhysicalMaterial({ color: '#1a1c1f', roughness: 0.35, metalness: 0.3, clearcoat: 0.8, clearcoatRoughness: 0.2 })
+  const gold = new THREE.MeshStandardMaterial({ color: '#d8b56a', metalness: 0.9, roughness: 0.3 })
+  const motorMat = new THREE.MeshStandardMaterial({ color: '#5a5e63', metalness: 0.85, roughness: 0.3 })
+  const bladeMat = new THREE.MeshStandardMaterial({ color: '#0f1012', roughness: 0.5 })
+  const blur = new THREE.MeshBasicMaterial({ color: '#2a2c2e', transparent: true, opacity: 0.18, depthWrite: false, side: THREE.DoubleSide })
+  const red = new THREE.MeshBasicMaterial({ color: '#ff2a1a', toneMapped: false })
+  const green = new THREE.MeshBasicMaterial({ color: '#2aff6a', toneMapped: false })
+  const strap = new THREE.MeshStandardMaterial({ color: '#1a1a1a', roughness: 0.9 })
+  const add = (g: THREE.BufferGeometry, m: THREE.Material, parent: THREE.Object3D = group) => {
+    const mesh = new THREE.Mesh(g, m)
+    mesh.castShadow = castShadow
+    parent.add(mesh)
+    return mesh
+  }
+  // body: a rounded pod with a gold band, a sensor dome underneath
+  add(new THREE.SphereGeometry(0.42, 24, 14).scale(1, 0.42, 1.35), carbon)
+  add(new THREE.TorusGeometry(0.43, 0.025, 8, 32).rotateX(Math.PI / 2).scale(1, 1, 1.35), gold)
+  add(new THREE.SphereGeometry(0.12, 16, 10).translate(0, -0.16, 0.32), new THREE.MeshPhysicalMaterial({ color: '#0a0f14', roughness: 0.05, clearcoat: 1 }))
+  const rotors: THREE.Object3D[] = []
+  for (const [i, [ax, az]] of ([[1, 1], [-1, 1], [1, -1], [-1, -1]] as const).entries()) {
+    const tip = new THREE.Vector3(ax * 1.05, 0.06, az * 1.05)
+    const len = Math.hypot(tip.x, tip.z)
+    const arm = new THREE.CylinderGeometry(0.045, 0.06, len, 10).rotateZ(Math.PI / 2)
+    arm.rotateY(-Math.atan2(tip.z, tip.x))
+    arm.translate(tip.x / 2, 0.04, tip.z / 2)
+    add(arm, carbon)
+    add(new THREE.CylinderGeometry(0.1, 0.11, 0.16, 16).translate(tip.x, 0.1, tip.z), motorMat)
+    const rotor = new THREE.Group()
+    rotor.position.set(tip.x, 0.2, tip.z)
+    for (const d of [0, Math.PI]) {
+      const b = new THREE.BoxGeometry(0.62, 0.012, 0.07)
+      b.translate(0.31, 0, 0)
+      b.rotateY(d)
+      add(b, bladeMat, rotor)
+    }
+    add(new THREE.CircleGeometry(0.64, 32).rotateX(-Math.PI / 2), blur, rotor)
+    group.add(rotor)
+    rotors.push(rotor)
+    // navigation lights: red to port, green to starboard
+    add(new THREE.SphereGeometry(0.035, 8, 6).translate(tip.x, 0.02, tip.z), ax > 0 ? red : green)
+    void i
+  }
+  // landing skids
+  for (const sx of [-0.32, 0.32]) {
+    add(new THREE.CylinderGeometry(0.02, 0.02, 0.9, 8).rotateX(Math.PI / 2).translate(sx, -0.42, 0), carbon)
+    for (const sz of [-0.28, 0.28]) add(new THREE.CylinderGeometry(0.015, 0.015, 0.3, 6).translate(sx, -0.28, sz), carbon)
+  }
+  // the harness line down to the rider, with a grab bar
+  add(new THREE.CylinderGeometry(0.018, 0.018, 1.55, 6).translate(0, -1.0, 0.05), strap)
+  add(new THREE.CylinderGeometry(0.03, 0.03, 0.7, 8).rotateZ(Math.PI / 2).translate(0, -1.75, 0.05), motorMat)
+  group.traverse((o) => ((o as THREE.Mesh).frustumCulled = false))
+  return { group, rotors }
+}

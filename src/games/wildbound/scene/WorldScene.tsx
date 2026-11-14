@@ -17,8 +17,8 @@ import { onSimEvent, run, showcase, tickRun } from './runController'
 import { CORNER_LEN, CORNER_R, TrackPath } from './trackPath'
 import { BRANCH_Y, Z_MAX, bendObject, bendPoint, branchGap, patchChunks, updateBend } from './bend'
 import { BIOME_NAME } from '../engine/content'
-import { makeBushPlane, makeHangGlider, type BushPlane } from './aircraft'
-import { pickupTextures } from './iconTextures'
+import { makeBushPlane, makeDrone, makeHangGlider, type BushPlane } from './aircraft'
+import { pickupTextures, symbolTextures } from './iconTextures'
 
 /*
  * The Deep Forest Run. Everything sits in "focus space": the runner stays at z = 0 and the world slides
@@ -464,7 +464,7 @@ function surfaceAt(d: number, b: BiomeId = biomeId(d)): Surface {
 /** inside a raft section's river (from just past the parked rafts to just before the take-out) */
 function raftWater(rd: number) {
   const sec = view.showcase ? null : run.sim?.sectionAt(rd)
-  return !!sec && sec.kind === 'raft' && sec.built && rd > sec.from + 7 && rd < sec.to - 6
+  return !!sec && (sec.kind === 'raft' || sec.kind === 'speedboat') && sec.built && rd > sec.from + 7 && rd < sec.to - 6
 }
 
 const broken = new Map<number, number>()
@@ -494,6 +494,30 @@ function itemPlacements(it: Item, z: number, now: number, out: Placement[]) {
   }
   const s = (v: [number, number, number]): [number, number, number] => [v[0] * fade, v[1] * fade, v[2] * fade]
   const X = x + off
+  if (it.kind === 'fragment') {
+    // a treasure map fragment: a rolled parchment turning slowly over a gold ring, bobbing a little
+    const t = now / 1000
+    out.push({ prop: 'scroll', x, y: 0.75 + Math.sin(t * 2.4 + r * 6) * 0.08, z, rotY: t * 1.6, rotZ: 0.35, scale: [0.95, 0.3, 0.3] })
+    out.push({ prop: 'glowRing', x, y: 0.04, z, rotY: 0, scale: [1.0, 1, 1.0] })
+    return
+  }
+  if (it.kind === 'door') return // drawn with its gate (symbol doors dressing)
+  if (it.kind === 'gas') {
+    // a toxic cloud hanging over the lane, slowly turning and breathing
+    const t = now / 1000
+    for (let k = 0; k < 2; k++) out.push({ prop: 'gasCloud', x: x + (k - 0.5) * 0.4, y: 0.05 + k * 0.5, z: z + (k - 0.5) * 0.8, rotY: t * (0.3 + k * 0.2) + r * 6, scale: [LANE_W * (0.95 - k * 0.2) * (1 + 0.05 * Math.sin(t * 1.7 + k)), 1.7 - k * 0.3, 2.0 - k * 0.4] })
+    return
+  }
+  if (it.kind === 'lava') {
+    // a lava stream across the lane: molten rock inside a dark crust, heat shimmer of embers above it
+    out.push({ prop: 'lavaPool', x, y: 0.02, z, rotY: (r - 0.5) * 0.2, scale: [LANE_W * 1.08, 0.04, it.len * 2.3] })
+    const t = now / 1000
+    for (let k = 0; k < 2; k++) {
+      const u = (t * 0.7 + k * 0.5 + r) % 1
+      out.push({ prop: 'flame', x: x + (k - 0.5) * 0.9, y: 0, z: z + (k - 0.5) * 0.6, rotY: 0, scale: [0.35, 0.5 + 0.35 * Math.sin(u * Math.PI), 0.35] })
+    }
+    return
+  }
   if (it.kind === 'strike') {
     // lightning (brief §G): a cold glowing ring pulses on the lane it will strike; then a bolt, and the lane burns
     if (it.h === 0) {
@@ -762,6 +786,18 @@ function itemPlacements(it: Item, z: number, now: number, out: Placement[]) {
       const lean = riding ? THREE.MathUtils.clamp((laneX(st!.lane) - st!.x) * (raft ? 0.09 : 0.05), -0.16, 0.16) : 0
       const bob = raft ? Math.sin(now / 420 + it.id) * 0.04 : 0
       const lifted = riding ? Math.max(0, st!.y - base) : 0
+      if (it.skin === 'speedboat') {
+        // a speedboat: sits low with its bow up when running, banks hard into a steer, slaps the chop
+        const plane = riding ? 0.09 : 0.02
+        out.push({ prop: 'speedboat', x: riding ? st!.x : x, y: -0.42 + bob * 0.6 + lifted, z: z + 0.55, rotY: 0, rotX: -plane + Math.sin(now / 260 + it.id) * (riding ? 0.02 : 0.01), rotZ: lean * 1.4, scale: [1.5, 1.0, 3.05] })
+        break
+      }
+      if (it.skin === 'atv') {
+        // a quad bike: leans into the steer, noses up off a jump, buzzes over the bumps
+        const buzz = riding ? Math.sin(now / 45 + it.id) * 0.012 : 0
+        out.push({ prop: 'atv', x: riding ? st!.x : x, y: buzz + lifted * 0.98 - 0.1, z, rotY: 0, rotX: -lifted * 0.1, rotZ: lean * 1.3, scale: [1.42, 1.3, 2.3] })
+        break
+      }
       out.push({
         prop: it.kind,
         x: riding ? st!.x : x,
@@ -799,9 +835,13 @@ function itemPlacements(it: Item, z: number, now: number, out: Placement[]) {
       // gantries (timber posts at the trail edges and a crossbeam)
       const L = (it.swingTo ?? it.d + 30) - it.d
       const dy = -ZIP_DROP
-      out.push({ prop: 'rail', x, y: ZIP_TOP, z, rotY: 0, rotX: Math.atan2(L, dy), scale: [0.075, Math.hypot(L, dy), 0.075] })
-      // the pulley block waiting at the start of each cable
-      if (!it.passed) out.push({ prop: 'rail', x, y: ZIP_TOP - 0.24, z: z + 0.25, rotY: 0, scale: [0.1, 0.22, 0.16] })
+      const cab = it.skin === 'cablecar'
+      out.push({ prop: 'rail', x, y: ZIP_TOP, z, rotY: 0, rotX: Math.atan2(L, dy), scale: [cab ? 0.11 : 0.075, Math.hypot(L, dy), cab ? 0.11 : 0.075] })
+      if (cab) {
+        // a cable car line: a cabin waits at the station on every cable (the rider's own cabin is drawn with the rider)
+        if (!it.passed) out.push({ prop: 'gondola', x, y: ZIP_TOP - 2.08, z: z + 0.3, rotY: 0, scale: [1.62, 2.18, 1.62] })
+      } else if (!it.passed) out.push({ prop: 'rail', x, y: ZIP_TOP - 0.24, z: z + 0.25, rotY: 0, scale: [0.1, 0.22, 0.16] })
+      // (the pulley block above waits at the start of each zipline cable)
       if (it.lane === 1)
         for (const [gz, gh] of [[z - 0.3, ZIP_TOP], [z + L + 0.3, ZIP_TOP - ZIP_DROP]] as const) {
           for (const e of [-1, 1]) out.push({ prop: 'post', x: e * (PATH_HALF + 0.45), y: -0.4, z: gz, rotY: 0, scale: [0.34, gh + 0.95, 0.34] })
@@ -1048,6 +1088,20 @@ function makeSource() {
           push({ prop: 'mossrocks', x: -side * (PATH_HALF + 1.6), y: -0.1, z: z + 3, rotY: k, scale: [1.1, 0.3, 1.1] })
         }
       }
+      if (sec.kind === 'symbols' && sec.gates) {
+        // temple symbol doors: a stone gate across the trail per row, three doors in it; the door bearing the section's
+        // symbol grinds up into the lintel as the runner comes within reach, the others stay shut
+        for (const g of sec.gates) {
+          const z = g.d - d
+          if (z < -view.behind || z > view.ahead) continue
+          for (const e of [-1.5, -0.5, 0.5, 1.5]) push({ prop: 'block', x: e * LANE_W, y: 0, z, rotY: 0, scale: [0.42, 3.5, 0.75] })
+          push({ prop: 'block', x: 0, y: 3.5, z, rotY: 0, scale: [LANE_W * 3 + 0.9, 0.85, 0.85] })
+          for (const l of [0, 1, 2]) {
+            const open = l === g.lane ? THREE.MathUtils.clamp((30 - z) / 9, 0, 1) : 0
+            push({ prop: 'block', x: laneX(l), y: open * 2.6, z: z + 0.05, rotY: 0, scale: [LANE_W - 0.44, 3.45, 0.32] })
+          }
+        }
+      }
       if (sec.kind === 'temple') {
         // carved stone pillars line the corridor, every other pair carrying a lintel
         for (let k = Math.floor(sec.from / SEG); k * SEG < sec.to; k++) {
@@ -1090,10 +1144,17 @@ function makeSource() {
       const now = performance.now()
       for (const it of sim.items) {
         // obstacles, plus the vine and zipline markers (their vines, cables and gantries)
-        if (it.gone || (!isObstacle(it.kind) && it.kind !== 'vine' && it.kind !== 'zipline' && it.kind !== 'chest' && it.kind !== 'crate')) continue
+        if (it.gone || (!isObstacle(it.kind) && it.kind !== 'vine' && it.kind !== 'zipline' && it.kind !== 'chest' && it.kind !== 'crate' && it.kind !== 'fragment')) continue
         const z = it.d - d
         if (z < -BEHIND || z > AHEAD) continue
         itemPlacements(it, z, now, scratch)
+      }
+      // riding a cable car: the cabin round the rider, its floor under the paws, swaying a little and leaning with a
+      // cable change (the hanger reaches up to the sagging cable)
+      const sw = sim.state.swing
+      if (sw?.cab && sim.state.alive) {
+        const st = sim.state
+        scratch.push({ prop: 'gondola', x: st.x, y: st.y - 0.06, z: 0, rotY: 0, rotX: Math.sin(now / 700) * 0.03, rotZ: THREE.MathUtils.clamp((laneX(st.lane) - st.x) * 0.08, -0.15, 0.15), scale: [1.62, 2.18, 1.62] })
       }
       for (const p of scratch) push(p)
       scratch.length = 0
@@ -1642,7 +1703,7 @@ function Runner({ animalId }: { animalId: AnimalId }) {
     }
     if (rope.current) {
       const sw = s?.swing
-      rope.current.visible = !!sw
+      rope.current.visible = !!sw && !sw.cab
       if (sw && s) {
         // from the paws' grip up to the anchor high over the middle of the ravine
         // a zipline handle hangs straight up to the cable overhead
@@ -1931,6 +1992,13 @@ const VARIANT_LIGHT: Record<Variant, VariantMod> = {
 }
 /** 0..1 inside a cave (eased) */
 const caveK = { v: 0 }
+/** weather challenges in the air: how far the sandstorm / volcano smoke / toxic haze has rolled in (0..1 each) */
+const atmoK = { sand: 0, smoke: 0, gas: 0 }
+const ATMO = {
+  sand: { color: '#c7a26c', near: 2, far: 44 },
+  smoke: { color: '#4a2418', near: 8, far: 80 },
+  gas: { color: '#6f8f3a', near: 7, far: 72 },
+}
 /** a lightning flash in a storm: 0..1, decays fast */
 const storm = { flash: 0, next: 4 }
 
@@ -2074,6 +2142,11 @@ function Atmosphere({ quality }: { quality: Quality }) {
     const cave = !view.showcase && ['cave', 'cointunnel'].includes(run.sim?.sectionAt(d + 6)?.kind ?? '')
     caveK.v += ((cave ? 1 : 0) - caveK.v) * Math.min(1, dt * 2)
     const ck = caveK.v
+    // a sandstorm, volcano or gas cloud rolls in as its section comes up and clears after it
+    const wk = view.showcase ? '' : (run.sim?.sections.find((x) => x.from - d < 40 && x.to - d > -10)?.kind ?? '')
+    atmoK.sand += ((wk === 'sandstorm' ? 1 : 0) - atmoK.sand) * Math.min(1, dt * 1.2)
+    atmoK.smoke += ((wk === 'volcano' ? 1 : 0) - atmoK.smoke) * Math.min(1, dt * 1.2)
+    atmoK.gas += ((wk === 'toxicgas' ? 1 : 0) - atmoK.gas) * Math.min(1, dt * 1.2)
     const k = Math.min(1, dt * 1.2)
     // storms: a lightning flash every few seconds
     if (variant === 'storm') {
@@ -2092,6 +2165,14 @@ function Atmosphere({ quality }: { quality: Quality }) {
     fog.near += (Math.max(14, M.fogNear * V.fogK) * (1 - ck * 0.6) - fog.near) * k
     fog.far += (Math.max(85, M.fogFar * V.fogK) * (1 - ck * 0.55) - fog.far) * k
     if (ck > 0.01) fog.color.lerp(fogB.set('#2a2420'), ck * 0.4)
+    for (const key of ['sand', 'smoke', 'gas'] as const) {
+      const w = atmoK[key]
+      if (w < 0.005) continue
+      const A = ATMO[key]
+      fog.color.lerp(fogB.set(A.color), w * 0.85)
+      fog.near += (A.near - fog.near) * w
+      fog.far += (A.far - fog.far) * w
+    }
     gl.toneMappingExposure += (M.exposure + V.exposure - gl.toneMappingExposure) * k
     scene.environmentIntensity += (M.env * (0.5 + 0.5 * V.sunK) - scene.environmentIntensity) * k
     if (sun.current) {
@@ -2836,6 +2917,12 @@ function World() {
       <PropSet kit={kits.minecart} prop="minecart" capacity={6} source={source} shadows />
       <PropSet kit={kits.raft} prop="raft" capacity={6} source={source} shadows />
       <PropSet kit={kits.jeep} prop="jeep" capacity={6} source={source} shadows />
+      <PropSet kit={kits.speedboat} prop="speedboat" capacity={6} source={source} shadows />
+      <PropSet kit={kits.atv} prop="atv" capacity={6} source={source} shadows />
+      <PropSet kit={kits.gondola} prop="gondola" capacity={8} source={source} shadows />
+      <PropSet kit={kits.gasCloud} prop="gasCloud" capacity={24} source={source} receive={false} />
+      <PropSet kit={kits.lavaPool} prop="lavaPool" capacity={24} source={source} receive={false} />
+      <PropSet kit={kits.scroll} prop="scroll" capacity={4} source={source} />
       <PropSet kit={kits.chevron} prop="chevron" capacity={8} source={source} shadows />
       <PropSet kit={kits.shadowDisc} prop="shadowDisc" capacity={40} source={source} receive={false} />
       <PropSet kit={kits.waterQuad} prop="waterQuad" capacity={200} source={source} receive={false} />
@@ -3107,13 +3194,81 @@ function GroundMist() {
  * runner on its wing: it pitches up on the climb, banks into lane changes, settles on the glide in, and after landing
  * its rider it climbs away. Up to two at once (a pool).
  */
+/** The carved, softly glowing symbol on every temple door (symbol doors): rides up with the door that opens. */
+function DoorSymbols() {
+  const tex = useMemo(() => symbolTextures(), [])
+  const pool = useMemo(
+    () =>
+      Array.from({ length: 12 }, () => {
+        const m = new THREE.Mesh(new THREE.CircleGeometry(0.42, 40), new THREE.MeshBasicMaterial({ map: tex[0], transparent: true, toneMapped: false, color: '#f6e6c0' }))
+        m.rotation.y = Math.PI
+        m.visible = false
+        return m
+      }),
+    [tex],
+  )
+  useFrame(() => {
+    const sim = run.sim
+    let n = 0
+    if (sim)
+      for (const sec of sim.sections) {
+        if (sec.kind !== 'symbols' || !sec.gates) continue
+        for (const g of sec.gates) {
+          const z = g.d - view.d
+          if (z < -6 || z > AHEAD) continue
+          for (const l of [0, 1, 2]) {
+            const m = pool[n++]
+            if (!m) break
+            const open = l === g.lane ? THREE.MathUtils.clamp((30 - z) / 9, 0, 1) : 0
+            ;(m.material as THREE.MeshBasicMaterial).map = tex[g.symbols[l]]
+            m.position.set(laneX(l), 1.85 + open * 2.6, z - 0.14)
+            m.visible = true
+          }
+        }
+      }
+    for (; n < pool.length; n++) pool[n].visible = false
+  })
+  return (
+    <>
+      {pool.map((m, i) => (
+        <primitive key={i} object={m} />
+      ))}
+    </>
+  )
+}
+
 function Gliders() {
   const pool = useMemo(() => [makeHangGlider(), makeHangGlider()], [])
+  // the drone lift flies the same line with a cargo drone instead of a wing
+  const drones = useMemo(() => [makeDrone(), makeDrone()], [])
   const st = useMemo(() => new Map<number, { x: number; h: number; roll: number; pitch: number }>(), [])
   useFrame((_, dtRaw) => {
     const dt = Math.min(dtRaw, 0.05)
     const sim = run.sim
-    const gl = sim ? sim.items.filter((it) => it.kind === 'plane' && it.glider && !it.gone && it.d - view.d > -30 && it.d - view.d < AHEAD) : []
+    const all = sim ? sim.items.filter((it) => it.kind === 'plane' && it.glider && !it.gone && it.d - view.d > -30 && it.d - view.d < AHEAD) : []
+    const gl = all.filter((it) => it.skin !== 'drone')
+    const dr = all.filter((it) => it.skin === 'drone')
+    drones.forEach((dn, i) => {
+      const it = dr[i]
+      dn.group.visible = !!it
+      if (!it) return
+      let k = st.get(it.id)
+      const riding = sim!.state.ride?.item === it.id
+      const tx = riding ? sim!.state.x : laneX(it.lane)
+      if (!k) {
+        k = { x: tx, h: it.h, roll: 0, pitch: 0 }
+        st.set(it.id, k)
+      }
+      const vx = (tx - k.x) / Math.max(dt, 1e-3)
+      k.x += (tx - k.x) * Math.min(1, dt * 10)
+      k.h = it.h
+      // a drone banks gently into a steer and tips its nose down to fly forward; parked, it idles on the pad
+      k.roll += (THREE.MathUtils.clamp(-vx * 0.05, -0.3, 0.3) - k.roll) * Math.min(1, dt * 5)
+      const flying = riding || it.h > 0.2
+      dn.group.position.set(k.x, it.h + PLANE_DECK + 1.95 + (flying ? Math.sin(performance.now() / 400) * 0.05 : -1.2), it.d - view.d)
+      dn.group.rotation.set(flying ? 0.12 : 0, 0, k.roll)
+      for (const [j, r] of dn.rotors.entries()) r.rotation.y += dt * (flying ? 60 : 18) * (j % 3 === 0 ? 1 : -1)
+    })
     pool.forEach((g, i) => {
       const it = gl[i]
       g.visible = !!it
@@ -3141,6 +3296,9 @@ function Gliders() {
     <>
       {pool.map((g, i) => (
         <primitive key={i} object={g} />
+      ))}
+      {drones.map((d, i) => (
+        <primitive key={`d${i}`} object={d.group} />
       ))}
     </>
   )
@@ -3272,6 +3430,7 @@ export default function WorldScene({ animalId, mode = 'run', quality = 'high' }:
         {mode === 'run' && quality !== 'low' && <GroundMist />}
         {mode === 'run' && <Planes />}
         {mode === 'run' && <Gliders />}
+        {mode === 'run' && <DoorSymbols />}
         {mode === 'run' && <Wildlife />}
         {mode !== 'preview' && <Overflights mode={mode} />}
       </Suspense>
