@@ -425,3 +425,75 @@ export function makeDrone(castShadow = true): { group: THREE.Group; rotors: THRE
   group.traverse((o) => ((o as THREE.Mesh).frustumCulled = false))
   return { group, rotors }
 }
+
+/**
+ * A utility helicopter for the helipad (flight rules): a glazed nose and cabin in oxblood and warm white, an open
+ * cargo deck the runner stands on (at PLANE_DECK, like the plane's wing), a high tail boom over the deck so the camera
+ * keeps the runner and the trail in view, a four-blade main rotor (spin `rotor` about Y), a tail rotor (spin `tail`
+ * about X), skids. Nose to +Z, skids on y = 0.
+ */
+/** how far above the rider's grip the helicopter's deck hovers (the rider hangs below on the rescue line) */
+export const HELI_HANG = 2.7
+export function makeHelicopter(castShadow = true): { group: THREE.Group; rotor: THREE.Object3D; tail: THREE.Object3D } {
+  const D = 1.45
+  const group = new THREE.Group()
+  const red = new THREE.MeshPhysicalMaterial({ color: '#8a1c16', roughness: 0.3, clearcoat: 0.8, clearcoatRoughness: 0.15 })
+  const white = new THREE.MeshPhysicalMaterial({ color: '#efebe2', roughness: 0.32, clearcoat: 0.7, clearcoatRoughness: 0.18 })
+  const glass = new THREE.MeshPhysicalMaterial({ color: '#1b2328', roughness: 0.05, metalness: 0.2, clearcoat: 1, transparent: true, opacity: 0.8 })
+  const metal = new THREE.MeshStandardMaterial({ color: '#6c7076', metalness: 0.85, roughness: 0.32 })
+  const dark = new THREE.MeshStandardMaterial({ color: '#1a1b1d', roughness: 0.6 })
+  const blur = new THREE.MeshBasicMaterial({ color: '#2a2c2e', transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide })
+  const add = (g: THREE.BufferGeometry, m: THREE.Material, parent: THREE.Object3D = group) => {
+    const mesh = new THREE.Mesh(g, m)
+    mesh.castShadow = castShadow
+    parent.add(mesh)
+    return mesh
+  }
+  // nose and cockpit ahead of the deck, a red body with a white belly stripe, glazed windscreen
+  add(new THREE.SphereGeometry(0.85, 28, 18).scale(0.95, 0.8, 1.35).translate(0, D + 0.55, 1.75), red)
+  add(new THREE.SphereGeometry(0.86, 28, 18, 0, Math.PI * 2, Math.PI * 0.62, Math.PI * 0.38).scale(0.95, 0.8, 1.35).translate(0, D + 0.55, 1.75), white)
+  add(new THREE.SphereGeometry(0.7, 24, 14, -Math.PI * 0.45, Math.PI * 0.9, Math.PI * 0.18, Math.PI * 0.32).scale(0.95, 0.85, 1.3).translate(0, D + 0.62, 2.05), glass)
+  // the open cargo deck and its low rails
+  add(new THREE.BoxGeometry(1.7, 0.12, 2.2).translate(0, D - 0.06, -0.1), dark)
+  for (const sx of [-0.84, 0.84]) add(new THREE.BoxGeometry(0.05, 0.05, 2.1).translate(sx, D + 0.45, -0.1), metal)
+  for (const sx of [-0.84, 0.84]) for (const sz of [-1.1, 0.9]) add(new THREE.CylinderGeometry(0.025, 0.025, 0.5, 6).translate(sx, D + 0.22, sz), metal)
+  // the transmission housing and mast behind the cockpit, the tail boom high over the deck
+  add(new THREE.BoxGeometry(0.9, 0.55, 1.0).translate(0, D + 1.55, 0.7), red)
+  add(new THREE.CylinderGeometry(0.07, 0.07, 0.6, 10).translate(0, D + 2.05, 0.6), metal)
+  const boom = new THREE.CylinderGeometry(0.16, 0.28, 4.4, 14).rotateX(Math.PI / 2).translate(0, D + 1.7, -1.9)
+  add(boom, red)
+  add(new THREE.BoxGeometry(0.06, 0.95, 0.7).translate(0, D + 2.05, -4.05), red)
+  add(new THREE.BoxGeometry(1.3, 0.05, 0.38).translate(0, D + 1.7, -3.7), white)
+  // main rotor: four long blades and a blur disc
+  const rotor = new THREE.Group()
+  rotor.position.set(0, D + 2.38, 0.6)
+  for (let i = 0; i < 4; i++) {
+    const b = new THREE.BoxGeometry(4.2, 0.03, 0.22)
+    b.translate(2.1, 0, 0)
+    b.rotateY((i * Math.PI) / 2)
+    add(b, dark, rotor)
+  }
+  add(new THREE.CylinderGeometry(0.16, 0.16, 0.14, 12), metal, rotor)
+  add(new THREE.CircleGeometry(4.2, 48).rotateX(-Math.PI / 2), blur, rotor)
+  group.add(rotor)
+  // tail rotor on the left of the fin
+  const tail = new THREE.Group()
+  tail.position.set(0.1, D + 2.15, -4.1)
+  for (const a of [0, Math.PI / 2]) {
+    const b = new THREE.BoxGeometry(0.03, 0.9, 0.09)
+    b.rotateX(a)
+    add(b, dark, tail)
+  }
+  group.add(tail)
+  // the rescue line: from the open cabin door down to the rider's grip (the helicopter hovers HELI_HANG above the
+  // rider), with a grab bar at the bottom
+  add(new THREE.CylinderGeometry(0.02, 0.02, HELI_HANG - 0.2, 6).translate(0.15, D - 0.1 - (HELI_HANG - 0.2) / 2, 0.1), dark)
+  add(new THREE.CylinderGeometry(0.03, 0.03, 0.7, 8).rotateZ(Math.PI / 2).translate(0.15, D - HELI_HANG + 0.1, 0.1), metal)
+  // skids on struts
+  for (const sx of [-0.78, 0.78]) {
+    add(new THREE.CylinderGeometry(0.045, 0.045, 3.0, 10).rotateX(Math.PI / 2).translate(sx, 0.06, 0.4), metal)
+    for (const sz of [-0.5, 1.3]) add(new THREE.CylinderGeometry(0.035, 0.035, D - 0.1, 8).translate(sx * 0.9, (D - 0.1) / 2 + 0.06, sz), metal)
+  }
+  group.traverse((o) => ((o as THREE.Mesh).frustumCulled = false))
+  return { group, rotor, tail }
+}

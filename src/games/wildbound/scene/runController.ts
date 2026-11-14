@@ -33,6 +33,8 @@ export const run = {
 
 /** Menu scenes (home lineup, character preview): ground speed and the celebration after Select. */
 export const showcase = { speed: 6.5, target: 6.5, victory: false }
+/** photo mode (brief §3): from the pause menu, an orbit camera round the runner and a capture request counter */
+export const photo = { on: false, yaw: 0.7, pitch: 0.28, dist: 5.5, shot: 0 }
 
 export function setPhase(p: RunPhase) {
   if (run.phase === p) return

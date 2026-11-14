@@ -396,7 +396,7 @@ export function biomeAt(d: number): { biome: BiomeDef; index: number; variant: V
 
 // ---------------------------------------------------------------- obstacles & pickups
 
-export type ObstacleKind = 'log' | 'roots' | 'trap' | 'rock' | 'ruin' | 'branch' | 'barrier' | 'gap' | 'boulder' | 'trolley' | 'stream' | 'rubble' | 'stalactite' | 'plane' | 'quicksand' | 'darts' | 'swinglog' | 'minecart' | 'buffer' | 'beam' | 'bough' | 'raft' | 'jeep' | 'strike' | 'fire' | 'ember' | 'roller' | 'blade' | 'swarm' | 'web' | 'toxic' | 'elephant' | 'pounce' | 'door' | 'gas' | 'lava'
+export type ObstacleKind = 'log' | 'roots' | 'trap' | 'rock' | 'ruin' | 'branch' | 'barrier' | 'gap' | 'boulder' | 'trolley' | 'stream' | 'rubble' | 'stalactite' | 'plane' | 'quicksand' | 'darts' | 'swinglog' | 'minecart' | 'buffer' | 'beam' | 'bough' | 'raft' | 'jeep' | 'strike' | 'fire' | 'ember' | 'roller' | 'blade' | 'swarm' | 'web' | 'toxic' | 'elephant' | 'pounce' | 'door' | 'gas' | 'lava' | 'plate' | 'kelp'
 export type PickupKind = 'coin' | 'gem' | 'token' | 'magnet' | 'shield' | 'speed' | 'superjump' | 'megajump' | 'boost' | 'chest' | 'crate' | 'fragment'
 /** a hanging vine at the lip of a ravine: jump into it to swing across */
 export type MarkerKind = 'vine' | 'zipline'
@@ -455,9 +455,13 @@ export const ESCAPES: Record<ObstacleKind, Escape[]> = {
   door: ['lane'],
   gas: ['lane'],
   lava: ['jump'],
+  // a temple pressure plate (jump it or keep off it: it fires the trap) and a curtain of river weed underwater (dive
+  // under it)
+  plate: ['jump', 'lane'],
+  kelp: ['low'],
 }
 /** Obstacles that strength abilities can break. Gaps never break. */
-export const BREAKABLE: Record<ObstacleKind, boolean> = { log: true, roots: true, trap: true, rock: true, ruin: true, branch: true, barrier: true, gap: false, boulder: true, trolley: false, stream: false, rubble: true, stalactite: true, plane: false, quicksand: false, darts: false, swinglog: true, minecart: false, buffer: false, beam: true, bough: true, raft: false, jeep: false, strike: false, fire: false, ember: true, roller: true, blade: false, swarm: false, web: true, toxic: false, elephant: false, pounce: false, door: false, gas: false, lava: false }
+export const BREAKABLE: Record<ObstacleKind, boolean> = { log: true, roots: true, trap: true, rock: true, ruin: true, branch: true, barrier: true, gap: false, boulder: true, trolley: false, stream: false, rubble: true, stalactite: true, plane: false, quicksand: false, darts: false, swinglog: true, minecart: false, buffer: false, beam: true, bough: true, raft: false, jeep: false, strike: false, fire: false, ember: true, roller: true, blade: false, swarm: false, web: true, toxic: false, elephant: false, pounce: false, door: false, gas: false, lava: false, plate: false, kelp: true }
 export const isObstacle = (k: ItemKind): k is ObstacleKind => k in ESCAPES
 
 export const OBSTACLES_BY_BIOME: Record<BiomeId, ObstacleKind[]> = {
@@ -524,7 +528,7 @@ export const POWER_KINDS: PowerUpKind[] = POWERUPS.map((p) => p.kind)
 export const isPowerUp = (k: string): k is PowerUpKind => (POWER_KINDS as string[]).includes(k)
 
 /** Challenge sections the generator drops into zones that suit them. */
-export type SectionKind = 'rail' | 'river' | 'bridge' | 'rockslide' | 'cave' | 'vines' | 'flight' | 'treefall' | 'quicksand' | 'temple' | 'swinglog' | 'minecart' | 'zipline' | 'raft' | 'jeep' | 'lightning' | 'wildfire' | 'flood' | 'quake' | 'coinstorm' | 'camp' | 'supply' | 'spikeroll' | 'pitfall' | 'blades' | 'swarm' | 'webs' | 'toxic' | 'cointunnel' | 'glider' | 'stampede' | 'jaguar' | 'speedboat' | 'atv' | 'cablecar' | 'drone' | 'symbols' | 'sandstorm' | 'toxicgas' | 'volcano'
+export type SectionKind = 'rail' | 'river' | 'bridge' | 'rockslide' | 'cave' | 'vines' | 'flight' | 'treefall' | 'quicksand' | 'temple' | 'swinglog' | 'minecart' | 'zipline' | 'raft' | 'jeep' | 'lightning' | 'wildfire' | 'flood' | 'quake' | 'coinstorm' | 'camp' | 'supply' | 'spikeroll' | 'pitfall' | 'blades' | 'swarm' | 'webs' | 'toxic' | 'cointunnel' | 'glider' | 'stampede' | 'jaguar' | 'speedboat' | 'atv' | 'cablecar' | 'drone' | 'symbols' | 'sandstorm' | 'toxicgas' | 'volcano' | 'truck' | 'helicopter' | 'plates' | 'climb' | 'wallrun' | 'swim' | 'rival' | 'guide'
 export const SECTION_TEXT: Record<SectionKind, { big: string; small: string }> = {
   rail: { big: 'Railway ahead!', small: 'Jump onto the trolley and ride it' },
   river: { big: 'River crossing!', small: 'Hop the stepping stones' },
@@ -566,6 +570,14 @@ export const SECTION_TEXT: Record<SectionKind, { big: string; small: string }> =
   sandstorm: { big: 'Sandstorm!', small: 'Low visibility – jump the drifts, duck the debris' },
   toxicgas: { big: 'Toxic gas!', small: 'Keep out of the green clouds' },
   volcano: { big: 'Volcano escape!', small: 'Jump the lava, dodge the falling rocks' },
+  truck: { big: 'Cargo truck!', small: 'Climb aboard – steer round the rocks, jump the washouts' },
+  helicopter: { big: 'Helipad!', small: 'Run into the helicopter – steer through the sky coins' },
+  plates: { big: 'Pressure plates!', small: 'Jump or avoid the glowing plates – watch for the rolling stone' },
+  climb: { big: 'Cliff climb!', small: 'Grab the ledge – change lane to dodge the falling rocks' },
+  wallrun: { big: 'Wall run!', small: 'Run the canyon walls – change lane to dodge the branches' },
+  swim: { big: 'Dive!', small: 'Swim the channel – slide under the weed, steer round the rocks' },
+  rival: { big: 'Rival explorer!', small: 'Race the rival – grab the coins to pull ahead' },
+  guide: { big: 'A guide appears', small: 'Follow the glowing bird to its treasure' },
 }
 
 // ---------------------------------------------------------------- pacing director
@@ -601,9 +613,10 @@ export const SECTION_MIN_TIER: Record<SectionKind, number> = {
   jaguar: 1,
   speedboat: 2, atv: 2, cablecar: 2, drone: 1,
   symbols: 2, sandstorm: 2, toxicgas: 2, volcano: 3,
+  truck: 2, helicopter: 1, plates: 2, climb: 2, wallrun: 2, swim: 2, rival: 1, guide: 1,
 }
 /** surprise events: reward stretches announced as surprises rather than challenges */
-export const SURPRISE_SECTIONS: SectionKind[] = ['coinstorm', 'camp', 'supply']
+export const SURPRISE_SECTIONS: SectionKind[] = ['coinstorm', 'camp', 'supply', 'guide']
 /** a challenge is not picked again until this many others have run (zone signature sections are exempt) */
 export const SECTION_NO_REPEAT = 3
 export const powerUp = (k: PowerUpKind) => POWERUPS.find((p) => p.kind === k)!

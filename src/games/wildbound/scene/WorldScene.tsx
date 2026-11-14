@@ -10,14 +10,14 @@ import { useSave, type Quality } from '../state/progress'
 import type { Racer } from '../engine/race'
 import * as THREE from 'three'
 import { BIOMES, KIT_BASE, POWER_KINDS, ZONE_LEN, biomeAt, isObstacle, isPowerUp, type AnimalId, type BiomeId, type Flavor, type PowerUpKind, type Variant } from '../engine/content'
-import { LANE_W, PLANE_DECK, RIDE_H, ROUTE_BONUS_TEXT, ROUTE_RISK_TEXT, ZIP_DROP, ZIP_TOP, laneX, zipAlt, routeForLane, type Fork, type Item, type RunSim } from '../engine/run'
+import { LANE_W, PLANE_DECK, RIDE_H, ROUTE_BONUS_TEXT, ROUTE_RISK_TEXT, ZIP_DROP, ZIP_HANG, ZIP_TOP, laneX, zipAlt, routeForLane, type Fork, type Item, type RunSim } from '../engine/run'
 import WildAnimal, { MODELS, type WildPoseState } from './WildAnimal'
 import { GlbSet, PropSet, hash01, preloadProps, useProcKits, worldUv, type Placement, type PropId } from './props'
-import { onSimEvent, run, showcase, tickRun } from './runController'
+import { onSimEvent, photo, run, showcase, tickRun } from './runController'
 import { CORNER_LEN, CORNER_R, TrackPath } from './trackPath'
 import { BRANCH_Y, Z_MAX, bendObject, bendPoint, branchGap, patchChunks, updateBend } from './bend'
 import { BIOME_NAME } from '../engine/content'
-import { makeBushPlane, makeDrone, makeHangGlider, type BushPlane } from './aircraft'
+import { HELI_HANG, makeBushPlane, makeDrone, makeHangGlider, makeHelicopter, type BushPlane } from './aircraft'
 import { pickupTextures, symbolTextures } from './iconTextures'
 
 /*
@@ -502,6 +502,17 @@ function itemPlacements(it: Item, z: number, now: number, out: Placement[]) {
     return
   }
   if (it.kind === 'door') return // drawn with its gate (symbol doors dressing)
+  if (it.kind === 'plate') {
+    // a pressure plate: dark stone, a red sigil glowing a little brighter as the runner nears
+    out.push({ prop: 'plateTrap', x, y: 0.005, z, rotY: (r - 0.5) * 0.1, scale: [LANE_W * 0.82, 0.1 + 0.02 * Math.sin(now / 200 + r * 6), it.len * 2.2] })
+    return
+  }
+  if (it.kind === 'kelp' && !it.broken) {
+    // a curtain of river weed across the lane, swaying in the current
+    const sway = Math.sin(now / 700 + r * 6) * 0.12
+    out.push({ prop: 'kelp', x, y: -0.05, z, rotY: 0, rotZ: sway, rotX: sway * 0.5, scale: [LANE_W * 0.98, 2.1, 0.6] })
+    return
+  }
   if (it.kind === 'gas') {
     // a toxic cloud hanging over the lane, slowly turning and breathing
     const t = now / 1000
@@ -792,6 +803,12 @@ function itemPlacements(it: Item, z: number, now: number, out: Placement[]) {
         out.push({ prop: 'speedboat', x: riding ? st!.x : x, y: -0.42 + bob * 0.6 + lifted, z: z + 0.55, rotY: 0, rotX: -plane + Math.sin(now / 260 + it.id) * (riding ? 0.02 : 0.01), rotZ: lean * 1.4, scale: [1.5, 1.0, 3.05] })
         break
       }
+      if (it.skin === 'truck') {
+        // the cargo truck: heavy, it barely leans; it rocks over the ruts
+        const rut = riding ? Math.sin(now / 160 + it.id) * 0.012 : 0
+        out.push({ prop: 'truck', x: riding ? st!.x : x, y: lifted * 0.98 + rut, z: z + 1.75, rotY: 0, rotX: -lifted * 0.06 + rut, rotZ: lean * 0.7, scale: [2.0, 1.95, 5.15] })
+        break
+      }
       if (it.skin === 'atv') {
         // a quad bike: leans into the steer, noses up off a jump, buzzes over the bumps
         const buzz = riding ? Math.sin(now / 45 + it.id) * 0.012 : 0
@@ -836,8 +853,35 @@ function itemPlacements(it: Item, z: number, now: number, out: Placement[]) {
       const L = (it.swingTo ?? it.d + 30) - it.d
       const dy = -ZIP_DROP
       const cab = it.skin === 'cablecar'
-      out.push({ prop: 'rail', x, y: ZIP_TOP, z, rotY: 0, rotX: Math.atan2(L, dy), scale: [cab ? 0.11 : 0.075, Math.hypot(L, dy), cab ? 0.11 : 0.075] })
-      if (cab) {
+      if (it.skin === 'wall') {
+        if (it.lane === 1) {
+          // the middle line of a wall run: a row of weathered stone pillars across the ravine, run across their tops
+          for (let u = 1.5; u < L; u += 3.2) out.push({ prop: 'block', x, y: -6, z: z + u, rotY: 0, scale: [0.95, 6 + zipAlt(u / L) - 0.02, 0.95] })
+          break
+        }
+        // the outer lines: a sheer canyon wall on the outside of the lane (never between lanes), mossy along the top;
+        // the runner tips onto it and runs along its face
+        const w = it.lane === 0 ? 1 : -1
+        out.push({ prop: 'block', x: x + w * 0.78, y: -6, z: z + L / 2, rotY: 0, scale: [0.42, 6 + ZIP_TOP + 0.4, L + 1.5] })
+        out.push({ prop: 'mossrocks', x: x + w * 0.78, y: ZIP_TOP + 0.3, z: z + L / 2, rotY: 0, scale: [0.7, 0.25, L + 1.2] })
+        break
+      }
+      if (it.skin === 'ledge' && it.lane !== 1) {
+        // a cliff climb (outer lines): a cliff face on the outside of the lane, stepping down along the line, a mossy
+        // ledge along its top at the climber's grip; the climber hangs from it, hand over hand. (The middle line is a
+        // rope traverse: drawn as a cable below.)
+        const w = it.lane === 0 ? 1 : -1
+        const N = 6
+        for (let i = 0; i < N; i++) {
+          const p = (i + 0.5) / N
+          const top = zipAlt(p) + ZIP_HANG - 0.05
+          out.push({ prop: 'block', x: x + w * 0.95, y: -6, z: z + (i + 0.5) * (L / N), rotY: 0, scale: [0.9, 6 + top, L / N + 0.08] })
+          out.push({ prop: 'mossrocks', x: x + w * 0.62, y: top - 0.12, z: z + (i + 0.5) * (L / N), rotY: i * 1.3, scale: [0.75, 0.24, L / N + 0.2] })
+        }
+      } else out.push({ prop: 'rail', x, y: ZIP_TOP, z, rotY: 0, rotX: Math.atan2(L, dy), scale: [cab ? 0.11 : 0.075, Math.hypot(L, dy), cab ? 0.11 : 0.075] })
+      if (it.skin === 'ledge') {
+        // (no pulley: the climber grips the rock)
+      } else if (cab) {
         // a cable car line: a cabin waits at the station on every cable (the rider's own cabin is drawn with the rider)
         if (!it.passed) out.push({ prop: 'gondola', x, y: ZIP_TOP - 2.08, z: z + 0.3, rotY: 0, scale: [1.62, 2.18, 1.62] })
       } else if (!it.passed) out.push({ prop: 'rail', x, y: ZIP_TOP - 0.24, z: z + 0.25, rotY: 0, scale: [0.1, 0.22, 0.16] })
@@ -970,7 +1014,7 @@ function makeSource() {
         const zip = sec?.kind === 'zipline'
         // an airstrip (plane or glider launch, from the run-up to the touchdown): a clearing wide enough for the wings
         // and the climb, so the flight is over open ground and never through the canopy
-        const air = !view.showcase && !!run.sim?.sections.some((x) => (x.kind === 'flight' || x.kind === 'glider') && zc > x.from - 30 && zc < x.to + 14)
+        const air = !view.showcase && !!run.sim?.sections.some((x) => (x.kind === 'flight' || x.kind === 'glider' || x.kind === 'helicopter' || x.kind === 'drone') && zc > x.from - 30 && zc < x.to + 14)
         const holed = zip || air || holes.some((g) => Math.abs(g.d - zc) < g.len + SEG / 2 + 3)
         for (const p0 of scenery(k)) {
           let p = clearVerge(p0)
@@ -1137,6 +1181,12 @@ function makeSource() {
         const bsec = sim?.sectionAt(rd)
         const behind = bsec?.kind === 'bridge' ? d - 1.5 - rd : 0
         trailRow(push, r, rd, rd - d, surfaceAt(rd), gaps, behind > 0 ? -behind * behind * 0.35 : 0)
+        // a dive: the channel's surface over the runner's head, the trail its sandy bed, banks walling it in
+        if (bsec?.kind === 'swim' && bsec.built && rd > bsec.from + 2 && rd < bsec.to - 2) {
+          // (the surface is above the camera: the view is from underwater, looking up at it)
+          if (r % 2 === 0) push({ prop: 'waterQuad', x: 0, y: 4.6, z: rd - d, rotY: 0, scale: [PATH_HALF * 2 + 1.4, 0.06, ROW * 2 + 0.01] })
+          if (r % 4 === 0) for (const side of [-1, 1]) push({ prop: 'block', x: side * (PATH_HALF + 0.55), y: -0.2, z: rd - d, rotY: 0, scale: [0.5, 4.9, ROW * 4 + 0.02] })
+        }
       }
     }
     // obstacles
@@ -1146,7 +1196,9 @@ function makeSource() {
         // obstacles, plus the vine and zipline markers (their vines, cables and gantries)
         if (it.gone || (!isObstacle(it.kind) && it.kind !== 'vine' && it.kind !== 'zipline' && it.kind !== 'chest' && it.kind !== 'crate' && it.kind !== 'fragment')) continue
         const z = it.d - d
-        if (z < -BEHIND || z > AHEAD) continue
+        // (a zipline, cable car, cliff ledge or canyon wall stays drawn until its far end is behind the runner)
+        const tail = it.kind === 'zipline' ? (it.swingTo ?? it.d) - d : z
+        if (tail < -BEHIND || z > AHEAD) continue
         itemPlacements(it, z, now, scratch)
       }
       // riding a cable car: the cabin round the rider, its floor under the paws, swaying a little and leaning with a
@@ -1658,6 +1710,9 @@ function poseNow(): WildPoseState {
   if (!s.alive) return s.crashKind === null ? { pose: 'victory', speed: 0, t: 0 } : { pose: 'dead', speed: 0, t: 1 }
   const blink = s.t < s.invulnUntil ? (Math.floor(s.t / 120) % 2 ? 0.55 : 0.15) : 0
   if (s.ride && s.pose === 'run') return { pose: 'idle', speed: 0, t: 0, ghost: blink }
+  // in a cable car cabin the rider stands; hanging from a cliff ledge it stretches up, reaching hand over hand
+  if (s.swing?.cab && s.pose === 'run') return { pose: 'idle', speed: 0, t: 0, ghost: blink }
+  if (s.swing?.skin === 'ledge' && s.pose === 'run') return { pose: 'jump', speed: s.speed, t: 0.45 + 0.05 * Math.sin(s.t / 160), ghost: blink }
   return {
     pose: s.pose === 'jump' ? 'jump' : s.pose === 'slide' ? 'slide' : s.pose === 'roll' ? 'roll' : 'run',
     speed: run.phase === 'paused' ? 0 : s.speed,
@@ -1693,7 +1748,11 @@ function Runner({ animalId }: { animalId: AnimalId }) {
     const tx = s ? laneX(s.lane) : 0
     // a slight turn of the body toward the new lane (the lean itself is the animal's own, in WildAnimal)
     lean.current.rotation.y += ((tx - x) * 0.06 - lean.current.rotation.y) * Math.min(1, dt * 12)
-    lean.current.rotation.z = 0
+    // a wall run: the runner tips onto the canyon wall beside its lane (lane 2's wall on its right, the others on
+    // their left) and runs along it, feet to the rock
+    const wall = s?.swing?.skin === 'wall' ? (s.swing.lane === 0 ? 1 : s.swing.lane === 2 ? -1 : 0) : 0
+    lean.current.rotation.z += (wall * 1.15 - lean.current.rotation.z) * Math.min(1, dt * 8)
+    lean.current.position.x += (wall * 0.55 - lean.current.position.x) * Math.min(1, dt * 8)
     const sh = !!sim && sim.powerOn('shield')
     if (shield.current) {
       shield.current.visible = sh
@@ -1703,7 +1762,7 @@ function Runner({ animalId }: { animalId: AnimalId }) {
     }
     if (rope.current) {
       const sw = s?.swing
-      rope.current.visible = !!sw && !sw.cab
+      rope.current.visible = !!sw && !sw.cab && sw.skin !== 'wall' && !(sw.skin === 'ledge' && s!.lane !== 1)
       if (sw && s) {
         // from the paws' grip up to the anchor high over the middle of the ravine
         // a zipline handle hangs straight up to the cable overhead
@@ -1811,6 +1870,132 @@ function Rival({ r }: { r: Racer }) {
  * crouches on the verge facing its lane, springs into it, then turns to face the runner. Small pools of each.
  */
 type WildSlot = { pose: WildPoseState; group: THREE.Group | null }
+/** Photo mode capture: renders a fresh frame and saves it (shares it on phones that can, else downloads a PNG). */
+function PhotoCapture() {
+  const seen = useRef(photo.shot)
+  useFrame(({ gl, scene, camera }) => {
+    if (photo.shot === seen.current) return
+    seen.current = photo.shot
+    gl.render(scene, camera)
+    gl.domElement.toBlob((blob) => {
+      if (!blob) return
+      const name = `amazon-run-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.png`
+      const file = new File([blob], name, { type: 'image/png' })
+      const nav = navigator as Navigator & { canShare?: (d: { files: File[] }) => boolean }
+      if (nav.canShare?.({ files: [file] }) && /Android|iPhone|iPad/i.test(navigator.userAgent)) {
+        void nav.share({ files: [file], title: 'Amazon Run' }).catch(() => undefined)
+        return
+      }
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      a.download = name
+      a.click()
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000)
+    }, 'image/png')
+  })
+  return null
+}
+
+/**
+ * The rival explorer (brief §3): another animal racing the runner along the verge through a rival section. Its lead
+ * follows the race: it pulls ahead while the runner misses coins and drops back as the runner takes them (two thirds
+ * wins). It waits at the start line, then runs, and is left behind or pulls away at the finish.
+ */
+function RivalExplorer() {
+  const slots = useRef<WildSlot[]>(Array.from({ length: 2 }, () => ({ pose: { pose: 'run', speed: 10, t: 0 }, group: null })))
+  const lead = useRef(4)
+  useFrame((_, dtRaw) => {
+    const dt = Math.min(dtRaw, 0.05)
+    const sim = view.showcase ? null : run.sim
+    const s = sim?.state
+    const sec = sim?.sections.find((x) => x.kind === 'rival' && x.built && x.from - view.d < 60 && x.to - view.d > -25)
+    const who = sim?.animal.id === 'leo' ? 1 : 0
+    slots.current.forEach((slot, i) => {
+      if (!slot.group) return
+      slot.group.visible = !!sec && i === who
+      if (!sec || i !== who || !s) return
+      const span = Math.max(1, sec.to - sec.from)
+      const p = THREE.MathUtils.clamp((s.d - sec.from) / span, 0, 1)
+      const expected = (sec.rivalCoins ?? 0) * p * 0.66
+      // nine metres up the trail at the gun (in view); every coin short of the pace is ~0.9 m more lead, every coin
+      // over it closes the gap; a runner on the winning pace draws level (it drops back past the runner at the finish)
+      const target = s.d < sec.from ? sec.from - s.d + 6 : sec.rivalDone ? lead.current + (lead.current > 3 ? 8 : -8) * dt : THREE.MathUtils.clamp(9 + (expected - (sec.rivalGot ?? 0)) * 0.9, 1.5, 22)
+      lead.current += (target - lead.current) * Math.min(1, dt * (s.d < sec.from ? 10 : 1.6))
+      slot.group.position.set(-(PATH_HALF + 0.35), 0, lead.current)
+      slot.group.rotation.set(0, 0, 0)
+      slot.pose.pose = s.d < sec.from - 3 ? 'idle' : 'run'
+      slot.pose.speed = s.d < sec.from - 3 ? 0 : s.speed
+    })
+  })
+  return (
+    <>
+      {(['leo', 'raja'] as AnimalId[]).map((id, i) => (
+        <group key={id} name={`rival-${id}`} ref={(g) => void (slotsRef(slots, i, g))} visible={false}>
+          <Suspense fallback={null}>
+            <WildAnimal animalId={id} poseOf={() => slots.current[i].pose} onStep={emitDust} />
+          </Suspense>
+        </group>
+      ))}
+    </>
+  )
+}
+const slotsRef = (slots: React.MutableRefObject<WildSlot[]>, i: number, g: THREE.Group | null) => {
+  slots.current[i].group = g
+}
+
+/** The glowing guide bird (brief §3): a golden spirit bird flying ahead along its coin trail, wings beating. */
+function GuideBird() {
+  const bird = useMemo(() => {
+    const group = new THREE.Group()
+    const glow = new THREE.MeshBasicMaterial({ color: '#ffe3a0', toneMapped: false })
+    const halo = new THREE.MeshBasicMaterial({ color: '#ffd27a', transparent: true, opacity: 0.22, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false })
+    const wingMat = new THREE.MeshBasicMaterial({ color: '#ffe9b8', transparent: true, opacity: 0.85, side: THREE.DoubleSide, toneMapped: false })
+    group.add(new THREE.Mesh(new THREE.SphereGeometry(0.13, 16, 12).scale(1, 0.9, 1.6), glow))
+    group.add(new THREE.Mesh(new THREE.SphereGeometry(0.45, 20, 14), halo))
+    const tail = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.45, 8).rotateX(-Math.PI / 2).translate(0, 0, -0.32), wingMat)
+    group.add(tail)
+    const wings: THREE.Object3D[] = []
+    for (const side of [-1, 1]) {
+      const pivot = new THREE.Group()
+      const shape = new THREE.Shape()
+      shape.moveTo(0, 0)
+      shape.quadraticCurveTo(side * 0.35, 0.12, side * 0.62, -0.05)
+      shape.quadraticCurveTo(side * 0.3, -0.12, 0, -0.1)
+      const w = new THREE.Mesh(new THREE.ShapeGeometry(shape).rotateX(-Math.PI / 2), wingMat)
+      pivot.add(w)
+      group.add(pivot)
+      wings.push(pivot)
+    }
+    group.visible = false
+    group.traverse((o) => ((o as THREE.Mesh).frustumCulled = false))
+    return { group, wings }
+  }, [])
+  const pos = useMemo(() => new THREE.Vector3(0, 1.6, 20), [])
+  useFrame((st, dtRaw) => {
+    const dt = Math.min(dtRaw, 0.05)
+    const sim = view.showcase ? null : run.sim
+    const s = sim?.state
+    const sec = sim?.sections.find((x) => x.kind === 'guide' && x.built && x.from - view.d < 70 && x.to - view.d > -2)
+    bird.group.visible = !!sec && !!s
+    if (!sec || !s) return
+    // fly to a little beyond the next coin on the trail (or the chest at the end)
+    const next = sim!.items.find((it) => (it.kind === 'coin' || it.kind === 'chest') && !it.gone && it.d > s.d + 4 && it.d >= sec.from - 2 && it.d <= sec.to)
+    const tx = next ? laneX(next.lane) : laneX(sec.lane)
+    const tz = THREE.MathUtils.clamp((next ? next.d : sec.to) - view.d + 3, 6, 26)
+    const t = st.clock.elapsedTime
+    pos.x += (tx - pos.x) * Math.min(1, dt * 3)
+    pos.z += (tz - pos.z) * Math.min(1, dt * 2)
+    pos.y = 1.7 + Math.sin(t * 2.2) * 0.18
+    bird.group.position.copy(pos)
+    bird.group.scale.setScalar(1.7)
+    bird.group.rotation.set(0, (tx - pos.x) * 0.25, (pos.x - tx) * 0.2)
+    const flap = Math.sin(t * 16) * 0.7
+    bird.wings[0].rotation.z = flap
+    bird.wings[1].rotation.z = -flap
+  })
+  return <primitive object={bird.group} />
+}
+
 function Wildlife() {
   const ele = useRef<WildSlot[]>(Array.from({ length: 5 }, () => ({ pose: { pose: 'run', speed: 6, t: 0 }, group: null })))
   const cat = useRef<WildSlot[]>(Array.from({ length: 2 }, () => ({ pose: { pose: 'idle', speed: 0, t: 0 }, group: null })))
@@ -1993,8 +2178,9 @@ const VARIANT_LIGHT: Record<Variant, VariantMod> = {
 /** 0..1 inside a cave (eased) */
 const caveK = { v: 0 }
 /** weather challenges in the air: how far the sandstorm / volcano smoke / toxic haze has rolled in (0..1 each) */
-const atmoK = { sand: 0, smoke: 0, gas: 0 }
+const atmoK = { sand: 0, smoke: 0, gas: 0, water: 0 }
 const ATMO = {
+  water: { color: '#1f5a5c', near: 2, far: 46 },
   sand: { color: '#c7a26c', near: 2, far: 44 },
   smoke: { color: '#4a2418', near: 8, far: 80 },
   gas: { color: '#6f8f3a', near: 7, far: 72 },
@@ -2147,6 +2333,9 @@ function Atmosphere({ quality }: { quality: Quality }) {
     atmoK.sand += ((wk === 'sandstorm' ? 1 : 0) - atmoK.sand) * Math.min(1, dt * 1.2)
     atmoK.smoke += ((wk === 'volcano' ? 1 : 0) - atmoK.smoke) * Math.min(1, dt * 1.2)
     atmoK.gas += ((wk === 'toxicgas' ? 1 : 0) - atmoK.gas) * Math.min(1, dt * 1.2)
+    // underwater only once the runner is in the channel
+    const diving = !view.showcase && run.sim?.sectionAt(d)?.kind === 'swim'
+    atmoK.water += ((diving ? 1 : 0) - atmoK.water) * Math.min(1, dt * 3)
     const k = Math.min(1, dt * 1.2)
     // storms: a lightning flash every few seconds
     if (variant === 'storm') {
@@ -2165,7 +2354,7 @@ function Atmosphere({ quality }: { quality: Quality }) {
     fog.near += (Math.max(14, M.fogNear * V.fogK) * (1 - ck * 0.6) - fog.near) * k
     fog.far += (Math.max(85, M.fogFar * V.fogK) * (1 - ck * 0.55) - fog.far) * k
     if (ck > 0.01) fog.color.lerp(fogB.set('#2a2420'), ck * 0.4)
-    for (const key of ['sand', 'smoke', 'gas'] as const) {
+    for (const key of ['sand', 'smoke', 'gas', 'water'] as const) {
       const w = atmoK[key]
       if (w < 0.005) continue
       const A = ATMO[key]
@@ -2295,11 +2484,13 @@ function ChaseCamera({ height }: { height: number }) {
     // (hanging from a line or vine the runner is already high: a gentler pull, so the camera stays clear of the trees)
     // (boarding the plane, the camera clears the tail straight away instead of waiting for the climb)
     const onPlane = s?.ride?.kind === 'plane'
+    // (the cargo truck is long and tall: a wider pull back so the road ahead stays in view)
+    const onTruck = !!s?.ride && run.sim?.items.find((it) => it.id === s.ride!.item)?.skin === 'truck'
     const riding = s && s.alive ? (s.ride ? 1 : s.swing ? 0.45 : 0) : 0
     rideCam.current += (riding - rideCam.current) * Math.min(1, dt * (onPlane ? 4 : 2.2))
     const rc = rideCam.current * (1 - fl)
-    const back = -(2.0 + 0.7 * height) * (portrait ? 1.25 : 1) * (1 - o * 0.25) - rv * 0.9 - fl * 4.2 - rc * (onPlane ? 4.2 : 1.5)
-    const up = 1.2 + 0.75 * height + (portrait ? 0.45 : 0) + (s?.y ?? 0) * (0.35 + 0.55 * fl) + rv * 1.1 + fl * 1.2 + rc * (onPlane ? 1.4 : 0.55)
+    const back = -(2.0 + 0.7 * height) * (portrait ? 1.25 : 1) * (1 - o * 0.25) - rv * 0.9 - fl * 4.2 - rc * (onPlane ? 4.2 : onTruck ? 3.2 : 1.5)
+    const up = 1.2 + 0.75 * height + (portrait ? 0.45 : 0) + (s?.y ?? 0) * (0.35 + 0.55 * fl) + rv * 1.1 + fl * 1.2 + rc * (onPlane ? 1.4 : onTruck ? 1.3 : 0.55)
     const tx = x * 0.78 + o * 2.6
     camera.position.x += (tx - camera.position.x) * k
     camera.position.y += (up - camera.position.y) * k
@@ -2315,6 +2506,13 @@ function ChaseCamera({ height }: { height: number }) {
       R.v += (vx - R.v) * Math.min(1, dt * 10)
       R.r += (THREE.MathUtils.clamp(-R.v * 0.006, -0.035, 0.035) * (1 - o) - R.r) * Math.min(1, dt * 6)
       camera.rotateZ(R.r)
+    }
+    // photo mode: orbit the runner (the run is paused)
+    if (photo.on && s) {
+      const cp = Math.cos(photo.pitch)
+      camera.position.set(s.x + photo.dist * Math.sin(photo.yaw) * cp, s.y + 0.8 + photo.dist * Math.sin(photo.pitch), -photo.dist * Math.cos(photo.yaw) * cp)
+      camera.lookAt(s.x, s.y + 0.75, 0)
+      return
     }
     // dev-only test camera (animation checks): window.__wbCam = { pos: [x, y, z], look: [x, y, z] }
     const dbg = import.meta.env.DEV ? (window as unknown as { __wbCam?: { pos: number[]; look: number[] } }).__wbCam : undefined
@@ -2846,6 +3044,9 @@ function BendAll() {
 
 function World() {
   const source = useMemo(makeSource, [])
+  // development: expose the scene and camera for picking checks in automated screenshots
+  const three = useThree()
+  if (import.meta.env.DEV) Object.assign(window as unknown as Record<string, unknown>, { __wbScene: three.scene, __wbCamera: three.camera, __wbThree: THREE })
   const kits = useProcKits()
   const glb = (prop: Parameters<typeof GlbSet>[0]['prop'], capacity: number, shadows = false) => <GlbSet prop={prop} capacity={capacity} source={source} shadows={shadows} />
   return (
@@ -2871,7 +3072,7 @@ function World() {
       <PropSet kit={kits.post} prop="post" capacity={260} source={source} shadows />
       <PropSet kit={kits.rope} prop="rope" capacity={460} source={source} />
       <PropSet kit={kits.pillar} prop="pillar" capacity={60} source={source} shadows />
-      <PropSet kit={kits.block} prop="block" capacity={130} source={source} shadows />
+      <PropSet kit={kits.block} prop="block" capacity={200} source={source} shadows />
       <PropSet kit={kits.trapBase} prop="trapBase" capacity={20} source={source} shadows />
       <PropSet kit={kits.trapSpikes} prop="trapSpikes" capacity={20} source={source} shadows />
       <PropSet kit={kits.barrier} prop="barrier" capacity={20} source={source} shadows />
@@ -2923,6 +3124,9 @@ function World() {
       <PropSet kit={kits.gasCloud} prop="gasCloud" capacity={24} source={source} receive={false} />
       <PropSet kit={kits.lavaPool} prop="lavaPool" capacity={24} source={source} receive={false} />
       <PropSet kit={kits.scroll} prop="scroll" capacity={4} source={source} />
+      <PropSet kit={kits.truck} prop="truck" capacity={6} source={source} shadows />
+      <PropSet kit={kits.plateTrap} prop="plateTrap" capacity={18} source={source} receive={false} />
+      <PropSet kit={kits.kelp} prop="kelp" capacity={24} source={source} receive={false} />
       <PropSet kit={kits.chevron} prop="chevron" capacity={8} source={source} shadows />
       <PropSet kit={kits.shadowDisc} prop="shadowDisc" capacity={40} source={source} receive={false} />
       <PropSet kit={kits.waterQuad} prop="waterQuad" capacity={200} source={source} receive={false} />
@@ -3306,11 +3510,40 @@ function Gliders() {
 
 function Planes() {
   const pool = useMemo(() => [makeBushPlane(), makeBushPlane()], [])
+  // the helipad's helicopter flies the plane's line
+  const helis = useMemo(() => [makeHelicopter(), makeHelicopter()], [])
   const st = useMemo(() => new Map<number, { x: number; h: number; roll: number; pitch: number; spin: number }>(), [])
   useFrame((_, dtRaw) => {
     const dt = Math.min(dtRaw, 0.05)
     const sim = run.sim
-    const planes = sim ? sim.items.filter((it) => it.kind === 'plane' && !it.glider && !it.gone && it.d - view.d > -30 && it.d - view.d < AHEAD) : []
+    const craft = sim ? sim.items.filter((it) => it.kind === 'plane' && !it.glider && !it.gone && it.d - view.d > -30 && it.d - view.d < AHEAD) : []
+    const planes = craft.filter((it) => it.skin !== 'helicopter')
+    const hs = craft.filter((it) => it.skin === 'helicopter')
+    helis.forEach((hc, i) => {
+      const it = hs[i]
+      hc.group.visible = !!it
+      if (!it) return
+      let k = st.get(it.id)
+      const riding = sim!.state.ride?.item === it.id
+      const tx = riding ? sim!.state.x : laneX(it.lane)
+      if (!k) {
+        k = { x: tx, h: it.h, roll: 0, pitch: 0, spin: 0 }
+        st.set(it.id, k)
+      }
+      const vx = (tx - k.x) / Math.max(dt, 1e-3)
+      k.x += (tx - k.x) * Math.min(1, dt * 10)
+      k.h = it.h
+      // a helicopter banks into a steer and noses down to fly forward; the rotor idles on the pad, full speed aloft
+      k.roll += (THREE.MathUtils.clamp(-vx * 0.05, -0.35, 0.35) - k.roll) * Math.min(1, dt * 5)
+      const aloft = it.h > 0.05 || riding
+      k.pitch += ((aloft ? 0.08 : 0) - k.pitch) * Math.min(1, dt * 3)
+      k.spin += dt * (aloft ? 34 : 12)
+      hc.rotor.rotation.y = k.spin
+      hc.tail.rotation.x = k.spin * 2.4
+      // it hovers over the rider, who hangs on the rescue line below (on the pad it waits in a hover, line down)
+      hc.group.position.set(k.x, it.h + HELI_HANG + 1.0 + Math.sin(performance.now() / 500) * 0.06, it.d - view.d)
+      hc.group.rotation.set(k.pitch, 0, k.roll)
+    })
     pool.forEach((pl, i) => {
       const it = planes[i]
       pl.group.visible = !!it
@@ -3342,6 +3575,9 @@ function Planes() {
     <>
       {pool.map((pl, i) => (
         <primitive key={i} object={pl.group} />
+      ))}
+      {helis.map((h, i) => (
+        <primitive key={`h${i}`} object={h.group} />
       ))}
     </>
   )
@@ -3432,6 +3668,9 @@ export default function WorldScene({ animalId, mode = 'run', quality = 'high' }:
         {mode === 'run' && <Gliders />}
         {mode === 'run' && <DoorSymbols />}
         {mode === 'run' && <Wildlife />}
+        {mode === 'run' && <RivalExplorer />}
+        {mode === 'run' && <PhotoCapture />}
+        {mode === 'run' && <GuideBird />}
         {mode !== 'preview' && <Overflights mode={mode} />}
       </Suspense>
       {mode !== 'run' && (

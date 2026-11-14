@@ -486,14 +486,14 @@ The brief (gameplay & challenge design doc v1.0, 10 Nov 2026) is applied to Wild
 | §1 Vision, core loop | Done: event every ~35–45 s, warnings, rewards, return to run |
 | §2A Terrain | Done: swinging logs, collapsing bridge, rolling boulder, quicksand, falling trees, spike rollers, rockfall/rockslide, root/obstacle rows, stepping stones, broken bridge, hidden pits. Not: carnivorous plants, rotating stone bridge, mudslide slope, bamboo squeeze, trunk balance, windstorm debris |
 | §2B Animals | Swarms (bees/bats), webs, poison frogs done. Blocked on realistic models: jaguar, anaconda, croc, boar, gorilla, elephants, monkeys, eagle, hippo, dogs, leopard, buffalo |
-| §2C Vehicles | Done: mine cart, handcar, plane, raft, jeep, zipline, glider, speedboat race, quad bike (ATV), cable car, drone (2026-11-14). Not: truck, horse, barrel, helicopter |
-| §2D Traversal | Done: ziplines, vine swing, glider launch. Not: climbing, wall run, falling platforms, rope nets |
-| §2E Water | Done: river stones, flood surge, raft rapids. Not: underwater swim, whirlpool, dam gates, diving |
-| §2F Temple | Done: dart corridor, blade hallway, idol gem, golden chest, symbol doors (memory gate, 2026-11-14). Not: pressure plates, stone wheel, collapsing ceiling |
+| §2C Vehicles | Done: mine cart, handcar, plane, raft, jeep, zipline, glider, speedboat race, quad bike (ATV), cable car, drone, cargo truck, helicopter (2026-11-14). Not: horse (no realistic model), barrel |
+| §2D Traversal | Done: ziplines, vine swing, glider launch, cliff climb, wall run (2026-11-14). Not: falling platforms, rope nets |
+| §2E Water | Done: river stones, flood surge, raft rapids, underwater dive (2026-11-14). Not: whirlpool, dam gates |
+| §2F Temple | Done: dart corridor, blade hallway, idol gem, golden chest, symbol doors (memory gate), pressure plates with a rolling stone wheel (2026-11-14). Not: collapsing ceiling |
 | §2G Weather | Done: lightning, wildfire, flash flood, earthquake, sandstorm, toxic gas, volcano escape (2026-11-14), 9 lighting variants incl. night/storm/fog |
 | §2H Mini-games | Done: coin tunnel, coin storm, risky-route rewards. Not: time trial, target toss, precision landing, memory gate |
 | §2I Set-pieces | Done: Final Jungle Gauntlet. Animal bosses blocked on models |
-| §3 Surprise events | Done: golden chest, coin storm, supply crate, abandoned camp, weather shifts, treasure map fragments (2026-11-14). Not: rival explorer, glowing guide animal, photo mode |
+| §3 Surprise events | Done: golden chest, coin storm, supply crate, abandoned camp, weather shifts, treasure map fragments, rival explorer, glowing guide bird, photo mode (2026-11-14) |
 | §4 Pacing / §5 Fairness | Done (director, tiers, no-repeat, seeded, fair rows, telegraphs, tests) |
 | §6 Controls | Done: swipes/keys, assisted controls, steering speed, left-handed, text size |
 | §7 Rewards | Done: coins, gems, stars, missions, daily run, weekly expedition, achievements, upgrades, local records. Not: relics, cosmetics/skins, online leaderboards |
@@ -573,3 +573,29 @@ The brief (gameplay & challenge design doc v1.0, 10 Nov 2026) is applied to Wild
 - Tests 57 (new: all eight new challenges fair and survivable on 12 seeds; skins; symbol doors always have exactly one
   open door bearing the symbol). Checked live: all four vehicles, cable car ride (frozen mid-line), symbol doors,
   sandstorm, toxic gas, volcano. Not seen live: a map fragment pickup.
+
+## 2026-11-14 later: the rest of the brief — truck, helicopter, plates, climb, wall run, dive, rival, guide, photo mode
+
+- **Cargo truck** (jeep rules, dirt roads): an open-cab expedition truck (low cab, windscreen frame) with a timber
+  flatbed the runner stands on; the camera pulls back further so the road stays in view.
+- **Helicopter** (flight rules, jungle helipads): a red and white utility helicopter hovers over the runner, who hangs
+  on its rescue line (body and tail stay above the view); main and tail rotors spin; helipads get the airstrip clearing.
+- **Pressure plates** (temple): glowing red-sigil plates to jump or avoid (`plate`), a dart volley to slide under, and a
+  stone wheel rolling down one lane at the end (a moving boulder with room to roll).
+- **Cliff climb** (zipline rules, cliffs and gorges): cliff faces on the outer lanes step down along the line with a
+  mossy ledge at the grip (the climber reaches, hand over hand); the middle line is a rope traverse.
+- **Wall run** (zipline rules, canyons): on the outer lanes the runner tips onto a sheer canyon wall (roll ±1.15) and
+  runs along it; the middle line is a row of stone pillar tops. Walls never stand between lanes.
+- **Dive** (rivers, lakes, coasts): the trail floods into a walled channel; the surface ripples overhead (above the
+  camera: the view is from underwater), a blue-green haze, curtains of weed to dive under (`kelp`), rocks to steer round.
+- **Rival explorer** (surprise-free challenge, anywhere): a lion (or a tiger if you are the lion) races on the verge,
+  nine metres ahead at the gun; take two thirds of the coins to beat it (+1,500, +3 gems). Its lead follows your coins.
+- **Guide bird** (surprise): a glowing golden bird flies ahead along a weaving coin trail to a golden chest.
+- **Photo mode**: pause → Photo mode. The HUD steps away; drag to orbit the runner, wheel/pinch or −/+ to zoom; the
+  shutter saves a PNG (shared on phones that can, downloaded elsewhere).
+- Fixes found on the way: long lines (ziplines, cable cars, ledges, walls) were dropped from drawing once their start
+  was 14 m behind the runner, so cables vanished mid-ride; now they stay until their far end passes. The opening act's
+  plane and wildlife checks also look at the pick history.
+- Not done: the horse ride (no realistic horse model; a procedural one would break the art direction).
+- Tests 58 (new: the eight new challenges are fair and survivable on 12 seeds; skins; the rival race is decided once at
+  the finish and lost without coins; the guide trail ends at a chest). Checked live: all of them, including photo mode.

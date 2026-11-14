@@ -178,7 +178,7 @@ function lone(kind: ObstacleKind, lane: Lane = 1, animalId: AnimalId = 'titan') 
   ;(sim as unknown as { nextSectionAt: number }).nextSectionAt = 1e9
   sim.sections = []
   sim.state.shieldUntil = 0
-  sim.items.push({ id: 1, d: 20, lane, kind, h: 0, len: { log: 0.45, roots: 0.45, trap: 0.5, rock: 0.75, ruin: 0.8, branch: 0.35, barrier: 0.3, gap: 1.2, boulder: 0.9, trolley: 1.1, stream: 1.3, rubble: 0.45, stalactite: 0.35, plane: 1.6, quicksand: 1.3, darts: 0.3, swinglog: 0.4, minecart: 1.0, buffer: 0.4, beam: 0.3, bough: 0.4, raft: 1.1, jeep: 1.3, strike: 0.6, fire: 0.9, ember: 0.35, roller: 0.45, blade: 0.3, swarm: 0.5, web: 0.3, toxic: 1.2, elephant: 1.7, pounce: 0.9, door: 0.35, gas: 0.9, lava: 1.2 }[kind], gone: false, passed: false, broken: false, frozen: false, moving: 0 })
+  sim.items.push({ id: 1, d: 20, lane, kind, h: 0, len: { log: 0.45, roots: 0.45, trap: 0.5, rock: 0.75, ruin: 0.8, branch: 0.35, barrier: 0.3, gap: 1.2, boulder: 0.9, trolley: 1.1, stream: 1.3, rubble: 0.45, stalactite: 0.35, plane: 1.6, quicksand: 1.3, darts: 0.3, swinglog: 0.4, minecart: 1.0, buffer: 0.4, beam: 0.3, bough: 0.4, raft: 1.1, jeep: 1.3, strike: 0.6, fire: 0.9, ember: 0.35, roller: 0.45, blade: 0.3, swarm: 0.5, web: 0.3, toxic: 1.2, elephant: 1.7, pounce: 0.9, door: 0.35, gas: 0.9, lava: 1.2, plate: 0.6, kelp: 0.35 }[kind], gone: false, passed: false, broken: false, frozen: false, moving: 0 })
   return sim
 }
 const until = (sim: RunSim, d: number) => runFor(sim, d - sim.state.d)
@@ -902,6 +902,46 @@ test('brief vehicles and activities: speedboat, quad bike, cable car, drone, sym
     const doors = sim.items.filter((it) => it.kind === 'door' && it.d === g.d)
     assert.deepEqual(doors.map((it) => it.lane).sort(), ([0, 1, 2] as Lane[]).filter((l) => l !== g.lane))
   }
+})
+
+test('the rest of the brief: truck, helicopter, pressure plates, cliff climb, wall run, dive, rival explorer, guide bird', () => {
+  for (const kind of ['truck', 'helicopter', 'plates', 'climb', 'wallrun', 'swim', 'rival', 'guide'] as const)
+    for (let seed = 1; seed <= 12; seed++) {
+      const { sim, sec } = withSection(kind, seed)
+      const rows = new Map<number, Item[]>()
+      for (const it of sim.items) if (isObstacle(it.kind) && !['plane', 'raft', 'jeep'].includes(it.kind) && !it.moving) rows.set(it.d, [...(rows.get(it.d) ?? []), it])
+      for (const [d, row] of rows) {
+        const full = new Set(row.map((it) => it.lane)).size === 3
+        assert.ok(!full || row.every((it) => !ESCAPES[it.kind as ObstacleKind].includes('lane')), `${kind} seed ${seed}: row at ${d} is a wall`)
+      }
+      runFor(sim, sec.to + 10 - sim.state.d, () => autopilot(sim))
+      assert.ok(sim.state.alive, `${kind} seed ${seed}: crashed into ${sim.state.crashKind} at ${sim.state.d.toFixed(1)}`)
+    }
+  const skinOf = (kind: 'truck' | 'helicopter' | 'climb' | 'wallrun', k: string) => withSection(kind, 1).sim.items.find((it) => it.kind === k)?.skin
+  assert.equal(skinOf('truck', 'jeep'), 'truck')
+  assert.equal(skinOf('helicopter', 'plane'), 'helicopter')
+  assert.equal(skinOf('climb', 'zipline'), 'ledge')
+  assert.equal(skinOf('wallrun', 'zipline'), 'wall')
+  // the rival race is decided at the finish: the autopilot takes the clean lanes' coins, a runner who takes none loses
+  {
+    const { sim, sec } = withSection('rival', 3)
+    const results: boolean[] = []
+    runFor(sim, sec.to + 10 - sim.state.d, () => {
+      autopilot(sim)
+      for (const e of sim.events.splice(0)) if (e.type === 'rival') results.push(e.won)
+    })
+    assert.equal(results.length, 1, 'one result')
+    const lazy = withSection('rival', 3)
+    for (const it of lazy.sim.items) if (it.kind === 'coin') it.gone = true
+    const lost: boolean[] = []
+    runFor(lazy.sim, lazy.sec.to + 10 - lazy.sim.state.d, () => {
+      autopilot(lazy.sim)
+      for (const e of lazy.sim.events.splice(0)) if (e.type === 'rival') lost.push(e.won)
+    })
+    assert.deepEqual(lost, [false], 'no coins, the rival wins')
+  }
+  // the guide bird's trail ends at a golden chest
+  assert.ok(withSection('guide', 2).sim.items.some((it) => it.kind === 'chest'), 'a chest at the end of the trail')
 })
 
 test('wildlife: a charging elephant must be dodged; a jaguar only threatens its lane once it springs (26 m out)', () => {

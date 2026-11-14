@@ -311,6 +311,45 @@ export const sfx = {
         tone(34, 1.4, 'sine', 0.18, 28)
         for (let i = 0; i < 4; i++) noise(0.05, 0.12, 'highpass', 2000, 1, undefined, 0.4 + i * 0.15)
         break
+      case 'truck':
+        // a big diesel clattering into life
+        tone(55, 0.4, 'sawtooth', 0.07, 70)
+        tone(62, 0.8, 'sawtooth', 0.06, 110, 0.35)
+        noise(0.8, 0.06, 'lowpass', 300, 1, 600, 0.35)
+        break
+      case 'helicopter':
+        // rotor blades chopping the air
+        for (let i = 0; i < 8; i++) noise(0.06, 0.12, 'lowpass', 400, 1, undefined, i * 0.11)
+        break
+      case 'plates':
+        // a stone click and a mechanism waking in the walls
+        tone(880, 0.05, 'square', 0.05)
+        noise(0.5, 0.08, 'bandpass', 500, 3, 250, 0.1)
+        break
+      case 'climb':
+        // wind on a cliff face, a pebble skittering down
+        noise(1.0, 0.08, 'bandpass', 700, 0.8, 1100)
+        for (let i = 0; i < 3; i++) tone(1400 - i * 200, 0.04, 'triangle', 0.04, undefined, 0.3 + i * 0.12)
+        break
+      case 'wallrun':
+        // a rush of air and quick paws on stone
+        noise(0.8, 0.1, 'bandpass', 1000, 0.7, 2200)
+        for (let i = 0; i < 4; i++) tone(240, 0.03, 'square', 0.04, undefined, 0.2 + i * 0.09)
+        break
+      case 'swim':
+        // a splash, then muffled bubbles
+        noise(0.3, 0.16, 'highpass', 1800, 0.8)
+        for (let i = 0; i < 5; i++) tone(500 + i * 90, 0.05, 'sine', 0.04, 700 + i * 90, 0.3 + i * 0.1)
+        break
+      case 'rival':
+        // a challenger's horn call
+        tone(392, 0.25, 'sawtooth', 0.05)
+        tone(523, 0.45, 'sawtooth', 0.05, undefined, 0.22)
+        break
+      case 'guide':
+        // a bright, magical trill
+        for (const [i, f] of [1319, 1568, 1976, 2349].entries()) tone(f, 0.14, 'sine', 0.05, undefined, i * 0.07)
+        break
       default:
         // anything newer: a low, neutral heads-up
         tone(330, 0.18, 'triangle', 0.06)

@@ -106,6 +106,9 @@ export type ProcProp =
   | 'gasCloud'
   | 'lavaPool'
   | 'scroll'
+  | 'truck'
+  | 'plateTrap'
+  | 'kelp'
   | 'chevron'
   | 'redwood'
   | 'treefern'
@@ -673,6 +676,55 @@ export function useProcKits(): Record<ProcProp, PropKit> {
     // a lava stream: molten rock glowing through a dark basalt crust at its edges
     const lavaFlow = new THREE.MeshStandardMaterial({ color: "#ff6a1a", emissive: "#ff4200", emissiveIntensity: 1.8, roughness: 0.55, toneMapped: false })
     const basalt = new THREE.MeshStandardMaterial({ color: '#1d1a19', roughness: 0.95 })
+    // cargo truck: an open-cab expedition truck (low cab sides and a windscreen frame, so the road ahead stays in view)
+    // with a timber flatbed and stake sides behind; dual rear wheels; nose to +Z. Bed deck at y 1.05.
+    const truckBody = iron([
+      box(1.9, 0.62, 1.5, 0, 0.95, 1.55),
+      box(1.7, 0.5, 0.7, 0, 1.0, 2.55),
+      box(2.0, 0.12, 0.25, 0, 0.62, 2.95),
+      box(0.45, 0.4, 0.9, 0.98, 0.7, 1.55),
+      box(0.45, 0.4, 0.9, -0.98, 0.7, 1.55),
+    ])
+    const truckBed = iron([box(2.0, 0.12, 2.9, 0, 0.99, -0.85)])
+    const truckDark = iron([
+      box(1.9, 0.2, 4.6, 0, 0.55, 0.1),
+      rod(-0.85, 1.26, 2.05, -0.85, 1.95, 1.95, 0.035),
+      rod(0.85, 1.26, 2.05, 0.85, 1.95, 1.95, 0.035),
+      rod(-0.85, 1.95, 1.95, 0.85, 1.95, 1.95, 0.035),
+      box(1.6, 0.36, 0.05, 0, 1.45, 2.04),
+      ...[-1, 1].flatMap((sx) => [-2.25, -1.3, -0.4, 0.5].map((sz) => box(0.07, 0.55, 0.07, sx * 0.96, 1.3, sz))),
+      box(0.05, 0.08, 2.9, 0.96, 1.55, -0.85),
+      box(0.05, 0.08, 2.9, -0.96, 1.55, -0.85),
+      box(1.95, 0.08, 0.05, 0, 1.55, -2.28),
+    ])
+    const truckTyres: THREE.BufferGeometry[] = []
+    for (const [wx, wz, wide] of [[-0.86, 2.15, 0.32], [0.86, 2.15, 0.32], [-0.82, -1.25, 0.5], [0.82, -1.25, 0.5]] as const) truckTyres.push(new THREE.CylinderGeometry(0.46, 0.46, wide, 24).rotateZ(Math.PI / 2).translate(wx, 0.46, wz).toNonIndexed())
+    const truckLamps = iron([new THREE.CylinderGeometry(0.11, 0.11, 0.05, 14).rotateX(Math.PI / 2).translate(0.6, 1.05, 2.92), new THREE.CylinderGeometry(0.11, 0.11, 0.05, 14).rotateX(Math.PI / 2).translate(-0.6, 1.05, 2.92)])
+    const truckPaint = new THREE.MeshPhysicalMaterial({ color: '#c8b48a', roughness: 0.55, clearcoat: 0.3, clearcoatRoughness: 0.5 })
+    // a temple pressure plate: a raised square of dark stone carved with a softly glowing red sigil
+    const plateStone = iron([box(1.0, 0.08, 1.0, 0, 0.04, 0)])
+    const plateGlyph = iron([
+      new THREE.TorusGeometry(0.3, 0.025, 6, 40).rotateX(Math.PI / 2).translate(0, 0.085, 0),
+      box(0.5, 0.012, 0.05, 0, 0.085, 0),
+      box(0.05, 0.012, 0.5, 0, 0.085, 0),
+    ])
+    const glyphMat = new THREE.MeshStandardMaterial({ color: '#ff5a3a', emissive: '#ff2a10', emissiveIntensity: 1.6, toneMapped: false })
+    const darkStone = new THREE.MeshStandardMaterial({ color: '#4a4640', roughness: 0.9 })
+    // river weed underwater: tall ribbons rooted on the bed, curling as they rise
+    const weed: THREE.BufferGeometry[] = []
+    for (let i = 0; i < 14; i++) {
+      const g = new THREE.PlaneGeometry(0.16, 1.9, 1, 8)
+      const pos = g.attributes.position
+      for (let v = 0; v < pos.count; v++) {
+        const y = pos.getY(v) + 0.95
+        pos.setX(v, pos.getX(v) + Math.sin(y * 2.2 + i) * 0.12 * y)
+        pos.setY(v, y)
+      }
+      g.rotateY(i * 1.3)
+      g.translate(-0.9 + (i % 7) * 0.3, 0, (Math.floor(i / 7) - 0.5) * 0.3)
+      weed.push(g.toNonIndexed())
+    }
+    const weedMat = new THREE.MeshStandardMaterial({ color: '#3f6a2a', roughness: 0.8, side: THREE.DoubleSide, transparent: true, opacity: 0.92 })
     // a treasure map fragment: a rolled parchment tied with a red ribbon, gold-capped ends
     const parchment = new THREE.MeshStandardMaterial({ color: '#e7d3a4', roughness: 0.8, emissive: '#5a4320', emissiveIntensity: 0.25 })
     const ribbon = new THREE.MeshStandardMaterial({ color: '#8a1c16', roughness: 0.6 })
@@ -1189,6 +1241,18 @@ export function useProcKits(): Record<ProcProp, PropKit> {
         [cabGlass, clearGlass],
       ]),
       gasCloud: kit(mergeGeometries(gasPuffs)!, gasMat),
+      truck: multi([
+        [truckBody, truckPaint],
+        [truckBed, wood],
+        [truckDark, ironDark],
+        [mergeGeometries(truckTyres)!, tyre],
+        [truckLamps, lamp],
+      ]),
+      plateTrap: multi([
+        [plateStone, darkStone],
+        [plateGlyph, glyphMat],
+      ]),
+      kelp: kit(mergeGeometries(weed)!, weedMat),
       lavaPool: multi([
         [new THREE.CylinderGeometry(0.5, 0.5, 0.04, 40).toNonIndexed(), basalt],
         [new THREE.CylinderGeometry(0.43, 0.43, 0.04, 40).translate(0, 0.012, 0).toNonIndexed(), lavaFlow],
@@ -1304,6 +1368,7 @@ export function PropSet({ kit, prop, capacity, source, shadows = false, receive 
             refs.current[i] = el
           }}
           args={[part.geometry, part.material, capacity]}
+          name={`prop:${prop}`}
           castShadow={shadows}
           receiveShadow={receive}
           frustumCulled={false}

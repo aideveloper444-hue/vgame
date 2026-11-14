@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Home, Music, Pause, Play, RotateCcw, Volume2, VolumeX } from 'lucide-react'
+import { Camera, Home, Music, Pause, Play, RotateCcw, Volume2, VolumeX, X } from 'lucide-react'
 import { AbilityIcon, PowerIcon, TokenMark } from './icons'
 import { GRIP, POWERUPS, POWER_KINDS, biomeAt, tierAt, tierName, type ObstacleKind, getAnimal, type PowerUpKind, type SectionKind } from '../engine/content'
 import { RaceHud, RaceResults } from './RaceHud'
@@ -9,7 +9,7 @@ import RouteChooser from './RouteChooser'
 import ChallengeHud, { Star } from './ChallengeHud'
 import { challengeTally } from './challenges'
 import { dailySeed, useSave } from '../state/progress'
-import { endRun, onPhase, onSimEvent, run, setPhase, startRun, type RunPhase } from '../scene/runController'
+import { endRun, onPhase, onSimEvent, photo, run, setPhase, startRun, type RunPhase } from '../scene/runController'
 import { Coin, Gem, fmt, toast, useFestival, useNav } from './common'
 import { ambienceScene, haptic, sfx, startAmbience, stopAmbience } from './sfx'
 
@@ -96,6 +96,11 @@ export default function RunScreen() {
   const go = useNav((s) => s.go)
   const [hud, setHud] = useState<Hud | null>(null)
   const [phase, setPh] = useState<RunPhase>(run.phase)
+  // photo mode (from the pause menu): on/off, the camera-flash key, the orbit drag
+  const [photoOn, setPhotoOn] = useState(false)
+  const [shotFlash, setShotFlash] = useState(0)
+  const photoDrag = useRef<{ x: number; y: number } | null>(null)
+  useEffect(() => () => void (photo.on = false), [])
   const gripSeen = useRef(new Set<string>())
   const [banner, setBanner] = useState<{ id: number; big: string; small?: string } | null>(null)
   const [outcome, setOutcome] = useState<Outcome | null>(null)
@@ -320,6 +325,15 @@ export default function RunScreen() {
               sfx.power()
               haptic(50)
               run.shake = Math.max(run.shake, 0.25)
+            } else if (e.on && e.skin === 'helicopter') {
+              setBanner({ id: Date.now(), big: 'Lift-off!', small: 'Hold the rescue line – steer through the sky coins' })
+              sfx.power()
+              haptic(60)
+              run.shake = Math.max(run.shake, 0.3)
+            } else if (e.on && e.skin === 'truck') {
+              setBanner({ id: Date.now(), big: 'All aboard!', small: 'Steer round the rocks · jump the washouts · duck the boughs' })
+              sfx.power()
+              haptic(50)
             } else if (e.on && e.skin === 'atv') {
               setBanner({ id: Date.now(), big: 'Engine on!', small: 'Steer round the rocks · jump the ditches · duck the boughs' })
               sfx.power()
@@ -388,6 +402,12 @@ export default function RunScreen() {
             // tell the player about a slippery surface once per run, not every time it comes round again
             if (GRIP[e.grip].label && !gripSeen.current.has(e.grip) && gripSeen.current.add(e.grip)) setBanner({ id: Date.now(), big: e.grip === 'ice' ? 'Ice!' : e.grip === 'snow' ? 'Deep snow' : 'Mud!', small: GRIP[e.grip].label })
             break
+          case 'rival':
+            setBanner({ id: Date.now(), big: e.won ? 'You beat the rival!' : 'The rival got there first', small: e.won ? `+${e.bonus} · +3 gems` : 'Grab more coins next time' })
+            if (e.won) sfx.chest()
+            else sfx.slide()
+            haptic(e.won ? 70 : 20)
+            break
           case 'fragment':
             setBanner({ id: Date.now(), big: e.n === e.of ? 'Treasure map complete!' : `Map fragment ${e.n}/${e.of}`, small: e.n === e.of ? `+${e.bonus} · +300 coins · +10 gems` : `+${e.bonus} · find all ${e.of} for the treasure` })
             if (e.n === e.of) sfx.chest()
@@ -411,7 +431,7 @@ export default function RunScreen() {
             break
           case 'swing':
             if (e.on) {
-              setBanner({ id: Date.now(), big: e.cab ? 'Doors closing!' : e.zip ? 'Hold on!' : 'Swing!', small: e.zip ? 'Change lane to switch cable · +100' : '+100' })
+              setBanner({ id: Date.now(), big: e.skin === 'wall' ? 'Wall run!' : e.skin === 'ledge' ? 'Grip!' : e.cab ? 'Doors closing!' : e.zip ? 'Hold on!' : 'Swing!', small: e.skin === 'wall' || e.skin === 'ledge' ? 'Change lane to dodge · +100' : e.zip ? 'Change lane to switch cable · +100' : '+100' })
               sfx.jump()
               haptic(30)
             } else sfx.slide()
@@ -549,6 +569,8 @@ export default function RunScreen() {
     }
   }, [])
   const resume = () => {
+    photo.on = false
+    setPhotoOn(false)
     sfx.tap()
     run.countdown = 1500
     setPhase('countdown')
@@ -657,6 +679,64 @@ export default function RunScreen() {
   const powerList: PowerUpKind[] = ['speed', 'magnet', 'shield', 'superjump', 'megajump', 'boost']
   const sim = run.sim
   const cost = sim ? reviveCost(sim.state.revives) : 50
+
+  if (photoOn)
+    return (
+      // photo mode: the HUD steps away; drag to orbit the camera round the runner, wheel or pinch to zoom
+      <div
+        className="wb-layer z-[80] touch-none select-none"
+        onPointerDown={(e) => {
+          ;(e.target as HTMLElement).setPointerCapture?.(e.pointerId)
+          photoDrag.current = { x: e.clientX, y: e.clientY }
+        }}
+        onPointerMove={(e) => {
+          const p = photoDrag.current
+          if (!p) return
+          photo.yaw -= (e.clientX - p.x) * 0.008
+          // drag up to rise and look down on the scene; never below the grass
+          photo.pitch = Math.max(0.14, Math.min(1.25, photo.pitch - (e.clientY - p.y) * 0.006))
+          photoDrag.current = { x: e.clientX, y: e.clientY }
+        }}
+        onPointerUp={() => (photoDrag.current = null)}
+        onPointerCancel={() => (photoDrag.current = null)}
+        onWheel={(e) => (photo.dist = Math.max(2.4, Math.min(14, photo.dist * (e.deltaY > 0 ? 1.08 : 0.93))))}
+      >
+        <div className="pointer-events-none absolute inset-x-0 top-3 text-center text-[13px] font-semibold uppercase tracking-[0.3em] text-white/80" style={{ textShadow: '0 1px 3px rgba(0,0,0,0.7)' }}>
+          Photo mode · drag to look around
+        </div>
+        <div className="absolute inset-x-0 bottom-6 flex items-center justify-center gap-4" onPointerDown={(e) => e.stopPropagation()}>
+          <button className="wb-btn wb-btn-dark h-12 w-12 !rounded-full" aria-label="Zoom out" onClick={() => (photo.dist = Math.min(14, photo.dist * 1.2))}>
+            −
+          </button>
+          <button
+            className="wb-btn wb-btn-gold h-16 w-16 !rounded-full"
+            aria-label="Take photo"
+            onClick={() => {
+              photo.shot++
+              sfx.tap()
+              haptic(30)
+              setShotFlash(Date.now())
+            }}
+          >
+            <Camera size={28} />
+          </button>
+          <button className="wb-btn wb-btn-dark h-12 w-12 !rounded-full" aria-label="Zoom in" onClick={() => (photo.dist = Math.max(2.4, photo.dist / 1.2))}>
+            +
+          </button>
+          <button
+            className="wb-btn wb-btn-dark h-12 px-4 text-[18px]"
+            onClick={() => {
+              photo.on = false
+              setPhotoOn(false)
+            }}
+          >
+            <X size={20} /> Done
+          </button>
+        </div>
+        {shotFlash > 0 && <div key={shotFlash} className="pointer-events-none absolute inset-0 bg-white" style={{ animation: 'wb-photo-flash 0.35s ease-out forwards' }} />}
+        <style>{'@keyframes wb-photo-flash { from { opacity: 0.7 } to { opacity: 0 } }'}</style>
+      </div>
+    )
 
   return (
     <div className="wb-layer">
@@ -805,6 +885,15 @@ export default function RunScreen() {
             <div className="flex flex-col gap-3">
               <button className="wb-btn wb-btn-green h-14 text-[28px]" onClick={resume}>
                 <Play size={24} fill="currentColor" /> Resume
+              </button>
+              <button
+                className="wb-btn wb-btn-dark h-11 text-[20px]"
+                onClick={() => {
+                  Object.assign(photo, { on: true, yaw: 0.7, pitch: 0.32, dist: 5.5 })
+                  setPhotoOn(true)
+                }}
+              >
+                <Camera size={20} /> Photo mode
               </button>
               <div className="grid grid-cols-2 gap-3">
                 <button className="wb-btn wb-btn-gold h-12 text-[24px]" onClick={home}>
