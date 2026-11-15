@@ -109,6 +109,12 @@ export type ProcProp =
   | 'truck'
   | 'plateTrap'
   | 'kelp'
+  | 'snapperPlant'
+  | 'mudWave'
+  | 'ropeNet'
+  | 'whirlPool'
+  | 'goldRing'
+  | 'barrel'
   | 'chevron'
   | 'redwood'
   | 'treefern'
@@ -725,6 +731,64 @@ export function useProcKits(): Record<ProcProp, PropKit> {
       weed.push(g.toNonIndexed())
     }
     const weedMat = new THREE.MeshStandardMaterial({ color: '#3f6a2a', roughness: 0.8, side: THREE.DoubleSide, transparent: true, opacity: 0.92 })
+    // a carnivorous plant: a thick stem rising from a leaf rosette to a hinged trap of two lobes, ringed with spines
+    const stem = new THREE.CylinderGeometry(0.07, 0.12, 0.9, 10).translate(0, 0.45, 0).toNonIndexed()
+    const lobes: THREE.BufferGeometry[] = []
+    for (const side of [-1, 1]) lobes.push(new THREE.SphereGeometry(0.42, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.5, 0.75).rotateZ(side * 0.75).translate(side * 0.12, 1.05, 0).toNonIndexed())
+    const spines: THREE.BufferGeometry[] = []
+    for (const side of [-1, 1]) for (let i = 0; i < 9; i++) {
+      const a = (i / 8 - 0.5) * 2.2
+      spines.push(new THREE.ConeGeometry(0.02, 0.22, 5).rotateZ(side * 1.2).translate(side * (0.12 + Math.cos(a) * 0.36), 1.05 + side * 0.02 + 0.28 * 0.5, Math.sin(a) * 0.3).toNonIndexed())
+    }
+    const rosette: THREE.BufferGeometry[] = []
+    for (let i = 0; i < 7; i++) rosette.push(new THREE.SphereGeometry(0.35, 10, 6).scale(1, 0.12, 0.38).translate(0.35, 0.04, 0).rotateY((i / 7) * Math.PI * 2).toNonIndexed())
+    const plantGreen = new THREE.MeshStandardMaterial({ color: '#4d6b2a', roughness: 0.7 })
+    const trapRed = new THREE.MeshStandardMaterial({ color: '#8a2a1a', roughness: 0.5, emissive: '#3a0a04', emissiveIntensity: 0.4 })
+    const spineMat = new THREE.MeshStandardMaterial({ color: '#d8cfa0', roughness: 0.6 })
+    // a mud wave: a wet, glossy mound of mud with a curling front
+    const mudGeo = new THREE.SphereGeometry(0.5, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.55, 0.7)
+    {
+      const pos = mudGeo.attributes.position
+      for (let v = 0; v < pos.count; v++) {
+        const x = pos.getX(v), z = pos.getZ(v)
+        pos.setY(v, pos.getY(v) * (1 + 0.25 * Math.sin(x * 9 + z * 5)) + Math.max(0, -z) * 0.15)
+      }
+      mudGeo.computeVertexNormals()
+    }
+    const mudMat = new THREE.MeshPhysicalMaterial({ color: '#4a3524', roughness: 0.35, clearcoat: 0.6, clearcoatRoughness: 0.3 })
+    // a rope net strung between two posts across a lane: a grid of thick ropes
+    const netRopes: THREE.BufferGeometry[] = []
+    for (let i = 0; i <= 6; i++) netRopes.push(new THREE.CylinderGeometry(0.025, 0.025, 1.0, 5).rotateZ(Math.PI / 2).translate(0, 1.15 + i * 0.12, 0).toNonIndexed())
+    for (let i = 0; i <= 8; i++) netRopes.push(new THREE.CylinderGeometry(0.025, 0.025, 0.75, 5).translate(-0.5 + i * 0.125, 1.5, 0).toNonIndexed())
+    const netPosts = iron([new THREE.CylinderGeometry(0.06, 0.07, 1.9, 8).translate(-0.55, 0.95, 0), new THREE.CylinderGeometry(0.06, 0.07, 1.9, 8).translate(0.55, 0.95, 0)])
+    // a whirlpool: a dark funnel of water with foam spiralling into it
+    const whirl = new THREE.CylinderGeometry(0.5, 0.12, 0.3, 40, 1, true).translate(0, -0.15, 0)
+    const foam: THREE.BufferGeometry[] = []
+    for (let i = 0; i < 60; i++) {
+      const t = i / 60
+      const a = t * Math.PI * 6
+      const r = 0.48 - t * 0.38
+      foam.push(new THREE.BoxGeometry(0.06, 0.012, 0.03).rotateY(-a).translate(Math.cos(a) * r, -0.3 * t + 0.005, Math.sin(a) * r).toNonIndexed())
+    }
+    const whirlMat = new THREE.MeshStandardMaterial({ color: '#0f2a30', roughness: 0.1, metalness: 0.2, side: THREE.DoubleSide, envMapIntensity: 1.6 })
+    const foamMat = new THREE.MeshStandardMaterial({ color: '#e6efef', roughness: 0.6 })
+    // a gold ring for the ring leap
+    const ringGold = new THREE.MeshStandardMaterial({ color: '#d8b56a', metalness: 0.95, roughness: 0.22, emissive: '#5a4318', emissiveIntensity: 0.4 })
+    // a river barrel: oak staves bound with iron hoops, open at the top (the rider sits in it)
+    const barrelStaves = new THREE.CylinderGeometry(0.62, 0.62, 1.1, 24, 6, true)
+    {
+      const pos = barrelStaves.attributes.position
+      for (let v = 0; v < pos.count; v++) {
+        const y = pos.getY(v)
+        const k = 1 + 0.12 * (1 - (y / 0.55) ** 2)
+        pos.setX(v, pos.getX(v) * k)
+        pos.setZ(v, pos.getZ(v) * k)
+      }
+      barrelStaves.computeVertexNormals()
+    }
+    barrelStaves.translate(0, 0.55, 0)
+    const barrelHoops = iron([0.12, 0.42, 0.68, 0.98].map((y) => new THREE.TorusGeometry(0.64 + 0.07 * (1 - ((y - 0.55) / 0.55) ** 2), 0.025, 6, 32).rotateX(Math.PI / 2).translate(0, y, 0)))
+    const oak = new THREE.MeshStandardMaterial({ map: prepTex(tex.plankD, true), color: '#9a6a40', roughness: 0.75, side: THREE.DoubleSide })
     // a treasure map fragment: a rolled parchment tied with a red ribbon, gold-capped ends
     const parchment = new THREE.MeshStandardMaterial({ color: '#e7d3a4', roughness: 0.8, emissive: '#5a4320', emissiveIntensity: 0.25 })
     const ribbon = new THREE.MeshStandardMaterial({ color: '#8a1c16', roughness: 0.6 })
@@ -1253,6 +1317,26 @@ export function useProcKits(): Record<ProcProp, PropKit> {
         [plateGlyph, glyphMat],
       ]),
       kelp: kit(mergeGeometries(weed)!, weedMat),
+      snapperPlant: multi([
+        [stem, plantGreen],
+        [mergeGeometries(rosette)!, plantGreen],
+        [mergeGeometries(lobes)!, trapRed],
+        [mergeGeometries(spines)!, spineMat],
+      ]),
+      mudWave: kit(mudGeo, mudMat),
+      ropeNet: multi([
+        [mergeGeometries(netRopes)!, rope],
+        [netPosts, wood],
+      ]),
+      whirlPool: multi([
+        [whirl.toNonIndexed(), whirlMat],
+        [mergeGeometries(foam)!, foamMat],
+      ]),
+      goldRing: kit(new THREE.TorusGeometry(0.5, 0.06, 12, 40), ringGold),
+      barrel: multi([
+        [barrelStaves.toNonIndexed(), oak],
+        [barrelHoops, ironDark],
+      ]),
       lavaPool: multi([
         [new THREE.CylinderGeometry(0.5, 0.5, 0.04, 40).toNonIndexed(), basalt],
         [new THREE.CylinderGeometry(0.43, 0.43, 0.04, 40).translate(0, 0.012, 0).toNonIndexed(), lavaFlow],

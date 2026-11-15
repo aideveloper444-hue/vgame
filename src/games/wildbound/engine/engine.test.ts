@@ -6,7 +6,7 @@
  */
 import assert from 'node:assert/strict'
 import { ANIMALS, ESCAPES, RETIRED, ROSTER, SECTION_MIN_TIER, SECTION_NO_REPEAT, ZONES, tierAt, ZONE_LEN, biomeAt, isObstacle, type AnimalId, type ObstacleKind } from './content'
-import { FLY_H, LANE_W, PACING, RIDE_H, ZIP_HANG, ZIP_TOP, zipAlt, RunSim, laneX, raceStartZone, runDAtTime, runTimeAt, type Item, type Lane, type Section } from './run'
+import { RUN_START_IN, FLY_H, LANE_W, PACING, RIDE_H, ZIP_HANG, ZIP_TOP, zipAlt, RunSim, laneX, raceStartZone, runDAtTime, runTimeAt, type Item, type Lane, type Section } from './run'
 import { autopilot } from './autopilot'
 import { RaceSession, STUMBLE_MS, pickBotAnimals, type RaceSeat } from './race'
 
@@ -67,7 +67,7 @@ test('rows are spaced by the reaction window and world boundaries stay clear', (
   runFor(sim, 3000, () => {
     // (rides are not obstacle rows: the bush plane taxis on its strip, moored rafts and carts rock and roll)
     // (nor is the ravine under a zipline or cable car: the runner rides the cable over it)
-    const cable = (d: number) => sim.sections.some((x) => (x.kind === 'zipline' || x.kind === 'cablecar') && d >= x.from && d <= x.to)
+    const cable = (d: number) => sim.sections.some((x) => ['zipline', 'cablecar', 'climb', 'wallrun'].includes(x.kind) && d >= x.from && d <= x.to)
     for (const it of sim.items) if (isObstacle(it.kind) && !it.moving && !['plane', 'raft', 'minecart', 'jeep', 'trolley'].includes(it.kind) && !cable(it.d)) ds.add(Math.round(it.d * 100) / 100)
   })
   const sorted = [...ds].sort((a, b) => a - b)
@@ -178,7 +178,7 @@ function lone(kind: ObstacleKind, lane: Lane = 1, animalId: AnimalId = 'titan') 
   ;(sim as unknown as { nextSectionAt: number }).nextSectionAt = 1e9
   sim.sections = []
   sim.state.shieldUntil = 0
-  sim.items.push({ id: 1, d: 20, lane, kind, h: 0, len: { log: 0.45, roots: 0.45, trap: 0.5, rock: 0.75, ruin: 0.8, branch: 0.35, barrier: 0.3, gap: 1.2, boulder: 0.9, trolley: 1.1, stream: 1.3, rubble: 0.45, stalactite: 0.35, plane: 1.6, quicksand: 1.3, darts: 0.3, swinglog: 0.4, minecart: 1.0, buffer: 0.4, beam: 0.3, bough: 0.4, raft: 1.1, jeep: 1.3, strike: 0.6, fire: 0.9, ember: 0.35, roller: 0.45, blade: 0.3, swarm: 0.5, web: 0.3, toxic: 1.2, elephant: 1.7, pounce: 0.9, door: 0.35, gas: 0.9, lava: 1.2, plate: 0.6, kelp: 0.35 }[kind], gone: false, passed: false, broken: false, frozen: false, moving: 0 })
+  sim.items.push({ id: 1, d: 20, lane, kind, h: 0, len: { log: 0.45, roots: 0.45, trap: 0.5, rock: 0.75, ruin: 0.8, branch: 0.35, barrier: 0.3, gap: 1.2, boulder: 0.9, trolley: 1.1, stream: 1.3, rubble: 0.45, stalactite: 0.35, plane: 1.6, quicksand: 1.3, darts: 0.3, swinglog: 0.4, minecart: 1.0, buffer: 0.4, beam: 0.3, bough: 0.4, raft: 1.1, jeep: 1.3, strike: 0.6, fire: 0.9, ember: 0.35, roller: 0.45, blade: 0.3, swarm: 0.5, web: 0.3, toxic: 1.2, elephant: 1.7, pounce: 0.9, door: 0.35, gas: 0.9, lava: 1.2, plate: 0.6, kelp: 0.35, snapper: 0.6, mud: 0.8, bamboo: 0.4, net: 0.3, whirl: 1.1, sluice: 0.35 }[kind], gone: false, passed: false, broken: false, frozen: false, moving: 0 })
   return sim
 }
 const until = (sim: RunSim, d: number) => runFor(sim, d - sim.state.d)
@@ -944,6 +944,36 @@ test('the rest of the brief: truck, helicopter, pressure plates, cliff climb, wa
   assert.ok(withSection('guide', 2).sim.items.some((it) => it.kind === 'chest'), 'a chest at the end of the trail')
 })
 
+test('extra challenges: plants, turning bridge, mudslide, bamboo, trunk, windstorm, platforms, nets, whirlpools, dam, ceiling, trials, barrel', () => {
+  const kinds = ['snappers', 'spinbridge', 'mudslide', 'bamboo', 'trunk', 'windstorm', 'platforms', 'nets', 'whirlpool', 'dam', 'ceiling', 'checkpoints', 'rings', 'barrel'] as const
+  for (const kind of kinds)
+    for (let seed = 1; seed <= 12; seed++) {
+      const { sim, sec } = withSection(kind, seed)
+      const rows = new Map<number, Item[]>()
+      for (const it of sim.items) if (isObstacle(it.kind) && it.kind !== 'raft') rows.set(it.d, [...(rows.get(it.d) ?? []), it])
+      for (const [d, row] of rows) {
+        const full = new Set(row.map((it) => it.lane)).size === 3
+        assert.ok(!full || row.every((it) => !ESCAPES[it.kind as ObstacleKind].includes('lane')), `${kind} seed ${seed}: row at ${d} is a wall`)
+      }
+      runFor(sim, sec.to + 10 - sim.state.d, () => autopilot(sim))
+      assert.ok(sim.state.alive, `${kind} seed ${seed}: crashed into ${sim.state.crashKind} at ${sim.state.d.toFixed(1)}`)
+    }
+  assert.equal(withSection('barrel', 1).sim.items.find((it) => it.kind === 'raft')?.skin, 'barrel')
+  // a time trial pays out once, at the end; missing a gate loses the bonus
+  for (const kind of ['checkpoints', 'rings'] as const) {
+    const { sim, sec } = withSection(kind, 2)
+    for (const it of sim.items) if (it.kind === 'ring' || it.kind === 'gate') it.gone = true
+    const res: number[] = []
+    runFor(sim, sec.to + 10 - sim.state.d, () => {
+      autopilot(sim)
+      for (const e of sim.events.splice(0)) if (e.type === 'trial') res.push(e.bonus)
+    })
+    assert.deepEqual(res, [0], `${kind}: none taken, no bonus`)
+  }
+  // a flight marks a landing lane
+  assert.ok(withSection('flight', 1).sim.sections.some((x) => x.kind === 'flight' && x.landLane !== undefined), 'landing pad lane')
+})
+
 test('wildlife: a charging elephant must be dodged; a jaguar only threatens its lane once it springs (26 m out)', () => {
   const e = lone('elephant', 1)
   e.state.loyalUsed = true
@@ -1188,7 +1218,7 @@ test('every run can start in a different zone: same easy start, fair trail, dist
   for (const z of [9, 46, 71, 99]) {
     const sim = new RunSim({ seed: 11 + z, animalId: 'sonic', startZone: z })
     sim.state.loyalUsed = true
-    assert.equal(sim.state.d, z * ZONE_LEN)
+    assert.equal(sim.state.d, z * ZONE_LEN + RUN_START_IN)
     assert.equal(biomeAt(sim.state.d).zone.n, z + 1)
     sim.step(16)
     assert.ok(sim.state.speed < 11, `zone ${z + 1}: starts at an easy speed (${sim.state.speed.toFixed(1)})`)

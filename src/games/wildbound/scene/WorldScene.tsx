@@ -464,7 +464,7 @@ function surfaceAt(d: number, b: BiomeId = biomeId(d)): Surface {
 /** inside a raft section's river (from just past the parked rafts to just before the take-out) */
 function raftWater(rd: number) {
   const sec = view.showcase ? null : run.sim?.sectionAt(rd)
-  return !!sec && (sec.kind === 'raft' || sec.kind === 'speedboat') && sec.built && rd > sec.from + 7 && rd < sec.to - 6
+  return !!sec && (sec.kind === 'raft' || sec.kind === 'speedboat' || sec.kind === 'barrel') && sec.built && rd > sec.from + 7 && rd < sec.to - 6
 }
 
 const broken = new Map<number, number>()
@@ -498,13 +498,59 @@ function itemPlacements(it: Item, z: number, now: number, out: Placement[]) {
     // a treasure map fragment: a rolled parchment turning slowly over a gold ring, bobbing a little
     const t = now / 1000
     out.push({ prop: 'scroll', x, y: 0.75 + Math.sin(t * 2.4 + r * 6) * 0.08, z, rotY: t * 1.6, rotZ: 0.35, scale: [0.95, 0.3, 0.3] })
-    out.push({ prop: 'glowRing', x, y: 0.04, z, rotY: 0, scale: [1.0, 1, 1.0] })
+    out.push({ prop: 'glowRing', x, y: 0.04, z, rotY: 0, scale: [1.0, 0.06, 1.0] })
     return
   }
   if (it.kind === 'door') return // drawn with its gate (symbol doors dressing)
   if (it.kind === 'plate') {
     // a pressure plate: dark stone, a red sigil glowing a little brighter as the runner nears
     out.push({ prop: 'plateTrap', x, y: 0.005, z, rotY: (r - 0.5) * 0.1, scale: [LANE_W * 0.82, 0.1 + 0.02 * Math.sin(now / 200 + r * 6), it.len * 2.2] })
+    return
+  }
+  if (it.kind === 'snapper' && !it.broken) {
+    // a carnivorous plant: sways on its stem, the trap gaping and snapping as the runner comes close
+    const near = z < 14 && z > -2 ? Math.max(0, Math.sin(now / 90 + r * 6)) : 0
+    out.push({ prop: 'snapperPlant', x: x + (r - 0.5) * 0.3, y: 0, z, rotY: (r - 0.5) * 0.8, rotZ: Math.sin(now / 600 + r * 6) * 0.08, scale: [1.5, 1.75 * (1 + 0.06 * near), 1.4] })
+    return
+  }
+  if (it.kind === 'mud') {
+    // a wave of mud sliding down the trail, glistening
+    out.push({ prop: 'mudWave', x, y: -0.05, z, rotY: Math.PI, scale: [LANE_W * 1.1, 1.1 + 0.08 * Math.sin(now / 150 + r * 6), 1.9] })
+    return
+  }
+  if (it.kind === 'bamboo' && !it.broken) {
+    // a clump of bamboo culms packed across the lane
+    // (dense and thick, two staggered rows, so a blocked lane reads at once against the grove)
+    // (the culm kit is mostly leaf spray in width: a wide x/z scale gives a stalk ~7 cm thick and a leafy screen)
+    for (let k = 0; k < 5; k++) out.push({ prop: 'bamboo', x: x + (k - 2) * 0.42 + (hash01(it.id, k) - 0.5) * 0.1, y: 0, z: z + (k % 2 ? 0.25 : -0.25), rotY: hash01(it.id, k + 8) * 6.28, rotZ: (hash01(it.id, k + 12) - 0.5) * 0.1, scale: [2.5, 5.5 + hash01(it.id, k + 16) * 2.5, 2.5] })
+    return
+  }
+  if (it.kind === 'net' && !it.broken) {
+    out.push({ prop: 'ropeNet', x, y: 0, z, rotY: 0, rotZ: Math.sin(now / 500 + r * 6) * 0.02, scale: [LANE_W * 0.98, 1.9, 0.14] })
+    return
+  }
+  if (it.kind === 'whirl') {
+    // a whirlpool: a dark funnel turning, foam spiralling in
+    out.push({ prop: 'whirlPool', x, y: 0.02, z, rotY: -now / 300 + r * 6, scale: [LANE_W * 1.05, 0.32, it.len * 2.1] })
+    return
+  }
+  if (it.kind === 'sluice') {
+    // a shut sluice gate: a heavy timber panel in an iron-capped concrete frame
+    out.push({ prop: 'block', x, y: 0, z, rotY: 0, scale: [LANE_W - 0.12, 2.7, 0.4] })
+    out.push({ prop: 'sleeper', x, y: 2.7, z, rotY: 0, scale: [LANE_W + 0.2, 0.4, 0.5] })
+    for (const e of [-1, 1]) out.push({ prop: 'post', x: x + e * (LANE_W / 2), y: 0, z, rotY: 0, scale: [0.28, 3.1, 0.5] })
+    return
+  }
+  if (it.kind === 'ring') {
+    // a gold ring hung high over the lane (jump through it), turning a little
+    out.push({ prop: 'goldRing', x, y: it.h - 0.6, z, rotY: Math.sin(now / 400 + r * 6) * 0.3, scale: [1.25, 1.25, 0.14] })
+    return
+  }
+  if (it.kind === 'gate') {
+    // a time-trial checkpoint: an arch of two posts and a banner beam, a glowing ring on the ground
+    for (const e of [-1, 1]) out.push({ prop: 'post', x: x + e * (LANE_W / 2 - 0.1), y: 0, z, rotY: 0, scale: [0.16, 2.6, 0.16] })
+    out.push({ prop: 'sleeper', x, y: 2.45, z, rotY: 0, scale: [LANE_W - 0.1, 0.34, 0.12] })
+    out.push({ prop: 'glowRing', x, y: 0.04, z, rotY: 0, scale: [1.6, 0.06, 1.6] })
     return
   }
   if (it.kind === 'kelp' && !it.broken) {
@@ -533,8 +579,8 @@ function itemPlacements(it: Item, z: number, now: number, out: Placement[]) {
     // lightning (brief §G): a cold glowing ring pulses on the lane it will strike; then a bolt, and the lane burns
     if (it.h === 0) {
       const pulse = 1 + 0.1 * Math.sin(now / 110 + r * 6)
-      out.push({ prop: 'glowRing', x, y: 0.05, z, rotY: 0, scale: [1.7 * pulse, 1, 1.7 * pulse] })
-      out.push({ prop: 'glowRing', x, y: 0.05, z, rotY: 0, scale: [0.9 * pulse, 1, 0.9 * pulse] })
+      out.push({ prop: 'glowRing', x, y: 0.05, z, rotY: 0, scale: [1.7 * pulse, 0.06, 1.7 * pulse] })
+      out.push({ prop: 'glowRing', x, y: 0.05, z, rotY: 0, scale: [0.9 * pulse, 0.06, 0.9 * pulse] })
       return
     }
     let t0 = fallen.get(it.id)
@@ -569,7 +615,7 @@ function itemPlacements(it: Item, z: number, now: number, out: Placement[]) {
       out.push({ prop: 'sleeper', x, y: 0, z, rotY: 0.08, scale: [0.95, 0.5, 0.62] })
       out.push({ prop: 'sleeper', x, y: 0.5, z, rotY: 0.08, rotX: -0.12, scale: [0.98, 0.2, 0.64] })
       for (const bx of [-0.3, 0.3]) out.push({ prop: 'rail', x: x + bx, y: 0, z, rotY: 0.08, scale: [0.07, 0.72, 0.66] })
-      out.push({ prop: 'glowRing', x, y: 0.04, z, rotY: 0, scale: [1.3, 1, 1.3] })
+      out.push({ prop: 'glowRing', x, y: 0.04, z, rotY: 0, scale: [1.3, 0.06, 1.3] })
       return
     }
     // a supply crate dropping into its lane: the shadow first, then the crate falls once the runner is near
@@ -801,6 +847,11 @@ function itemPlacements(it: Item, z: number, now: number, out: Placement[]) {
         // a speedboat: sits low with its bow up when running, banks hard into a steer, slaps the chop
         const plane = riding ? 0.09 : 0.02
         out.push({ prop: 'speedboat', x: riding ? st!.x : x, y: -0.42 + bob * 0.6 + lifted, z: z + 0.55, rotY: 0, rotX: -plane + Math.sin(now / 260 + it.id) * (riding ? 0.02 : 0.01), rotZ: lean * 1.4, scale: [1.5, 1.0, 3.05] })
+        break
+      }
+      if (it.skin === 'barrel') {
+        // a river barrel: bobbing and turning slowly on the current, the rider standing in it
+        out.push({ prop: 'barrel', x: riding ? st!.x : x, y: -0.35 + bob * 1.4 + lifted, z, rotY: now / 900 + it.id, rotX: Math.sin(now / 450 + it.id) * 0.06, rotZ: lean * 1.2, scale: [1.45, 1.15, 1.45] })
         break
       }
       if (it.skin === 'truck') {
@@ -1132,6 +1183,24 @@ function makeSource() {
           push({ prop: 'mossrocks', x: -side * (PATH_HALF + 1.6), y: -0.1, z: z + 3, rotY: k, scale: [1.1, 0.3, 1.1] })
         }
       }
+      if (sec.kind === 'flight' && sec.landLane !== undefined) {
+        // the precision-landing pad at the end of the strip: a glowing target ring and chevrons in its lane
+        const z = sec.to - 9 - d
+        if (z > -view.behind && z < view.ahead) {
+          const lx = laneX(sec.landLane)
+          push({ prop: 'glowRing', x: lx, y: 0.04, z, rotY: 0, scale: [2.2, 0.06, 2.2] })
+          push({ prop: 'glowRing', x: lx, y: 0.045, z, rotY: 0, scale: [1.2, 0.06, 1.2] })
+          for (const e of [-1, 1]) push({ prop: 'chevron', x: lx + e * 1.1, y: 0, z: z - 3, rotY: 0, scale: [e * 0.8, 0.5, 0.08] })
+        }
+      }
+      if (sec.kind === 'trunk') {
+        // a huge fallen trunk lies along the middle lane over the drop
+        for (let k = Math.floor(sec.from / 6); k * 6 < sec.to; k++) {
+          const z = k * 6 + 3 - d
+          if (z < -view.behind || z > view.ahead) continue
+          push({ prop: 'trunk', x: 0, y: -0.62, z, rotY: Math.PI / 2, rotX: 0, rotZ: 0, scale: [6.3, 0.75, 0.9] })
+        }
+      }
       if (sec.kind === 'symbols' && sec.gates) {
         // temple symbol doors: a stone gate across the trail per row, three doors in it; the door bearing the section's
         // symbol grinds up into the lintel as the runner comes within reach, the others stay shut
@@ -1146,8 +1215,8 @@ function makeSource() {
           }
         }
       }
-      if (sec.kind === 'temple') {
-        // carved stone pillars line the corridor, every other pair carrying a lintel
+      if (sec.kind === 'temple' || sec.kind === 'ceiling' || sec.kind === 'plates' || sec.kind === 'symbols') {
+        // carved stone pillars line the corridor (temple traps, the collapsing ceiling, pressure plates, symbol doors), every other pair carrying a lintel
         for (let k = Math.floor(sec.from / SEG); k * SEG < sec.to; k++) {
           const z = k * SEG + SEG / 2 - d
           if (z < -view.behind || z > view.ahead) continue
@@ -1194,7 +1263,7 @@ function makeSource() {
       const now = performance.now()
       for (const it of sim.items) {
         // obstacles, plus the vine and zipline markers (their vines, cables and gantries)
-        if (it.gone || (!isObstacle(it.kind) && it.kind !== 'vine' && it.kind !== 'zipline' && it.kind !== 'chest' && it.kind !== 'crate' && it.kind !== 'fragment')) continue
+        if (it.gone || (!isObstacle(it.kind) && it.kind !== 'vine' && it.kind !== 'zipline' && it.kind !== 'chest' && it.kind !== 'crate' && it.kind !== 'fragment' && it.kind !== 'ring' && it.kind !== 'gate')) continue
         const z = it.d - d
         // (a zipline, cable car, cliff ledge or canyon wall stays drawn until its far end is behind the runner)
         const tail = it.kind === 'zipline' ? (it.swingTo ?? it.d) - d : z
@@ -2178,8 +2247,9 @@ const VARIANT_LIGHT: Record<Variant, VariantMod> = {
 /** 0..1 inside a cave (eased) */
 const caveK = { v: 0 }
 /** weather challenges in the air: how far the sandstorm / volcano smoke / toxic haze has rolled in (0..1 each) */
-const atmoK = { sand: 0, smoke: 0, gas: 0, water: 0 }
+const atmoK = { sand: 0, smoke: 0, gas: 0, water: 0, wind: 0 }
 const ATMO = {
+  wind: { color: '#8f978d', near: 4, far: 62 },
   water: { color: '#1f5a5c', near: 2, far: 46 },
   sand: { color: '#c7a26c', near: 2, far: 44 },
   smoke: { color: '#4a2418', near: 8, far: 80 },
@@ -2333,6 +2403,7 @@ function Atmosphere({ quality }: { quality: Quality }) {
     atmoK.sand += ((wk === 'sandstorm' ? 1 : 0) - atmoK.sand) * Math.min(1, dt * 1.2)
     atmoK.smoke += ((wk === 'volcano' ? 1 : 0) - atmoK.smoke) * Math.min(1, dt * 1.2)
     atmoK.gas += ((wk === 'toxicgas' ? 1 : 0) - atmoK.gas) * Math.min(1, dt * 1.2)
+    atmoK.wind += ((wk === 'windstorm' ? 1 : 0) - atmoK.wind) * Math.min(1, dt * 1.2)
     // underwater only once the runner is in the channel
     const diving = !view.showcase && run.sim?.sectionAt(d)?.kind === 'swim'
     atmoK.water += ((diving ? 1 : 0) - atmoK.water) * Math.min(1, dt * 3)
@@ -2354,7 +2425,7 @@ function Atmosphere({ quality }: { quality: Quality }) {
     fog.near += (Math.max(14, M.fogNear * V.fogK) * (1 - ck * 0.6) - fog.near) * k
     fog.far += (Math.max(85, M.fogFar * V.fogK) * (1 - ck * 0.55) - fog.far) * k
     if (ck > 0.01) fog.color.lerp(fogB.set('#2a2420'), ck * 0.4)
-    for (const key of ['sand', 'smoke', 'gas', 'water'] as const) {
+    for (const key of ['sand', 'smoke', 'gas', 'water', 'wind'] as const) {
       const w = atmoK[key]
       if (w < 0.005) continue
       const A = ATMO[key]
@@ -3059,7 +3130,7 @@ function World() {
       <PropSet kit={kits.tileSnow} prop="tileSnow" capacity={300} source={source} />
       <PropSet kit={kits.tileLeaf} prop="tileLeaf" capacity={300} source={source} />
       <PropSet kit={kits.bankSnow} prop="bankSnow" capacity={70} source={source} />
-      <PropSet kit={kits.bamboo} prop="bamboo" capacity={520} source={source} shadows />
+      <PropSet kit={kits.bamboo} prop="bamboo" capacity={760} source={source} shadows />
       <PropSet kit={kits.pine} prop="pine" capacity={200} source={source} shadows />
       <PropSet kit={kits.pineSnow} prop="pineSnow" capacity={200} source={source} shadows />
       <PropSet kit={kits.curb} prop="curb" capacity={260} source={source} />
@@ -3127,6 +3198,12 @@ function World() {
       <PropSet kit={kits.truck} prop="truck" capacity={6} source={source} shadows />
       <PropSet kit={kits.plateTrap} prop="plateTrap" capacity={18} source={source} receive={false} />
       <PropSet kit={kits.kelp} prop="kelp" capacity={24} source={source} receive={false} />
+      <PropSet kit={kits.snapperPlant} prop="snapperPlant" capacity={16} source={source} shadows />
+      <PropSet kit={kits.mudWave} prop="mudWave" capacity={16} source={source} />
+      <PropSet kit={kits.ropeNet} prop="ropeNet" capacity={18} source={source} />
+      <PropSet kit={kits.whirlPool} prop="whirlPool" capacity={16} source={source} receive={false} />
+      <PropSet kit={kits.goldRing} prop="goldRing" capacity={8} source={source} />
+      <PropSet kit={kits.barrel} prop="barrel" capacity={6} source={source} shadows />
       <PropSet kit={kits.chevron} prop="chevron" capacity={8} source={source} shadows />
       <PropSet kit={kits.shadowDisc} prop="shadowDisc" capacity={40} source={source} receive={false} />
       <PropSet kit={kits.waterQuad} prop="waterQuad" capacity={200} source={source} receive={false} />
@@ -3138,7 +3215,7 @@ function World() {
       <PropSet kit={kits.toxicPool} prop="toxicPool" capacity={24} source={source} receive={false} />
       <PropSet kit={kits.crack} prop="crack" capacity={80} source={source} receive={false} />
       <PropSet kit={kits.flame} prop="flame" capacity={160} source={source} receive={false} />
-      <PropSet kit={kits.glowRing} prop="glowRing" capacity={16} source={source} receive={false} />
+      <PropSet kit={kits.glowRing} prop="glowRing" capacity={32} source={source} receive={false} />
       <PropSet kit={kits.bolt} prop="bolt" capacity={8} source={source} receive={false} />
       <PropSet kit={kits.crystal} prop="crystal" capacity={30} source={source} receive={false} />
       {glb('btree1', 40, true)}

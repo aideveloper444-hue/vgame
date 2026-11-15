@@ -1159,3 +1159,23 @@
   background: radial-gradient(ellipse 90% 80% at 50% 40%, rgba(236, 244, 255, 0.7), rgba(188, 214, 255, 0.25) 60%, rgba(0, 0, 0, 0.2) 100%);
   animation-duration: 0.45s;
 }
+
+/* loading screen: the forest drifts slowly closer behind its veil */
+@keyframes wb-load-drift {
+  from { transform: scale(1.04); }
+  to { transform: scale(1.14); }
+}
+.wb-load-bg {
+  animation: wb-load-drift 14s ease-out both;
+}
+/* the get-ready card while a run warms up: fades away into the countdown */
+.wb-ready {
+  transition: opacity 0.45s var(--ease);
+}
+@keyframes wb-ready-sweep {
+  from { transform: translateX(-110%); }
+  to { transform: translateX(330%); }
+}
+.wb-ready-bar {
+  animation: wb-ready-sweep 1.1s ease-in-out infinite;
+}

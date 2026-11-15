@@ -51,6 +51,20 @@ export const CHALLENGE_NAME: Partial<Record<SectionKind, string>> & Record<strin
   swim: 'Dive',
   rival: 'Rival Explorer',
   guide: 'Guide Bird',
+  snappers: 'Snapping Plants',
+  spinbridge: 'Turning Bridge',
+  mudslide: 'Mudslide',
+  bamboo: 'Bamboo Squeeze',
+  trunk: 'Trunk Balance',
+  windstorm: 'Windstorm',
+  platforms: 'Falling Platforms',
+  nets: 'Rope Nets',
+  whirlpool: 'Whirlpools',
+  dam: 'Dam Gates',
+  ceiling: 'Collapsing Ceiling',
+  checkpoints: 'Time Trial',
+  rings: 'Ring Leap',
+  barrel: 'Barrel Ride',
 }
 export const nameOf = (k: string) => CHALLENGE_NAME[k as SectionKind] ?? k.charAt(0).toUpperCase() + k.slice(1)
 export const textOf = (k: string): { big: string; small: string } => (SECTION_TEXT as Record<string, { big: string; small: string }>)[k] ?? { big: nameOf(k), small: '' }

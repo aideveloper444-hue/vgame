@@ -107,6 +107,8 @@ export default function RunScreen() {
   const [runKey, setRunKey] = useState(0)
   const [reviveLeft, setReviveLeft] = useState(0)
   const [count, setCount] = useState<string | null>(null)
+  // the run's warm-up before the countdown (the scene compiles its shaders): a get-ready card instead of a raw scene
+  const [warming, setWarming] = useState(true)
   const tutorialRun = useRef(false)
   const dailyRun = useRef(false)
   const a = getAnimal(animalId)
@@ -222,9 +224,16 @@ export default function RunScreen() {
     let raf = 0
     let last = 0
     let lastCount = ''
+    let lastWarm = true
     const loop = (t: number) => {
       raf = requestAnimationFrame(loop)
-      if (run.phase === 'countdown') {
+      // (the countdown only starts ticking once the scene is warm: until then it sits at its full 2.4 s)
+      const w = run.phase === 'countdown' && (!run.warm || run.countdown >= 2399)
+      if (w !== lastWarm) {
+        lastWarm = w
+        setWarming(w)
+      }
+      if (run.phase === 'countdown' && !w) {
         const c = run.countdown > 1600 ? '3' : run.countdown > 800 ? '2' : run.countdown > 0 ? '1' : 'GO!'
         if (c !== lastCount) {
           lastCount = c
@@ -330,6 +339,10 @@ export default function RunScreen() {
               sfx.power()
               haptic(60)
               run.shake = Math.max(run.shake, 0.3)
+            } else if (e.on && e.skin === 'barrel') {
+              setBanner({ id: Date.now(), big: 'Over the falls!', small: 'Steer the barrel round the rocks · jump the logs' })
+              sfx.power()
+              haptic(50)
             } else if (e.on && e.skin === 'truck') {
               setBanner({ id: Date.now(), big: 'All aboard!', small: 'Steer round the rocks · jump the washouts · duck the boughs' })
               sfx.power()
@@ -401,6 +414,18 @@ export default function RunScreen() {
           case 'surface':
             // tell the player about a slippery surface once per run, not every time it comes round again
             if (GRIP[e.grip].label && !gripSeen.current.has(e.grip) && gripSeen.current.add(e.grip)) setBanner({ id: Date.now(), big: e.grip === 'ice' ? 'Ice!' : e.grip === 'snow' ? 'Deep snow' : 'Mud!', small: GRIP[e.grip].label })
+            break
+          case 'landing':
+            if (e.perfect) {
+              setBanner({ id: Date.now(), big: 'Perfect landing!', small: `Right on the pad · +${e.bonus}` })
+              sfx.cleared(3)
+              haptic(60)
+            }
+            break
+          case 'trial':
+            setBanner({ id: Date.now(), big: e.bonus ? (e.kind === 'rings' ? 'Every ring!' : 'Every checkpoint!') : `${e.got}/${e.of} ${e.kind === 'rings' ? 'rings' : 'checkpoints'}`, small: e.bonus ? `+${e.bonus} · +2 gems` : 'Take them all for the bonus' })
+            if (e.bonus) sfx.chest()
+            haptic(e.bonus ? 60 : 20)
             break
           case 'rival':
             setBanner({ id: Date.now(), big: e.won ? 'You beat the rival!' : 'The rival got there first', small: e.won ? `+${e.bonus} · +3 gems` : 'Grab more coins next time' })
@@ -836,7 +861,16 @@ export default function RunScreen() {
           </div>
         </div>
       )}
-      {count && (
+      {/* get ready: covers the warm-up (the scene is still compiling), names where this run starts */}
+      <div className={`wb-ready pointer-events-none absolute inset-0 z-[60] flex flex-col items-center justify-center gap-3 text-center ${warming ? 'opacity-100' : 'opacity-0'}`} style={{ background: 'radial-gradient(ellipse at 50% 45%, rgba(8,10,8,0.82), rgba(4,5,4,0.97) 70%)' }}>
+        <div className="text-[12px] font-semibold uppercase tracking-[0.42em] text-[var(--muted)]">Get ready</div>
+        <div className="wb-title px-4 text-[clamp(26px,7vw,40px)] leading-tight wb-yellow">{sim ? biomeAt(sim.state.d).zone.name : ''}</div>
+        <div className="text-[13px] uppercase tracking-[0.3em] text-white/55">{sim ? `Zone ${String(biomeAt(sim.state.d).zone.n).padStart(3, '0')}` : ''}</div>
+        <div className="mt-2 h-[2px] w-[min(46vw,200px)] overflow-hidden rounded-full bg-white/10">
+          <div className="wb-ready-bar h-full w-1/3 rounded-full" style={{ background: 'linear-gradient(90deg,transparent,#e8d3a4,transparent)' }} />
+        </div>
+      </div>
+      {count && !warming && (
         <div key={count} className="pointer-events-none absolute inset-0 grid place-items-center">
           <div className="wb-count wb-title text-[110px] wb-yellow wb-stroke">{count}</div>
         </div>

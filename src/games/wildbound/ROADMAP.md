@@ -599,3 +599,24 @@ The brief (gameplay & challenge design doc v1.0, 10 Nov 2026) is applied to Wild
 - Not done: the horse ride (no realistic horse model; a procedural one would break the art direction).
 - Tests 58 (new: the eight new challenges are fair and survivable on 12 seeds; skins; the rival race is decided once at
   the finish and lost without coins; the guide trail ends at a chest). Checked live: all of them, including photo mode.
+
+## 2026-11-16: extra challenges, a better first impression
+
+- **14 extra challenges** (all fair-tested on 12 seeds, autopilot survives): snapping plants (`snapper`), turning
+  stone bridge, mudslide (`mud` waves sliding at the runner), bamboo squeeze (`bamboo` clumps), trunk balance (a
+  fallen trunk along the middle lane over the drop), windstorm (grey gale haze), falling platforms (planks that give
+  way 30 m out), rope nets (`net`), whirlpools (`whirl`), dam gates (`sluice` walls, one open with rushing water),
+  collapsing ceiling (falling blocks in a temple corridor), time trial (checkpoint `gate`s, all for a bonus), ring leap
+  (`ring`s hung high, jump through all), barrel ride (raft rules). Precision landing: every airstrip marks a landing
+  pad lane; touch down on it for +750. Tests 59.
+- Fixes found on the way: the flat glow ring was stretched to 1 m tall wherever it was used (the golden chest, the
+  lightning telegraph): now a thin ground ring. Temple pillars now line the collapsing ceiling, pressure plates and
+  symbol doors. Bamboo obstacle culms were a few centimetres thick (the kit's width is its leaf spray).
+- **First impression**: the loading screen is the blurred jungle drifting closer behind a veil, the title centred
+  and sized to fit any phone (it wrapped and spilled off the left edge), a progress line with a percentage and
+  rotating tips. On wide screens the home title is centred at the top (it sat at the top left). Pressing Play shows a
+  "Get ready" card naming the start zone while the scene warms up, instead of a raw half-framed scene.
+- **Start on the straight**: every zone opens with a sharp corner centred on its boundary, and runs started exactly
+  there, so the countdown camera looked round the bend with the runner at the screen edge. Runs now start 14 m into
+  their zone (`RUN_START_IN`; zone 0 has no corner and still starts at 0).
+- Horse: still blocked on a realistic rigged model (no free download without an account; paid ones exist).

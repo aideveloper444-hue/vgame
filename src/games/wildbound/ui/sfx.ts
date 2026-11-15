@@ -350,6 +350,35 @@ export const sfx = {
         // a bright, magical trill
         for (const [i, f] of [1319, 1568, 1976, 2349].entries()) tone(f, 0.14, 'sine', 0.05, undefined, i * 0.07)
         break
+      case 'snappers':
+        // a wet snap, twice
+        noise(0.08, 0.2, 'bandpass', 1400, 2)
+        noise(0.08, 0.18, 'bandpass', 1200, 2, undefined, 0.25)
+        break
+      case 'mudslide':
+        // a heavy, sucking slide of mud
+        noise(1.2, 0.16, 'lowpass', 260, 1, 120)
+        break
+      case 'windstorm':
+        // a gale building
+        noise(1.6, 0.14, 'bandpass', 600, 0.5, 1400)
+        break
+      case 'whirlpool':
+      case 'dam':
+      case 'barrel':
+        // churning water
+        noise(1.2, 0.12, 'bandpass', 800, 0.6, 400)
+        break
+      case 'ceiling':
+        // stone grinding overhead, dust trickling
+        noise(0.9, 0.18, 'lowpass', 200, 1, 90)
+        noise(0.6, 0.05, 'highpass', 3000, 1, undefined, 0.4)
+        break
+      case 'checkpoints':
+      case 'rings':
+        // a starting beep sequence
+        for (const [i, f] of [660, 660, 990].entries()) tone(f, 0.12, 'square', 0.04, undefined, i * 0.22)
+        break
       default:
         // anything newer: a low, neutral heads-up
         tone(330, 0.18, 'triangle', 0.06)

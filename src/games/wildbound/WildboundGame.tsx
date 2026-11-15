@@ -128,22 +128,49 @@ export default function WildboundGame() {
       {showLevel && <LevelUpModal level={levelUps[0]} onOk={() => useSave.getState().popLevelUp()} />}
       <Toasts />
 
-      {!ready && (
-        <div className="wb-layer z-[95] flex flex-col items-center justify-center gap-4" style={{ background: 'radial-gradient(ellipse at 50% 38%, #1c201c, #070807 72%)' }}>
-          <Logo size={1.3} className="wb-in" />
-          <div className="text-[14px] font-semibold uppercase tracking-[0.42em] text-[var(--muted)]">Run · Explore · Survive</div>
-          <div className="mt-2 h-[2px] w-[min(60vw,280px)] overflow-hidden rounded-full bg-white/10">
-            <div className="h-full rounded-full transition-all" style={{ width: `${Math.max(8, progress)}%`, background: 'linear-gradient(90deg,#f3e3bd,#a9864e)' }} />
-          </div>
-          <div className="text-[13px] uppercase tracking-[0.28em] text-white/50">Loading the forest</div>
-        </div>
-      )}
+      {!ready && <LoadingScreen progress={progress} />}
 
       {screen === 'home' && !import.meta.env.VITE_WB_STANDALONE && (
         <button className="absolute bottom-1 left-1 z-[5] rounded px-2 py-1 text-[11px] text-white/40" onClick={() => navigate('/games')}>
           Exit
         </button>
       )}
+    </div>
+  )
+}
+
+const TIPS = [
+  'Swipe left or right to change lane',
+  'Swipe up to jump, down to slide – twice down to roll',
+  'Run into a plane, raft or jeep to ride it',
+  'Every run starts somewhere new across 100 wild zones',
+  'Collect four map fragments for a treasure',
+  'Three stars: clear a challenge without a save and grab its coins',
+]
+/** The first load: the jungle behind a soft veil, the title centred, a slim progress line and rotating tips. */
+function LoadingScreen({ progress }: { progress: number }) {
+  const [tip, setTip] = useState(0)
+  useEffect(() => {
+    const t = setInterval(() => setTip((n) => (n + 1) % TIPS.length), 2600)
+    return () => clearInterval(t)
+  }, [])
+  return (
+    <div className="wb-layer z-[95] overflow-hidden" style={{ background: '#070807' }}>
+      {/* the forest, slowly drifting closer behind a dark veil */}
+      <div className="wb-layer wb-load-bg" style={{ backgroundImage: 'url(/models/wildbound/tex/sky_2k.jpg)', backgroundSize: 'cover', backgroundPosition: '50% 45%', filter: 'blur(2px) saturate(1.15)' }} />
+      <div className="wb-layer" style={{ background: 'radial-gradient(ellipse at 50% 42%, rgba(7,9,7,0.35), rgba(5,7,5,0.92) 75%)' }} />
+      <div className="wb-layer flex flex-col items-center justify-center gap-4 px-4 text-center">
+        <Logo size={1.25} className="wb-in" />
+        <div className="text-[clamp(11px,3.2vw,14px)] font-semibold uppercase tracking-[0.42em] text-[var(--muted)]">Run · Explore · Survive</div>
+        <div className="mt-3 h-[2px] w-[min(62vw,300px)] overflow-hidden rounded-full bg-white/10">
+          <div className="h-full rounded-full transition-all duration-300" style={{ width: `${Math.max(8, progress)}%`, background: 'linear-gradient(90deg,#f3e3bd,#a9864e)' }} />
+        </div>
+        <div className="text-[12px] uppercase tracking-[0.3em] text-white/45">Loading the forest · {Math.round(Math.max(8, progress))}%</div>
+      </div>
+      <div key={tip} className="wb-in absolute inset-x-0 bottom-[max(28px,env(safe-area-inset-bottom))] px-6 text-center text-[clamp(13px,3.6vw,15px)] text-white/70">
+        <span className="mr-2 text-[var(--gold)]">TIP</span>
+        {TIPS[tip]}
+      </div>
     </div>
   )
 }

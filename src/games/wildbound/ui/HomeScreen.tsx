@@ -50,13 +50,14 @@ export default function HomeScreen({ onPlay }: { onPlay: () => void }) {
               Leaderboard
             </button>
           </div>
-          <div className="wb-home-logo flex min-w-0 flex-1 flex-col items-center portrait:order-3 portrait:basis-full landscape:items-start">
-            <Logo size={0.92} className="mt-3 portrait:scale-[0.8] landscape:ml-6" />
-            <div className="mt-2 text-[13px] font-semibold uppercase tracking-[0.36em] text-[var(--muted)] wb-shadow landscape:ml-[18px]">
+          {/* the title: centred on the screen (on wide screens it floats over the top row, clear of the side columns) */}
+          <div className="wb-home-logo pointer-events-none flex min-w-0 flex-1 flex-col items-center portrait:order-3 portrait:basis-full landscape:absolute landscape:inset-x-0 landscape:top-[max(10px,env(safe-area-inset-top))]">
+            <Logo size={0.92} className="mt-3 portrait:scale-[0.8]" />
+            <div className="mt-2 text-[13px] font-semibold uppercase tracking-[0.36em] text-[var(--muted)] wb-shadow">
               Run · Explore · Survive
             </div>
           </div>
-          <div className="flex shrink-0 flex-col items-end gap-2 portrait:order-2 portrait:ml-auto">
+          <div className="flex shrink-0 flex-col items-end gap-2 portrait:order-2 portrait:ml-auto landscape:ml-auto">
             <Wallet compact={portrait} />
             <div className="wb-hud-box !h-8 !px-3 text-[15px] portrait:hidden">
               <span className="wb-yellow">LV {lv.level}</span>

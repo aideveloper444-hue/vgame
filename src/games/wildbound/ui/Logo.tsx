@@ -12,7 +12,9 @@ export default function Logo({ size = 1, className = '' }: { size?: number; clas
         style={{
           fontFamily: "'Cinzel', 'Times New Roman', serif",
           fontWeight: 600,
-          fontSize: s(52),
+          // (never wider than the screen: on a narrow phone the title scales down instead of wrapping)
+          fontSize: `min(${s(52)}, 8.6vw)`,
+          whiteSpace: 'nowrap',
           letterSpacing: '0.14em',
           paddingLeft: '0.14em',
           background: 'linear-gradient(180deg, #f8edd2 0%, #e2c896 45%, #b08d55 78%, #d9bf8c 100%)',
