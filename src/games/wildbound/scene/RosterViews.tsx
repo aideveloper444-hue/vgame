@@ -83,6 +83,8 @@ function CardScene({ id, phase }: { id: AnimalId; phase: number }) {
       <hemisphereLight args={['#fff2dc', '#26261f', 1.1]} />
       <directionalLight position={[3, 5, 4]} intensity={2.2} color="#fff0d8" />
       <directionalLight position={[-3, 2.5, -4]} intensity={1.6} color="#cfe0ff" />
+      {id === 'stallion' && <directionalLight position={[2, 4, 6]} intensity={3} color="#e9efff" />}
+      {id === 'stallion' && <directionalLight position={[-2, 5, -5]} intensity={3.2} color="#cfe0ff" />}
       <mesh rotation-x={-Math.PI / 2} position={[0, 0.005, 0]}>
         <planeGeometry args={[h * 2.6, h * 2.6]} />
         <meshBasicMaterial map={groundShadow()} transparent depthWrite={false} />
@@ -187,6 +189,10 @@ function FeatureScene({ id, spin }: { id: AnimalId; spin: Spin }) {
       <directionalLight position={[3, 5, 4]} intensity={2.4} color="#fff0d8" />
       <directionalLight position={[-4, 3, -3]} intensity={1.8} color="#cfe0ff" />
       <directionalLight position={[0, 2, -5]} intensity={0.8} color="#ffe2c0" />
+      {/* a black coat needs more light to read on the dark stage: a soft cool front light and a bright rim */}
+      {id === 'stallion' && <directionalLight position={[2, 4, 6]} intensity={3.2} color="#e9efff" />}
+      {id === 'stallion' && <directionalLight position={[-2, 5, -5]} intensity={3.4} color="#cfe0ff" />}
+      {id === 'stallion' && <hemisphereLight args={['#dfe8ff', '#2a2a26', 1.2]} />}
       <mesh rotation-x={-Math.PI / 2} position={[0, 0.005, 0]}>
         <planeGeometry args={[h * 3.2, h * 3.2]} />
         <meshBasicMaterial map={groundShadow()} transparent depthWrite={false} />

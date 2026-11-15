@@ -86,6 +86,9 @@ export const MODELS: Record<AnimalId, ModelDef> = {
   zara: { url: `${M}/raja.glb`, height: 1.12, yaw: 0, runRate: 0.85, cadence: 0.92, tailThin: 0.6 },
   // a grey wolf's ears are shorter and set wider than the arctic wolf body's tall, dog-like ones
   ash: { url: `${M}/arctic.glb`, height: 1.08, yaw: 0, runRate: 1.25, shape: { 'ear.L': [0.9, 0.78, 0.9], 'ear.R': [0.9, 0.78, 0.9] } },
+  // Midnight, a tall black Friesian stallion: Microsoft's rigged horse (MIT) rebuilt in tools/wildbound-blender/horse.py
+  // (tack off, jet-black coat, hair-card mane, tail and feathering, its own gallop, jump, idle and rearing intro)
+  stallion: { url: `${M}/stallion.glb`, height: 1.85, yaw: 0, runRate: 0.85 },
 }
 
 export function preloadAnimal(id: AnimalId) {
@@ -110,7 +113,7 @@ const RIGHT = new THREE.Vector3(1, 0, 0)
 type IntroKind = 'turn' | 'roar' | 'howl' | 'crouch' | 'stomp' | 'hop'
 const INTRO: Record<AnimalId, IntroKind> = {
   sonic: 'turn', leo: 'roar', raja: 'roar', nova: 'roar', zara: 'crouch', shadow: 'crouch', jax: 'crouch', blaze: 'crouch',
-  snow: 'crouch', arctic: 'howl', ash: 'howl', bruno: 'stomp', titan: 'stomp', koda: 'hop',
+  snow: 'crouch', arctic: 'howl', ash: 'howl', bruno: 'stomp', titan: 'stomp', koda: 'hop', stallion: 'stomp',
 }
 
 let starTex: THREE.Texture | null = null
@@ -880,7 +883,7 @@ function sonicCollar(mesh: THREE.Mesh, root: THREE.Object3D): THREE.MeshStandard
 }
 
 /** world-space fur length per coat (m); 0 = no fur shells (the elephant's skin) */
-const FUR_LEN: Record<AnimalId, number> = { sonic: 0.009, leo: 0, raja: 0.014, shadow: 0.008, jax: 0.009, arctic: 0.024, bruno: 0.02, titan: 0, koda: 0.022, snow: 0.024, nova: 0.016, blaze: 0.009, zara: 0.012, ash: 0.024 }
+const FUR_LEN: Record<AnimalId, number> = { sonic: 0.009, leo: 0, raja: 0.014, shadow: 0.008, jax: 0.009, arctic: 0.024, bruno: 0.02, titan: 0, koda: 0.022, snow: 0.024, nova: 0.016, blaze: 0.009, zara: 0.012, ash: 0.024, stallion: 0 }
 const FUR_SHELLS = 12
 let furTex: THREE.Texture | null = null
 /** tiling strand mask: thousands of soft dots of random strength (each one a hair seen end-on) */
@@ -1060,6 +1063,25 @@ export default function WildAnimal({
         mat.customProgramCacheKey = () => `coat-${animalId}`
         const sheen = (mat as THREE.MeshPhysicalMaterial).sheenColor
         if (sheen && COAT_SHEEN[animalId]) sheen.set(COAT_SHEEN[animalId]!)
+      }
+      if (animalId === 'stallion' && !Array.isArray(m.material)) {
+        // Midnight: a glossy jet-black coat (a cool blue-black sheen and a bright, tight specular instead of the warm
+        // velvet sheen fur gets) and hair cards cut out along their strands, drawn from both sides
+        const mat = m.material as THREE.MeshPhysicalMaterial
+        if (/hair/i.test(mat.name)) {
+          mat.alphaTest = 0.4
+          mat.side = THREE.DoubleSide
+          mat.sheen = 0.5
+          mat.roughness = 0.55
+        } else {
+          mat.roughness = 0.4
+          mat.specularIntensity = 0.75
+          mat.specularColor?.set('#e4ebff')
+          // a steel-blue sheen at grazing angles: the black body keeps an outline in dim light (the selection screen)
+          mat.sheen = 1
+        }
+        mat.sheenColor?.set(/hair/i.test(mat.name) ? '#262b34' : '#4a5568')
+        mat.envMapIntensity = 0.8
       }
       if (/collar/i.test(m.name) && !Array.isArray(m.material)) {
         // swap the collar's material in the blink / ghost list too

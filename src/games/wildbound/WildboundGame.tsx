@@ -8,6 +8,7 @@ import '@fontsource/barlow-condensed/700.css'
 import '@fontsource/barlow-condensed/600-italic.css'
 import './ui/wildbound.css'
 import { useSave } from './state/progress'
+import { ANIMALS, type AnimalId } from './engine/content'
 import { loadPrices } from './state/shop'
 import { onPhase, run } from './scene/runController'
 import { Toasts, useNav } from './ui/common'
@@ -25,6 +26,12 @@ import { leaveRace, useRaceUI } from './state/race'
 const WorldScene = lazy(() => import('./scene/WorldScene'))
 
 /** Wildbound – Deep Forest Run. One 3D canvas serves the home lineup, the character preview and the run. */
+// development only: ?wbanimal=<id> runs as that animal (screenshots of a new character before it is owned)
+if (import.meta.env.DEV && typeof window !== 'undefined') {
+  const id = new URLSearchParams(location.search).get('wbanimal')
+  if (id && ANIMALS.some((a) => a.id === id)) useSave.setState({ selected: id as AnimalId })
+}
+
 export default function WildboundGame() {
   const screen = useNav((s) => s.screen)
   const previewId = useNav((s) => s.previewId)

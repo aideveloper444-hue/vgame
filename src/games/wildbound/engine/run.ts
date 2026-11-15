@@ -599,14 +599,16 @@ export class RunSim {
     return ms
   }
   private jumpH() {
-    return JUMP_H * (this.powerOn('megajump') ? 2.6 : this.powerOn('superjump') || this.abilityOn('leap') ? 1.9 : this.abilityOn('cliff') ? 1.5 : 1)
+    // (the stallion's Long Stride: a tenth higher on every jump)
+    return JUMP_H * (this.animal.id === 'stallion' ? 1.1 : 1) * (this.powerOn('megajump') ? 2.6 : this.powerOn('superjump') || this.abilityOn('leap') ? 1.9 : this.abilityOn('cliff') ? 1.5 : 1)
   }
   private lowMs() {
     return this.animal.id === 'koda' ? LOW_MS * 0.8 : this.abilityOn('roll') ? LOW_MS * 0.7 : LOW_MS
   }
   private laneRate() {
     // m/s sideways; ice, snow and mud make turns slower (not on the trolley or a vine)
-    const g = this.state.ride || this.state.swing ? 1 : GRIP[this.state.grip].lane
+    // (the stallion is sure-footed: no surface slows his turns)
+    const g = this.state.ride || this.state.swing || this.animal.id === 'stallion' ? 1 : GRIP[this.state.grip].lane
     return (this.animal.id === 'shadow' || this.animal.id === 'jax' || this.animal.id === 'blaze' ? 15 : 12) * g * (this.opts.steer ?? 1)
   }
   speedFactor() {

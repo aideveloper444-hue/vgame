@@ -634,3 +634,20 @@ The brief (gameplay & challenge design doc v1.0, 10 Nov 2026) is applied to Wild
 - **Rivals never hide the trail**: at race pace everyone runs together, and a rival just ahead filled the screen. A
   rival close ahead now fades see-through (fully drawn again ~12 m out), and one sharing your lane right beside you
   is not drawn.
+
+## 2026-11-16 night: Midnight, the black Friesian stallion
+
+- New character **Midnight** (`stallion`, 499 gems, ability Thunder Gallop = the charge rules: faster, bursts through
+  breakable obstacles; traits Long Stride = jumps 10% higher, Sure-Footed = no surface slows his turns). Added last
+  in ANIMALS so saves and race packets (animal index) stay valid. Roster 11, tests 60.
+- Model: Microsoft's rigged horse (MIT, no-login download) rebuilt by `tools/wildbound-blender/horse.py`: meshopt
+  decompressed (gltf-transform), tack removed, tail trimmed to a dock, body shells welded, saddle dip filled and the
+  saddle cloth smoothed out of the colour and normal maps, glossy jet-black coat, one subdivision level, hair cards
+  (long mane falling right with a forelock, tail to the hocks, fetlock feathering) skinned to the skeleton, and its
+  own keyed animations: Gallop (transverse gallop, 0.5 s stride), Gallop_Jump, Idle (tail swish), Intro (rears and
+  paws on the countdown). Card and portrait rendered by `horse_art.py` (rearing, over the blurred forest photo).
+- In game: a steel-blue sheen and tight specular instead of the warm fur sheen (it read grey-brown in the sun);
+  hair cards alpha-cut and double-sided; extra studio light on the selection stage (the stage is dim for every dark
+  animal, Shadow included). Dev only: `?wbanimal=<id>`.
+- Not perfect yet: the bridle straps are part of the head mesh (kept, black); the gallop is keyed by hand, so a
+  motion-captured horse would still look better if a licensed one is ever supplied.

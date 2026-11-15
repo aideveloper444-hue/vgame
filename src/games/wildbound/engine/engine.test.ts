@@ -298,6 +298,7 @@ const abilityCase: Record<AnimalId, { kind: ObstacleKind; prep?: (s: RunSim) => 
   snow: { kind: 'gap' },
   nova: { kind: 'boulder' },
   blaze: { kind: 'rock' },
+  stallion: { kind: 'ruin' },
   zara: { kind: 'rock', prep: (s) => { until(s, 20 - s.state.speed * 0.4); s.input('jump') } },
   ash: { kind: 'rock' },
 }
@@ -356,10 +357,10 @@ test('tutorial waits for each move and finishes', () => {
 // ---------------------------------------------------------------- roster
 
 test('Sonic and the tiger are free; the others cost gems; rested animals are not offered', () => {
-  assert.equal(ANIMALS.length, 14)
+  assert.equal(ANIMALS.length, 15)
   assert.deepEqual(ANIMALS.filter((a) => a.free).map((a) => a.id), ['sonic', 'raja'])
   for (const a of ANIMALS.filter((x) => !x.free)) assert.equal(a.gemPrice, 499)
-  assert.equal(ROSTER.length, 10)
+  assert.equal(ROSTER.length, 11)
   for (const a of ROSTER) assert.ok(!RETIRED.has(a.id))
 })
 

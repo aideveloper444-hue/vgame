@@ -3,7 +3,7 @@
  * shared by the simulation, its tests and the UI.
  */
 
-export type AnimalId = 'sonic' | 'leo' | 'raja' | 'shadow' | 'jax' | 'arctic' | 'bruno' | 'titan' | 'koda' | 'snow' | 'nova' | 'blaze' | 'zara' | 'ash'
+export type AnimalId = 'sonic' | 'leo' | 'raja' | 'shadow' | 'jax' | 'arctic' | 'bruno' | 'titan' | 'koda' | 'snow' | 'nova' | 'blaze' | 'zara' | 'ash' | 'stallion'
 
 export type AbilityKind = 'boost' | 'roar' | 'leap' | 'stealth' | 'dodge' | 'frost' | 'smash' | 'charge' | 'roll' | 'cliff'
 
@@ -181,6 +181,17 @@ export const ANIMALS: AnimalDef[] = [
       { name: 'Endurance', desc: 'Power-ups last longer', icon: 'ability' },
     ],
     stats: { speed: 4, stamina: 5, defense: 3 },
+  },
+  // (added last: race packets and saves refer to animals by their place in this list)
+  {
+    id: 'stallion', name: 'Midnight', species: 'Friesian Stallion', free: false, gemPrice: 499,
+    blurb: 'A tall black stallion with a mane like a storm. Nothing outruns him.',
+    ability: { kind: 'charge', name: 'Thunder Gallop', short: 'Gallop through', desc: 'A flat-out gallop that bursts through logs, roots and barriers', durationMs: 5000, cooldownMs: CD },
+    traits: [
+      { name: 'Long Stride', desc: 'Jumps higher and further', icon: 'speed' },
+      { name: 'Sure-Footed', desc: 'Ice, snow and mud never slow his turns', icon: 'ability' },
+    ],
+    stats: { speed: 5, stamina: 4, defense: 3 },
   },
 ]
 

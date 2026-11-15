@@ -3749,6 +3749,9 @@ export default function WorldScene({ animalId, mode = 'run', quality = 'high' }:
           <directionalLight position={[5, 7, 9]} intensity={1.6} color="#fff0dc" />
           <directionalLight position={[-4, 5, -8]} intensity={2.4} color="#cfe0ff" />
           <directionalLight position={[-7, 2, 4]} intensity={0.5} color="#ffe2c0" />
+          {/* a black coat needs more light to read in the studio: a soft cool front light and a brighter rim */}
+          {animalId === 'stallion' && <directionalLight position={[3, 5, 8]} intensity={2.6} color="#e6ecff" />}
+          {animalId === 'stallion' && <directionalLight position={[-3, 4, -8]} intensity={2.4} color="#cfe0ff" />}
         </>
       )}
       {mode === 'lineup' && lineupFor(animalId).map((a) => <ShowAnimal key={a.id} {...a} />)}
