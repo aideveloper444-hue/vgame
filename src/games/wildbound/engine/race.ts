@@ -13,6 +13,15 @@ import { RunSim, raceStartZone, type Pose } from './run'
 export type RacerKind = 'local' | 'bot' | 'remote'
 export const RACE_LENGTHS = [1000, 2000, 4000] as const
 export type RaceLength = (typeof RACE_LENGTHS)[number]
+/**
+ * Race types: a distance race (first over the line), a timed race (farthest when the clock runs out) and a coin
+ * rush (most coins when the clock runs out). Every race has a clock, so no race runs on for ever.
+ */
+export type RaceMode = 'distance' | 'time' | 'coins'
+export const RACE_MODES: RaceMode[] = ['distance', 'time', 'coins']
+export const RACE_MINUTES = [1, 2, 3] as const
+/** a distance race closes at this pace even if nobody finishes (generous: ~5.5 m/s plus a minute) */
+export const distanceLimitMs = (length: number) => Math.round((length / 5.5) * 1000 + 60000)
 /** how long a crash costs in a race (ms) */
 export const STUMBLE_MS = 1800
 /** after the first runner finishes, the others get this long before the race closes (ms) */
@@ -67,9 +76,15 @@ export class RaceSession {
   readonly length: number
   readonly localId: string
   readonly botLevel: BotLevel
-  constructor(seed: number, length: number, seats: RaceSeat[], localId: string, botLevel: BotLevel = 'smart') {
+  readonly mode: RaceMode
+  /** the race clock's limit (ms): when it runs out the race closes and the standings are final */
+  readonly limitMs: number
+  constructor(seed: number, length: number, seats: RaceSeat[], localId: string, botLevel: BotLevel = 'smart', mode: RaceMode = 'distance', limitMs = 0) {
     this.seed = seed
-    this.length = length
+    this.mode = mode
+    // a timed race or coin rush has no finish line: the clock decides
+    this.length = mode === 'distance' ? length : 1e7
+    this.limitMs = limitMs > 0 ? limitMs : distanceLimitMs(length)
     this.localId = localId
     this.botLevel = botLevel
     this.racers = seats.map((s, i) => ({ ...s, color: RACER_COLORS[i % RACER_COLORS.length], d: 0, x: 0, y: 0, pose: 'run', poseT: 0, speed: 0, finishMs: null, stumbleUntil: 0, stumbles: 0, coins: 0, seen: 0, left: false, down: false }))
@@ -112,6 +127,8 @@ export class RaceSession {
       if (f.length) this.firstFinish = Math.min(...f)
     }
     if (this.firstFinish !== null && (this.t - this.firstFinish > CLOSE_AFTER_MS || this.racers.every((r) => r.finishMs !== null || r.left))) this.closed = true
+    // the clock: a timed race or coin rush ends here; a distance race too if nobody has made it by then
+    if (this.t >= this.limitMs) this.closed = true
   }
 
   /** A crash in a race: stumble, then get back up with a short shield (call every frame for the runner). */
@@ -146,8 +163,18 @@ export class RaceSession {
     }
   }
 
-  /** Places: finishers by time, then everyone else by distance. */
+  /** ms left on the race clock */
+  get timeLeft() {
+    return Math.max(0, this.limitMs - this.t)
+  }
+
+  /** Places: finishers by time, then everyone else by distance (timed race), or by coins (coin rush). */
   standings(): Racer[] {
+    if (this.mode !== 'distance')
+      return [...this.racers].sort((a, b) => {
+        if (a.left !== b.left) return a.left ? 1 : -1
+        return this.mode === 'coins' ? b.coins - a.coins || b.d - a.d : b.d - a.d
+      })
     return [...this.racers].sort((a, b) => {
       if (a.finishMs !== null && b.finishMs !== null) return a.finishMs - b.finishMs
       if (a.finishMs !== null) return -1

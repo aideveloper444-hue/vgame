@@ -1882,41 +1882,34 @@ const rivalPose = (r: Racer, race: NonNullable<typeof run.race>) => (): WildPose
   if (r.finishMs !== null) return { pose: 'victory', speed: 0, t: 0 }
   if (race.t < r.stumbleUntil || r.pose === 'dead') return { pose: 'dead', speed: 0, t: 1 }
   const p = r.pose
-  return { pose: p === 'jump' ? 'jump' : p === 'slide' ? 'slide' : p === 'roll' ? 'roll' : 'run', speed: r.speed, t: r.poseT }
+  return { pose: p === 'jump' ? 'jump' : p === 'slide' ? 'slide' : p === 'roll' ? 'roll' : 'run', speed: r.speed, t: r.poseT, ghost: rivalGhost(r) }
 }
 
-function nameTag(name: string, color: string) {
-  const c = document.createElement('canvas')
-  c.width = 256
-  c.height = 64
-  const g = c.getContext('2d')!
-  g.fillStyle = 'rgba(0,0,0,0.6)'
-  g.beginPath()
-  g.roundRect(4, 6, 248, 52, 24)
-  g.fill()
-  g.lineWidth = 5
-  g.strokeStyle = color
-  g.stroke()
-  g.fillStyle = '#fff'
-  g.font = 'bold 34px system-ui, sans-serif'
-  g.textAlign = 'center'
-  g.textBaseline = 'middle'
-  g.fillText(name.slice(0, 12), 128, 33)
-  const t = new THREE.CanvasTexture(c)
-  t.colorSpace = THREE.SRGBColorSpace
-  return t
+
+/**
+ * How see-through a rival is drawn: one close ahead (between the camera and the trail you are reading) fades out, so
+ * the runners bunched at race pace never hide the obstacles; it fills back in as it pulls away.
+ */
+function rivalGhost(r: Racer) {
+  const me = run.sim?.state
+  if (!me) return 0
+  const z = r.d - (run.sim ? run.sim.runD() : 0)
+  if (z <= 0 || z >= 12) return 0
+  const inLine = Math.abs(r.x - me.x) < LANE_W * 1.2 ? 1 : 0.55
+  return Math.min(1, (12 - z) / 8) * inLine
 }
 
 function Rival({ r }: { r: Racer }) {
   const g = useRef<THREE.Group>(null)
   const race = run.race!
   const poseOf = useMemo(() => rivalPose(r, race), [r, race])
-  const tag = useMemo(() => new THREE.SpriteMaterial({ map: nameTag(r.name, r.color), depthTest: false, transparent: true }), [r.name, r.color])
   useFrame(() => {
     if (!g.current) return
     const z = r.d - (run.sim ? run.sim.runD() : 0)
-    // only rivals near you are drawn (and never right on top of the camera)
-    g.current.visible = !r.left && z > -12 && z < 70 && Math.abs(z) > 0.6
+    // only rivals near you are drawn; never one sharing your lane right beside you (it would sit inside your runner)
+    const me = run.sim?.state
+    const besideInLane = !!me && Math.abs(z) < 2.5 && Math.abs(r.x - me.x) < LANE_W * 0.6
+    g.current.visible = !r.left && z > -12 && z < 70 && !besideInLane
     g.current.position.set(r.x, r.y, z)
   })
   return (
@@ -1924,7 +1917,6 @@ function Rival({ r }: { r: Racer }) {
       <Suspense fallback={null}>
         <WildAnimal animalId={r.animalId} poseOf={poseOf} onStep={emitDust} />
       </Suspense>
-      <sprite material={tag} position={[0, 2.3, 0]} scale={[1.6, 0.4, 1]} userData={{ noBend: true }} />
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.04, 0]}>
         <ringGeometry args={[0.55, 0.72, 32]} />
         <meshBasicMaterial color={r.color} transparent opacity={0.75} toneMapped={false} />

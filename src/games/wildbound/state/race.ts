@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { createPeerRoom, type RoomControls } from '@/games/shared/online/peerRoom'
 import { createMatchStore, type BotName } from '@/games/shared/online/matchStore'
 import { ANIMALS } from '../engine/content'
-import { RACE_LENGTHS, RaceSession, type NetRacer, type RaceLength, type RaceSeat } from '../engine/race'
+import { RACE_LENGTHS, RACE_MODES, RaceSession, type NetRacer, type RaceLength, type RaceMode, type RaceSeat } from '../engine/race'
 import type { BotLevel } from '../engine/autopilot'
 import { run } from '../scene/runController'
 
@@ -26,7 +26,7 @@ export const WILD_BOT_NAMES: BotName[] = [
 /** Guest -> host. */
 export type RaceAction = { t: 'pick'; animalId: string } | { t: 'me'; r: NetRacer }
 /** Host -> guests. */
-export type RaceEvent = { t: 'go'; seed: number; length: number; seats: RaceSeat[] }
+export type RaceEvent = { t: 'go'; seed: number; length: number; seats: RaceSeat[]; mode?: RaceMode; limitMs?: number }
 
 const room = createPeerRoom<RaceAction, RaceEvent>({
   prefix: 'vgame-wildbound-v1-',
@@ -52,16 +52,16 @@ const room = createPeerRoom<RaceAction, RaceEvent>({
 export const wildRoom: RoomControls = room
 export const useWildRoom = room.useRoom
 export const sendRaceAction = (a: RaceAction) => room.sendAction(a)
-export const broadcastGo = (seed: number, length: number, seats: RaceSeat[]) => room.broadcastEvent({ t: 'go', seed, length, seats })
+export const broadcastGo = (seed: number, length: number, seats: RaceSeat[], mode: RaceMode, limitMs: number) => room.broadcastEvent({ t: 'go', seed, length, seats, mode, limitMs })
 
-export function setRaceNetHandlers(h: { onPick?: (seatId: string, animalId: string) => void; onGo?: (seed: number, length: number, seats: RaceSeat[]) => void }) {
+export function setRaceNetHandlers(h: { onPick?: (seatId: string, animalId: string) => void; onGo?: (seed: number, length: number, seats: RaceSeat[], mode: RaceMode, limitMs: number) => void }) {
   room.setHandlers({
     onAction: (seatId, a) => {
       if (a.t === 'pick' && ANIMALS.some((x) => x.id === a.animalId)) h.onPick?.(seatId, a.animalId)
       else if (a.t === 'me' && Array.isArray(a.r) && a.r[0] === seatId) run.race?.apply(a.r)
     },
     onEvent: (e) => {
-      if (e.t === 'go' && Array.isArray(e.seats)) h.onGo?.(Number(e.seed) | 0, RACE_LENGTHS.includes(e.length as RaceLength) ? e.length : 1000, e.seats)
+      if (e.t === 'go' && Array.isArray(e.seats)) h.onGo?.(Number(e.seed) | 0, RACE_LENGTHS.includes(e.length as RaceLength) ? e.length : 1000, e.seats, RACE_MODES.includes(e.mode as RaceMode) ? (e.mode as RaceMode) : 'distance', Math.max(0, Math.min(600000, Number(e.limitMs) || 0)))
     },
   })
 }
@@ -82,10 +82,17 @@ export interface PendingRace {
   botLevel: BotLevel
   online: boolean
   role: 'solo' | 'host' | 'guest'
+  mode: RaceMode
+  limitMs: number
 }
 
-export const useRaceUI = create<{ length: RaceLength; pending: PendingRace | null }>(() => ({ length: 1000, pending: null }))
+export const useRaceUI = create<{ length: RaceLength; mode: RaceMode; minutes: number; pending: PendingRace | null }>(() => ({ length: 1000, mode: 'distance', minutes: 2, pending: null }))
+/** the clock limit for the race type picked in the lobby (0 = the distance race's own limit) */
+export const raceLimitMs = () => {
+  const u = useRaceUI.getState()
+  return u.mode === 'distance' ? 0 : u.minutes * 60000
+}
 
 export function makeSession(p: PendingRace) {
-  return new RaceSession(p.seed, p.length, p.seats, p.localId, p.botLevel)
+  return new RaceSession(p.seed, p.length, p.seats, p.localId, p.botLevel, p.mode, p.limitMs)
 }

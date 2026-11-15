@@ -620,3 +620,17 @@ The brief (gameplay & challenge design doc v1.0, 10 Nov 2026) is applied to Wild
   there, so the countdown camera looked round the bend with the runner at the screen edge. Runs now start 14 m into
   their zone (`RUN_START_IN`; zone 0 has no corner and still starts at 0).
 - Horse: still blocked on a realistic rigged model (no free download without an account; paid ones exist).
+
+## 2026-11-16 later: race types with a clock, power-ups in races, no name tags
+
+- **Race types** (Play with Friends, every mode: friends, online, vs computer, easy rivals): Distance (1/2/4 km,
+  first over the line), Timed (1/2/3 min, farthest when the clock runs out), Coin Rush (1/2/3 min, most coins).
+  `RaceSession.mode` / `limitMs`; the host sends both in the `go` event. Every race now has a clock: a distance race
+  also closes at `distanceLimitMs` (≈5.5 m/s plus a minute) if nobody finishes, so no race runs on for ever. The HUD
+  shows the clock (red in the last 10 s), coin counts in a coin rush, metres ahead/behind otherwise; results and
+  rewards follow the type. Test: race types (tests 60).
+- **Power-ups in races**: the store power-up buttons were hidden in races ("options not working"); they work now.
+- **No name tags** over rival animals (the coloured ring at their feet still tells them apart).
+- **Rivals never hide the trail**: at race pace everyone runs together, and a rival just ahead filled the screen. A
+  rival close ahead now fades see-through (fully drawn again ~12 m out), and one sharing your lane right beside you
+  is not drawn.

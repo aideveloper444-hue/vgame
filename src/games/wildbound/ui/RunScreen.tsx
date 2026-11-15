@@ -810,8 +810,8 @@ export default function RunScreen() {
         </div>
       </div>
 
-      {/* power-ups (left side); in a race store power-ups stay in the bag, only trail pickups count */}
-      <div className={`absolute top-[54%] flex -translate-y-1/2 flex-col gap-[min(9px,1.4vh)] ${left ? 'right-3' : 'left-3'}`} style={{ display: racing ? 'none' : undefined, paddingLeft: left ? 0 : 'env(safe-area-inset-left)' }}>
+      {/* power-ups (left side), in solo runs and in races alike */}
+      <div className={`absolute top-[54%] flex -translate-y-1/2 flex-col gap-[min(9px,1.4vh)] ${left ? 'right-3' : 'left-3'}`} style={{ paddingLeft: left ? 0 : 'env(safe-area-inset-left)' }}>
         {powerList.map((k) => {
           const active = (h?.powers[k] ?? 0) > 0
           const n = inventory[k] ?? 0

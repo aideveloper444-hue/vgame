@@ -8,7 +8,7 @@ import assert from 'node:assert/strict'
 import { ANIMALS, ESCAPES, RETIRED, ROSTER, SECTION_MIN_TIER, SECTION_NO_REPEAT, ZONES, tierAt, ZONE_LEN, biomeAt, isObstacle, type AnimalId, type ObstacleKind } from './content'
 import { RUN_START_IN, FLY_H, LANE_W, PACING, RIDE_H, ZIP_HANG, ZIP_TOP, zipAlt, RunSim, laneX, raceStartZone, runDAtTime, runTimeAt, type Item, type Lane, type Section } from './run'
 import { autopilot } from './autopilot'
-import { RaceSession, STUMBLE_MS, pickBotAnimals, type RaceSeat } from './race'
+import { RaceSession, STUMBLE_MS, pickBotAnimals, type RaceSeat, distanceLimitMs } from './race'
 
 let passed = 0
 const failures: string[] = []
@@ -1228,6 +1228,28 @@ test('every run can start in a different zone: same easy start, fair trail, dist
     assert.ok(sim.state.alive, `zone ${z + 1}: crashed into ${sim.state.crashKind} at ${sim.runD().toFixed(0)} m`)
     assert.ok(Math.abs(sim.summary().distance - 1500) < 30, 'distance is metres run, not world position')
   }
+})
+
+test('race types: a timed race and a coin rush end on the clock; a coin rush ranks by coins; distance races have a limit', () => {
+  const seats = [
+    { id: 'me', name: 'Me', avatarEmoji: '', kind: 'local' as const, animalId: 'sonic' as const },
+    { id: 'b1', name: 'Bot', avatarEmoji: '', kind: 'bot' as const, animalId: 'leo' as const },
+  ]
+  const timed = new RaceSession(5, 1000, seats, 'me', 'smart', 'time', 4000)
+  let guard = 0
+  while (!timed.closed && guard++ < 1000) timed.step(16, null)
+  assert.ok(timed.closed && timed.t >= 4000 && timed.t < 4100, `timed race closed at ${timed.t}`)
+  assert.equal(timed.length, 1e7, 'no finish line in a timed race')
+  const rush = new RaceSession(5, 1000, seats, 'me', 'smart', 'coins', 60000)
+  rush.racers[0].coins = 12
+  rush.racers[0].d = 10
+  rush.racers[1].coins = 30
+  rush.racers[1].d = 400
+  assert.equal(rush.standings()[0].id, 'b1', 'most coins leads')
+  rush.racers[0].coins = 31
+  assert.equal(rush.standings()[0].id, 'me', 'coins, not distance')
+  const dist = new RaceSession(5, 2000, seats, 'me')
+  assert.equal(dist.limitMs, distanceLimitMs(2000), 'a distance race still has a clock')
 })
 
 console.log(failures.join('\n'))

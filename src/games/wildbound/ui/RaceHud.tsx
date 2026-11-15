@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Crown, Flag, Home, RotateCcw, Users } from 'lucide-react'
 import { completeGameSession } from '@/lib/gameSession'
-import { raceReward, type Racer } from '../engine/race'
+import { raceReward, type RaceMode, type Racer } from '../engine/race'
 import { run } from '../scene/runController'
 import { useSave } from '../state/progress'
 import { headArt } from './art'
@@ -21,18 +21,22 @@ interface Row {
   color: string
   d: number
   finishMs: number | null
+  coins: number
   down: boolean
   left: boolean
   me: boolean
 }
 
-function readRows(): { rows: Row[]; length: number; t: number; stumbleLeft: number; closed: boolean } | null {
+function readRows(): { rows: Row[]; length: number; t: number; stumbleLeft: number; closed: boolean; mode: RaceMode; timeLeft: number; limitMs: number } | null {
   const race = run.race
   if (!race) return null
-  const rows = race.standings().map((r) => ({ id: r.id, name: r.name, animalId: r.animalId, color: r.color, d: r.d, finishMs: r.finishMs, down: race.t < r.stumbleUntil, left: r.left, me: r.id === race.localId }))
+  const rows = race.standings().map((r) => ({ id: r.id, name: r.name, animalId: r.animalId, color: r.color, d: r.d, coins: r.coins, finishMs: r.finishMs, down: race.t < r.stumbleUntil, left: r.left, me: r.id === race.localId }))
   const me = race.local
-  return { rows, length: race.length, t: race.t, stumbleLeft: Math.max(0, me.stumbleUntil - race.t), closed: race.closed }
+  return { rows, length: race.length, t: race.t, stumbleLeft: Math.max(0, me.stumbleUntil - race.t), closed: race.closed, mode: race.mode, timeLeft: race.timeLeft, limitMs: race.limitMs }
 }
+
+/** m:ss on the race clock */
+const clock = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, '0')}`
 
 export function useRaceRows() {
   const [s, set] = useState(readRows)
@@ -50,8 +54,17 @@ export function RaceHud() {
   const me = s.rows.find((r) => r.me)
   return (
     <>
-      {/* progress to the finish line, every runner a dot */}
-      <div className="pointer-events-none absolute left-1/2 top-[calc(env(safe-area-inset-top)+8px)] w-[min(46vw,360px)] -translate-x-1/2 portrait:top-[calc(env(safe-area-inset-top)+58px)] portrait:w-[78vw]">
+      {/* a timed race or coin rush: the race clock, big and central */}
+      {s.mode !== 'distance' && (
+        <div className="pointer-events-none absolute left-1/2 top-[calc(env(safe-area-inset-top)+8px)] -translate-x-1/2 text-center portrait:top-[calc(env(safe-area-inset-top)+58px)]">
+          <div className={`wb-hud-box !h-auto flex-col !px-4 !py-1 leading-none ${s.timeLeft < 10000 ? 'ring-2 ring-[#ff6a4a]' : ''}`}>
+            <span className="text-[11px] font-semibold uppercase tracking-[0.3em] text-white/70">{s.mode === 'coins' ? 'Coin rush' : 'Timed race'}</span>
+            <span className={`wb-title text-[30px] tabular-nums ${s.timeLeft < 10000 ? 'text-[#ff8a6a]' : 'wb-yellow'}`}>{clock(s.timeLeft)}</span>
+          </div>
+        </div>
+      )}
+      {/* progress to the finish line, every runner a dot (distance races) */}
+      <div className="pointer-events-none absolute left-1/2 top-[calc(env(safe-area-inset-top)+8px)] w-[min(46vw,360px)] -translate-x-1/2 portrait:top-[calc(env(safe-area-inset-top)+58px)] portrait:w-[78vw]" style={{ display: s.mode === 'distance' ? undefined : 'none' }}>
         <div className="relative h-3 rounded-full bg-black/55 ring-1 ring-white/25">
           <div className="h-full rounded-full" style={{ width: `${Math.min(100, ((me?.d ?? 0) / s.length) * 100)}%`, background: 'linear-gradient(90deg,#a9d4b6,#dcc08a)' }} />
           {s.rows.map((r) => (
@@ -63,11 +76,13 @@ export function RaceHud() {
           ))}
           <Flag size={18} className="absolute -right-3 -top-2 text-white drop-shadow" />
         </div>
-        <div className="mt-0.5 text-center text-[13px] font-bold wb-shadow">{fmt(Math.max(0, s.length - (me?.d ?? 0)))} m to the finish</div>
+        <div className="mt-0.5 text-center text-[13px] font-bold wb-shadow">
+          {fmt(Math.max(0, s.length - (me?.d ?? 0)))} m to the finish · {clock(s.timeLeft)}
+        </div>
       </div>
 
       {/* standings */}
-      <div className="pointer-events-none absolute left-2 top-[calc(env(safe-area-inset-top)+58px)] flex w-[168px] flex-col gap-1 portrait:top-[calc(env(safe-area-inset-top)+104px)]">
+      <div className="pointer-events-none absolute left-2 top-[calc(env(safe-area-inset-top)+58px)] flex w-[168px] flex-col gap-1 portrait:top-[calc(env(safe-area-inset-top)+118px)]">
         {s.rows.map((r, i) => {
           const gap = me && !r.me ? Math.round(r.d - me.d) : 0
           return (
@@ -78,7 +93,21 @@ export function RaceHud() {
               <img src={headArt(r.animalId)} alt="" className="h-6 w-6 rounded-md object-cover" style={{ boxShadow: `0 0 0 2px ${r.color}` }} />
               <span className="min-w-0 flex-1 truncate font-bold">{r.me ? 'You' : r.name}</span>
               <span className="text-[12px] font-bold text-white/85">
-                {r.finishMs !== null ? <Flag size={13} className="inline text-[#a9d4b6]" /> : r.left ? 'left' : r.down ? '💫' : r.me ? '' : `${gap > 0 ? '+' : ''}${gap} m`}
+                {s.mode === 'coins' ? (
+                  <span className="inline-flex items-center gap-0.5">
+                    <Coin size={12} /> {r.coins}
+                  </span>
+                ) : r.finishMs !== null ? (
+                  <Flag size={13} className="inline text-[#a9d4b6]" />
+                ) : r.left ? (
+                  'left'
+                ) : r.down ? (
+                  '💫'
+                ) : r.me ? (
+                  ''
+                ) : (
+                  `${gap > 0 ? '+' : ''}${gap} m`
+                )}
               </span>
             </div>
           )
@@ -114,8 +143,10 @@ export function RaceResults({ online, onAgain, onHome }: { online: boolean; onAg
     const place = s.rows.indexOf(me) + 1
     const field = s.rows.length
     done.current = true
-    const r = raceReward(place, field, s.length)
-    useSave.getState().recordRace({ place, field, length: s.length, timeMs: me.finishMs, coins: r.coins, xp: r.xp })
+    // (a timed race or coin rush pays like a distance race of what a runner covers in that time)
+    const nominal = s.mode === 'distance' ? s.length : Math.round((s.limitMs / 60000) * 700)
+    const r = raceReward(place, field, nominal)
+    useSave.getState().recordRace({ place, field, length: nominal, timeMs: s.mode === 'distance' ? me.finishMs : null, coins: r.coins, xp: r.xp })
     completeGameSession({ gameId: 'wildbound', won: place === 1 && field > 1, coins: 0, xp: 0, playedWithFriend: online })
     setReward({ ...r, place })
     if (place === 1) sfx.win()
@@ -124,14 +155,15 @@ export function RaceResults({ online, onAgain, onHome }: { online: boolean; onAg
 
   if (!s) return null
   const podium = s.rows.slice(0, 3)
-  const waiting = !s.closed && s.rows.some((r) => r.finishMs === null && !r.left)
+  const waiting = s.mode === 'distance' && !s.closed && s.rows.some((r) => r.finishMs === null && !r.left)
+  const kindText = s.mode === 'distance' ? `${s.length / 1000} km race` : `${Math.round(s.limitMs / 60000)} min ${s.mode === 'coins' ? 'coin rush' : 'timed race'}`
   const label = (p: number) => (p === 1 ? '1st' : p === 2 ? '2nd' : p === 3 ? '3rd' : `${p}th`)
   return (
     <div className="wb-layer wb-dim z-[70] flex items-center justify-center p-4">
       <div className="wb-panel wb-in w-full max-w-[480px] overflow-hidden p-0 text-center">
         <div className="pt-3">
           <div className="wb-title text-[42px] leading-none wb-yellow wb-stroke">{reward ? (reward.place === 1 ? 'YOU WIN!' : `${label(reward.place)} PLACE`) : 'FINISH!'}</div>
-          <div className="text-[15px] text-white/75">{waiting ? 'Waiting for the others to cross the line…' : `${s.length / 1000} km race · ${s.rows.length} runners`}</div>
+          <div className="text-[15px] text-white/75">{waiting ? 'Waiting for the others to cross the line…' : `${kindText} · ${s.rows.length} runners`}</div>
         </div>
         {/* podium */}
         <div className="mx-auto mt-2 flex h-[150px] max-w-[330px] items-end justify-center gap-2 px-3">
@@ -158,7 +190,7 @@ export function RaceResults({ online, onAgain, onHome }: { online: boolean; onAg
                 {label(i + 1)}
               </span>
               <span className="min-w-0 flex-1 truncate text-left font-bold">{r.me ? 'You' : r.name}</span>
-              <span className="text-white/85">{r.finishMs !== null ? fmtTime(r.finishMs) : r.left ? 'left' : `${fmt(r.d)} m`}</span>
+              <span className="text-white/85">{r.left ? 'left' : s.mode === 'coins' ? `${fmt(r.coins)} coins` : r.finishMs !== null ? fmtTime(r.finishMs) : `${fmt(r.d)} m`}</span>
             </div>
           ))}
         </div>
