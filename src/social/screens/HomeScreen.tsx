@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { Building2, ChevronRight, Dices, Footprints, Gift, PawPrint, Play, Plus, Search, Sparkle, TrainFront, WifiOff } from 'lucide-react'
+import { ChevronRight, Gift, Play, Plus, Sparkle, Users, WifiOff } from 'lucide-react'
 import { GAME_REGISTRY, GAME_LIST } from '@/games/registry'
 import { usePlayerStore } from '@/social/stores/usePlayerStore'
 import { useFriendsStore } from '@/social/stores/useFriendsStore'
@@ -11,15 +11,6 @@ import { sfx } from '@/lib/sound'
 import PartyPanel from '@/social/components/PartyPanel'
 import RewardedAdCard from '@/social/components/RewardedAdCard'
 import { Avatar, Card, SectionTitle } from '@/social/components/ui'
-
-const HERO_ICONS = [
-  { Icon: Dices, x: 70, y: 10, size: 46, color: '#f87171', delay: 0 },
-  { Icon: Building2, x: 84, y: 40, size: 40, color: '#34d399', delay: 0.8 },
-  { Icon: PawPrint, x: 66, y: 52, size: 38, color: '#4ade80', delay: 1.6 },
-  { Icon: Search, x: 86, y: 74, size: 34, color: '#a78bfa', delay: 2.4 },
-  { Icon: TrainFront, x: 72, y: 82, size: 30, color: '#fb923c', delay: 1.2 },
-  { Icon: Footprints, x: 90, y: 6, size: 28, color: '#fbbf24', delay: 2 },
-]
 
 function greeting() {
   const h = new Date().getHours()
@@ -57,7 +48,7 @@ export default function HomeScreen() {
       <div className="relative">
         <p className="text-sm font-semibold text-slate-400">{greeting()},</p>
         <h1 className="text-[1.75rem] font-black leading-tight text-white">
-          {profile.name} 👋
+          {profile.name}
         </h1>
       </div>
 
@@ -67,36 +58,34 @@ export default function HomeScreen() {
         </div>
       )}
 
-      {/* welcome */}
-      <section className="home-hero relative mt-4 overflow-hidden rounded-[28px] p-5 ring-1 ring-white/10">
-        <div className="home-hero-glow pointer-events-none absolute inset-0" />
-        <div className="pointer-events-none absolute inset-0">
-          {HERO_ICONS.map(({ Icon, x, y, size, color, delay }, i) => (
-            <span key={i} className="home-hero-float absolute" style={{ left: `${x}%`, top: `${y}%`, animationDelay: `${delay}s` }}>
-              <span className="flex items-center justify-center rounded-2xl bg-white/[0.07] ring-1 ring-white/10 backdrop-blur-sm" style={{ width: size, height: size, color }}>
-                <Icon size={size * 0.5} strokeWidth={2.2} />
-              </span>
-            </span>
-          ))}
-        </div>
-        <div className="relative max-w-[62%]">
-          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-brand-2">VIBO</p>
-          <p className="mt-1 text-[1.45rem] font-black leading-[1.1] text-white">Play together. Talk together.</p>
-          <p className="mt-1.5 text-xs font-medium leading-snug text-slate-300">Three games, party chat and voice with your friends.</p>
-        </div>
-        <div className="relative mt-4 flex flex-wrap gap-2">
-          <button type="button" onClick={() => navigate('/games')} className="inline-flex items-center gap-1.5 rounded-full bg-white px-4 py-2.5 text-sm font-black text-surface-0 active:scale-95">
-            <Play size={15} className="fill-surface-0" /> Choose a game
-          </button>
-          {recentGames.length > 0 && (
+      {/* featured games: big poster cards, swipe across; the last played game comes first */}
+      <section className="relative mt-4">
+        <div className="no-scrollbar -mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-1 md:-mx-6 md:px-6">
+          {[featured, ...GAME_LIST.filter((g) => g.id !== featured.id)].map((g, i) => (
             <button
+              key={g.id}
               type="button"
-              onClick={() => navigate(`/games/${featured.id}/play`)}
-              className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3.5 py-2.5 text-xs font-extrabold text-white ring-1 ring-white/15 active:scale-95"
+              onClick={() => navigate(`/games/${g.id}/play`)}
+              className="group relative aspect-[4/5] w-[78%] shrink-0 snap-center overflow-hidden rounded-[26px] text-left ring-1 ring-white/10 sm:w-[46%] lg:w-[31%]"
+              style={{ boxShadow: `0 24px 50px -24px ${g.accentHex}88` }}
             >
-              Continue {featured.name}
+              <img src={`/posters/${g.id}.webp`} alt="" className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" draggable={false} />
+              <span className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-black/10" />
+              <span className="absolute left-4 top-4 inline-flex items-center gap-1.5 rounded-full bg-black/45 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-white/90 ring-1 ring-white/15 backdrop-blur-md">
+                {i === 0 && recentGames.length > 0 ? 'Continue' : 'Featured'}
+              </span>
+              <span className="absolute right-4 top-4 inline-flex items-center gap-1 rounded-full bg-black/45 px-2.5 py-1 text-[10px] font-bold text-white/90 ring-1 ring-white/15 backdrop-blur-md">
+                <Users size={11} /> {g.playersLabel}
+              </span>
+              <span className="absolute inset-x-4 bottom-4">
+                <span className="block text-[1.7rem] font-black leading-none tracking-tight text-white drop-shadow">{g.name}</span>
+                <span className="mt-1.5 block text-[12px] font-semibold uppercase tracking-[0.16em] text-white/70">{g.tagline}</span>
+                <span className="mt-3.5 inline-flex items-center gap-1.5 rounded-full bg-white px-4 py-2 text-[13px] font-black text-surface-0 transition-transform group-active:scale-95">
+                  <Play size={14} className="fill-surface-0" /> Play now
+                </span>
+              </span>
             </button>
-          )}
+          ))}
         </div>
       </section>
 
@@ -164,26 +153,6 @@ export default function HomeScreen() {
         </section>
       </div>
 
-      <section className="relative mt-7">
-        <SectionTitle
-          action={
-            <button type="button" onClick={() => navigate('/games')} className="flex items-center text-xs font-bold text-brand-2">
-              All games <ChevronRight size={14} />
-            </button>
-          }
-        >
-          Quick play
-        </SectionTitle>
-        <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-6">
-          {GAME_LIST.map((g) => (
-            <button key={g.id} type="button" onClick={() => navigate(`/games/${g.id}/play`)} className="group relative aspect-[3/4] overflow-hidden rounded-2xl ring-1 ring-white/10">
-              <img src={`/posters/${g.id}.webp`} alt="" className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-110" />
-              <span className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/10 to-transparent" />
-              <span className="absolute inset-x-2 bottom-2 text-left text-[12px] font-extrabold leading-tight text-white">{g.name}</span>
-            </button>
-          ))}
-        </div>
-      </section>
     </div>
   )
 }
