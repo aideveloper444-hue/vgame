@@ -125,6 +125,121 @@ for v in bm.verts:
     v.co = Minv @ w
     lifted += 1
 print('BACK lifted', lifted, 'front', round(z_front, 3), 'hind', round(z_hind, 3))
+# the barrel was never modelled under the saddle: an open hole on top of the back once the saddle is gone.
+# Close it with a patch: fill, cut into small triangles, relax into a smooth membrane spanning the rim (position,
+# UV and skin weights all interpolated from the rim), then arch it up like the top of a real back.
+def boundary_loops():
+    seen, loops = set(), []
+    for e in bm.edges:
+        if not e.is_boundary or e in seen:
+            continue
+        st, comp = [e], []
+        seen.add(e)
+        while st:
+            x = st.pop()
+            comp.append(x)
+            for v in x.verts:
+                for y in v.link_edges:
+                    if y.is_boundary and y not in seen:
+                        seen.add(y)
+                        st.append(y)
+        loops.append(comp)
+    return loops
+filled = 0
+for loop in boundary_loops():
+    ws = [M @ v.co for e in loop for v in e.verts]
+    if not (len(loop) >= 8 and min(p.x for p in ws) > -0.85 and max(p.x for p in ws) < 0.1 and min(p.z for p in ws) > 1.45):
+        continue
+    # mesh ops can invalidate Python references: tag the rim and the body, and find them again after every op
+    vtag = bm.verts.layers.int.get('rimtag') or bm.verts.layers.int.new('rimtag')
+    ftag = bm.faces.layers.int.get('bodytag') or bm.faces.layers.int.new('bodytag')
+    for v in bm.verts:
+        v[vtag] = 0
+    for e in loop:
+        for v in e.verts:
+            v[vtag] = 1
+    for f in bm.faces:
+        f[ftag] = 1
+    print('HOLE', len(loop), 'edges', [round(c, 2) for c in (min(p.x for p in ws), max(p.x for p in ws), min(p.z for p in ws))])
+    new_faces = bmesh.ops.holes_fill(bm, edges=loop, sides=0)['faces']
+    for f in new_faces:
+        f[ftag] = 0
+    bmesh.ops.triangulate(bm, faces=new_faces, ngon_method='BEAUTY')
+    for _ in range(3):
+        patch = [f for f in bm.faces if f[ftag] == 0]
+        pset = set(patch)
+        # cut only the edges inside the patch (the rim edges are shared with the body and stay whole)
+        cut = [e for e in {e for f in patch for e in f.edges} if len(e.link_faces) == 2 and all(lf in pset for lf in e.link_faces)]
+        bmesh.ops.subdivide_edges(bm, edges=cut, cuts=1, use_grid_fill=True)
+        bmesh.ops.triangulate(bm, faces=[f for f in bm.faces if f[ftag] == 0], ngon_method='BEAUTY')
+    bm.verts.ensure_lookup_table()
+    patch = {f for f in bm.faces if f[ftag] == 0}
+    # (a vertex cut into a chord between two rim vertices can inherit the tag: the rim also touches the body)
+    rim = [v for v in bm.verts if v[vtag] == 1 and any(f[ftag] == 1 for f in v.link_faces)]
+    rim_set = set(rim)
+    inner = [v for v in {u for f in patch for u in f.verts} if v not in rim_set]
+    uvl = bm.loops.layers.uv.active
+    dl = bm.verts.layers.deform.active
+    # relax: every inner vertex moves to the mean of its neighbours (the rim stays fixed) - a smooth membrane
+    for _ in range(300):
+        new = {}
+        for v in inner:
+            nb = [e.other_vert(v) for e in v.link_edges]
+            new[v] = sum((u.co for u in nb), Vector()) / len(nb)
+        for v, c in new.items():
+            v.co = c
+    # UVs: average the rim's UVs the same way (each vertex keeps one UV inside the patch)
+    rim_uv = {}
+    for v in rim:
+        for l in v.link_loops:
+            if l.face not in patch:
+                rim_uv.setdefault(v, l[uvl].uv.copy())
+    vuv = {v: rim_uv.get(v, Vector((0, 0))) for v in rim}
+    for v in inner:
+        vuv[v] = sum(rim_uv.values(), Vector((0, 0))) / max(1, len(rim_uv))
+    for _ in range(300):
+        for v in inner:
+            nb = [e.other_vert(v) for e in v.link_edges]
+            vuv[v] = sum((vuv[u] for u in nb), Vector((0, 0))) / len(nb)
+    for f in patch:
+        for l in f.loops:
+            l[uvl].uv = vuv[l.vert]
+    # skin weights: inverse-distance blend of the rim's weights
+    for v in inner:
+        acc, tot = {}, 0.0
+        for r in rim:
+            w = 1.0 / max(1e-4, (r.co - v.co).length) ** 2
+            tot += w
+            for g, x in r[dl].items():
+                acc[g] = acc.get(g, 0.0) + w * x
+        v[dl].clear()
+        best = sorted(acc.items(), key=lambda t: -t[1])[:4]
+        s = sum(x for _, x in best) or 1.0
+        for g, x in best:
+            v[dl][g] = x / s
+    # arch: the patch rises toward its middle, most across the back (a real back is rounded, not flat)
+    rws = [M @ v.co for v in rim]
+    ys = [p.y for p in rws]
+    xs = [p.x for p in rws]
+    yc, hy = (max(ys) + min(ys)) / 2, (max(ys) - min(ys)) / 2
+    xc, hx = (max(xs) + min(xs)) / 2, (max(xs) - min(xs)) / 2
+    for v in inner:
+        w = M @ v.co
+        d = min(1.0, math.hypot((w.y - yc) / hy, (w.x - xc) / hx))
+        w.z += 0.045 * (1 - d * d)
+        v.co = Minv @ w
+    for f in patch:
+        f.smooth = True
+        f.material_index = 0
+    filled += 1
+    print('BACK HOLE filled: rim', len(rim), 'inner verts', len(inner), 'x', round(min(xs), 2), round(max(xs), 2))
+for lay in ('rimtag',):
+    if bm.verts.layers.int.get(lay):
+        bm.verts.layers.int.remove(bm.verts.layers.int[lay])
+if bm.faces.layers.int.get('bodytag'):
+    bm.faces.layers.int.remove(bm.faces.layers.int['bodytag'])
+bm.normal_update()
+print('HOLES filled', filled)
 # the saddle cloth is painted into the coat and embossed in its normal map: remember where (UV) to smooth it out
 uvl0 = bm.loops.layers.uv.active
 saddle_uv = []
