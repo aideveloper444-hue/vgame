@@ -783,57 +783,68 @@ export default function RunScreen() {
       <RouteChooser />
       {racing && <RaceHud />}
 
-      {/* top bar */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 wb-safe flex items-start justify-between">
-        <div className="pointer-events-auto flex items-center gap-2">
-          <button className="wb-ctl wb-ctl-glass h-[44px] w-[44px]" onClick={pause} aria-label="Pause">
-            <Pause size={18} strokeWidth={1.8} />
+      {/* top bar: pause + distance (left), coins + gems and the score (right) */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 wb-safe flex items-start justify-between gap-2">
+        <div className="wb-bar pointer-events-auto">
+          <button className="wb-bar-btn" onClick={pause} aria-label="Pause">
+            <Pause size={17} strokeWidth={1.8} />
           </button>
-          <div className="wb-hud-box !h-[44px] !px-4 text-[28px]">
+          <div className="wb-bar-cell min-w-[78px] justify-center text-[25px]">
             {fmt(h?.d ?? 0)}
-            <span className="-ml-1 font-[Barlow_Condensed] text-[24px] font-bold">m</span>
+            <span className="wb-bar-unit">M</span>
           </div>
         </div>
         <div className="flex flex-col items-end gap-1.5">
-          <div className="wb-hud-box min-w-[112px] justify-between text-[26px]">
-            <Coin size={32} /> {fmt(h?.coins ?? 0)}
-          </div>
-          <div className="wb-hud-box min-w-[112px] justify-between text-[24px]">
-            <Gem size={30} /> {fmt(h?.gems ?? 0)}
-          </div>
-          {fest.active && fest.joined && (
-            <div className="wb-hud-box min-w-[112px] justify-between text-[22px]">
-              <TokenMark size={26} /> {h?.tokens ?? 0}
+          <div className="wb-bar">
+            <div className="wb-bar-cell text-[22px]">
+              <Coin size={24} /> <span className="min-w-[2.2ch] text-right">{fmt(h?.coins ?? 0)}</span>
             </div>
-          )}
-          <div className="text-[15px] font-bold text-white/90 wb-shadow">SCORE {fmt(h?.score ?? 0)}</div>
+            <div className="wb-bar-cell text-[22px]">
+              <Gem size={22} /> <span className="min-w-[1.4ch] text-right">{fmt(h?.gems ?? 0)}</span>
+            </div>
+            {fest.active && fest.joined && (
+              <div className="wb-bar-cell text-[20px]">
+                <TokenMark size={20} /> {h?.tokens ?? 0}
+              </div>
+            )}
+          </div>
+          <div className="wb-score">
+            SCORE<b>{fmt(h?.score ?? 0)}</b>
+          </div>
         </div>
       </div>
 
-      {/* power-ups (left side), in solo runs and in races alike */}
-      <div className={`absolute top-[54%] flex -translate-y-1/2 flex-col gap-[min(9px,1.4vh)] ${left ? 'right-3' : 'left-3'}`} style={{ paddingLeft: left ? 0 : 'env(safe-area-inset-left)' }}>
+      {/* power-ups: one tray (a column at the side in portrait, a row along the bottom in landscape), solo and races */}
+      <div className={`wb-tray ${left ? 'is-end' : 'is-start'}`}>
         {powerList.map((k) => {
-          const active = (h?.powers[k] ?? 0) > 0
+          const leftMs = h?.powers[k] ?? 0
+          const active = leftMs > 0
           const n = inventory[k] ?? 0
           const dur = POWERUPS.find((p) => p.kind === k)!.durationMs
-          const frac = active ? Math.min(1, (h?.powers[k] ?? 0) / dur) : 0
+          const frac = active ? Math.min(1, leftMs / dur) : 0
           return (
-            <button key={k} className={`wb-ctl wb-ctl-glass h-[min(50px,8.5vh)] w-[min(50px,8.5vh)] min-h-[40px] min-w-[40px] ${n <= 0 && !active ? 'opacity-40' : ''} ${active ? 'is-active' : ''}`} onClick={() => firePower(k)} aria-label={k}>
-              <PowerIcon kind={k} />
-              {active && <span className="wb-cooldown" style={{ background: `conic-gradient(rgba(220,192,138,0.35) ${frac * 360}deg, transparent 0)` }} />}
-              <span className="absolute -bottom-1 -right-1 grid h-5 min-w-5 place-items-center rounded-full bg-[#0f110f] px-1 text-[11px] font-semibold tabular-nums ring-1 ring-[var(--gold-edge)]">{active ? Math.ceil((h?.powers[k] ?? 0) / 1000) + 's' : n}</span>
+            <button key={k} className={`wb-pw ${n <= 0 && !active ? 'is-empty' : ''} ${active ? 'is-active' : ''}`} onClick={() => firePower(k)} aria-label={POWERUPS.find((p) => p.kind === k)!.name}>
+              <PowerIcon kind={k} size={20} />
+              {active ? <span className="wb-pw-n">{Math.ceil(leftMs / 1000)}s</span> : n > 0 && <span className="wb-pw-n">{n}</span>}
+              {active && <span className="wb-pw-time" style={{ width: `${frac * 100}%` }} />}
             </button>
           )
         })}
       </div>
 
-      <div className={`absolute bottom-[calc(env(safe-area-inset-bottom)+18px)] portrait:bottom-[calc(env(safe-area-inset-bottom)+112px)] ${left ? 'left-3' : 'right-3'} flex flex-col items-center gap-1`}>
-        <button className={`wb-ctl wb-ctl-glass h-[min(68px,16vh)] w-[min(68px,16vh)] min-h-[56px] min-w-[56px] ${abilityCd <= 0 && !h?.abilityOn ? 'wb-pulse text-[var(--gold-hi)]' : ''}`} onPointerDown={(e) => (e.stopPropagation(), cmd('ability'))} aria-label={a.ability.name} style={{ boxShadow: abilityCd <= 0 ? 'inset 0 0 0 1.5px #dcc08a, 0 0 18px rgba(220,192,138,0.35)' : 'inset 0 0 0 1px rgba(255,248,232,0.22)' }}>
-          <AbilityIcon kind={a.ability.kind} />
-          {abilityCd > 0 && <span className="wb-cooldown" style={{ background: `conic-gradient(rgba(0,0,0,0.65) ${abilityCd * 360}deg, transparent 0)` }} />}
-          {abilityCd > 0 && <span className="absolute text-[20px] font-bold wb-shadow">{Math.ceil((h?.abilityLeft ?? 0) / 1000)}</span>}
+      {/* the animal's ability: a disc whose ring fills as it recharges */}
+      <div className={`absolute bottom-[calc(env(safe-area-inset-bottom)+16px)] portrait:bottom-[calc(env(safe-area-inset-bottom)+112px)] ${left ? 'left-[max(14px,env(safe-area-inset-left))]' : 'right-[max(14px,env(safe-area-inset-right))]'} flex flex-col items-center gap-1.5`}>
+        <button className={`wb-ab ${abilityCd <= 0 && !h?.abilityOn ? 'is-ready wb-pulse' : ''} ${h?.abilityOn ? 'is-on' : ''}`} onPointerDown={(e) => (e.stopPropagation(), cmd('ability'))} aria-label={a.ability.name}>
+          <svg className="wb-ab-ring" viewBox="0 0 100 100">
+            <circle cx="50" cy="50" r="46" fill="none" stroke="rgba(255,248,232,0.1)" strokeWidth="3" />
+            <circle cx="50" cy="50" r="46" fill="none" stroke={abilityCd <= 0 ? '#e8d3a4' : 'rgba(232,211,164,0.75)'} strokeWidth="3" strokeLinecap="round" pathLength={100} strokeDasharray={`${(1 - Math.max(0, Math.min(1, abilityCd))) * 100} 100`} />
+          </svg>
+          <span style={{ opacity: abilityCd > 0 ? 0.35 : 1 }}>
+            <AbilityIcon kind={a.ability.kind} size={28} />
+          </span>
+          {abilityCd > 0 && <span className="wb-ab-secs">{Math.ceil((h?.abilityLeft ?? 0) / 1000)}</span>}
         </button>
-        <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/80 wb-shadow">{a.ability.name}</span>
+        <span className="wb-ab-label">{a.ability.name}</span>
       </div>
 
       {/* banners, tutorial, countdown */}
