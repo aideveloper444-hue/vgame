@@ -1815,8 +1815,10 @@ function Runner({ animalId }: { animalId: AnimalId }) {
     const x = s?.x ?? 0
     g.current.position.set(x, s?.y ?? 0, 0)
     const tx = s ? laneX(s.lane) : 0
-    // a slight turn of the body toward the new lane (the lean itself is the animal's own, in WildAnimal)
-    lean.current.rotation.y += ((tx - x) * 0.06 - lean.current.rotation.y) * Math.min(1, dt * 12)
+    // the turn toward the new lane is the animal's own (WildAnimal: gentle on the ground, none in the air); this group
+    // only keeps a trace of it, and none mid-jump, so the two never add up into a twist
+    const airborne = s ? s.pose === 'jump' || s.pose === 'roll' : false
+    lean.current.rotation.y += ((airborne ? 0 : (tx - x) * 0.02) - lean.current.rotation.y) * Math.min(1, dt * 10)
     // a wall run: the runner tips onto the canyon wall beside its lane (lane 2's wall on its right, the others on
     // their left) and runs along it, feet to the rock
     const wall = s?.swing?.skin === 'wall' ? (s.swing.lane === 0 ? 1 : s.swing.lane === 2 ? -1 : 0) : 0

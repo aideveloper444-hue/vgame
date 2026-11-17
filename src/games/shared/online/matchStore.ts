@@ -14,6 +14,8 @@ export interface Seat {
   name: string
   avatarEmoji: string
   kind: SeatKind
+  /** the player's hub id (friend code), so players at the same table can voice-chat; absent for bots */
+  netId?: string
 }
 
 export interface BotName {

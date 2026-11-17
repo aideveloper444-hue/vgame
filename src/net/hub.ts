@@ -190,6 +190,13 @@ export function broadcastHello() {
   for (const c of conns.values()) if (c.open) c.send({ t: 'hello', p })
 }
 
+/** id-taken retries in a row (a reload's old session can hold our id for a while) */
+let idTakenTries = 0
+/** its own timer: the 'disconnected' handler resets retryTimer, which would cancel this retry */
+let idTakenTimer: ReturnType<typeof setTimeout> | undefined
+const ID_TAKEN_RETRY_MS = 5000
+const ID_TAKEN_MAX_TRIES = 36
+
 export function startHub(): Promise<void> {
   if (peer && !peer.destroyed) return Promise.resolve()
   useHub.setState({ status: 'connecting', error: null })
@@ -197,6 +204,7 @@ export function startHub(): Promise<void> {
     const p = new Peer(PEER_PREFIX + myNetId(), PEER_OPTIONS)
     peer = p
     p.on('open', () => {
+      idTakenTries = 0
       useHub.setState({ status: 'online', error: null })
       resolve()
     })
@@ -209,6 +217,7 @@ export function startHub(): Promise<void> {
       for (const fn of callListeners) fn(call)
     })
     p.on('disconnected', () => {
+      if (import.meta.env.DEV) console.warn('[hub] disconnected', p.id)
       useHub.setState({ status: 'connecting' })
       clearTimeout(retryTimer)
       retryTimer = setTimeout(() => {
@@ -216,10 +225,24 @@ export function startHub(): Promise<void> {
       }, 2000)
     })
     p.on('error', (err: { type?: string }) => {
+      if (import.meta.env.DEV) console.warn('[hub] error', err.type, String((err as Error).message ?? ''))
       if (err.type === 'unavailable-id') {
-        // this account is already open in another tab or window
-        useHub.setState({ status: 'error', error: 'Your account is open somewhere else. Close the other tab to go online here.' })
+        // the id is taken: usually this same device a moment ago (a reload or reopen leaves the old session on the
+        // broker for up to a minute), sometimes another open tab. Keep trying for a while before giving up.
+        idTakenTries++
+        const giveUp = idTakenTries > ID_TAKEN_MAX_TRIES
+        useHub.setState({ status: giveUp ? 'error' : 'connecting', error: giveUp ? 'Your account is open somewhere else. Close the other tab to go online here.' : null })
         resolve()
+        if (!giveUp) {
+          clearTimeout(idTakenTimer)
+          idTakenTimer = setTimeout(() => {
+            if (peer === p) {
+              p.destroy()
+              peer = null
+              void startHub()
+            }
+          }, ID_TAKEN_RETRY_MS)
+        }
       } else if (err.type === 'network' || err.type === 'server-error' || err.type === 'socket-error') {
         useHub.setState({ status: 'error', error: 'Can\'t reach the online service right now. Retrying…' })
         clearTimeout(retryTimer)
@@ -237,9 +260,12 @@ export function startHub(): Promise<void> {
 
 export function stopHub() {
   clearTimeout(retryTimer)
+  clearTimeout(idTakenTimer)
   for (const c of conns.values()) c.close()
   conns.clear()
   peer?.destroy()
   peer = null
   useHub.setState({ status: 'offline', peers: {} })
 }
+
+if (import.meta.env.DEV && typeof window !== 'undefined') (window as unknown as { __hub: typeof useHub }).__hub = useHub

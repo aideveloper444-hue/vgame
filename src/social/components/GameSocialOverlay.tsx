@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, GripHorizontal, Megaphone, MessageCircle, Mic, MicOff, Volume2, VolumeX, X } from 'lucide-react'
 import type { GameDefinition } from '@/games/registry'
 import { usePartyStore } from '@/social/stores/usePartyStore'
-import { useVoiceStore } from '@/social/stores/useVoiceStore'
+import { useVoiceStore, type VoiceChannel } from '@/social/stores/useVoiceStore'
+import { useGameVoiceRoster } from '@/net/gameVoiceRoster'
 import { useChatStore, PARTY_CONVERSATION, totalUnread } from '@/social/stores/useChatStore'
 import { useFriendsStore } from '@/social/stores/useFriendsStore'
 import ChatThread from './ChatThread'
@@ -84,6 +85,25 @@ export default function GameSocialOverlay({ game }: { game: GameDefinition }) {
   const unreadAll = useChatStore((s) => totalUnread(s))
   const unreadParty = useChatStore((s) => s.unread[PARTY_CONVERSATION] ?? 0)
   const others = party.members.filter((m) => !m.isUser)
+  // game voice: the other players at this match's table (online games only)
+  const roster = useGameVoiceRoster()
+  const inGame = !!roster.key
+  // entering an online match switches voice to that match's players; leaving it falls back to the party
+  useEffect(() => {
+    const v = useVoiceStore.getState()
+    if (inGame && v.channel !== 'game' && !v.joined) v.setChannel('game')
+    if (!inGame && v.channel === 'game') v.setChannel('party')
+  }, [inGame])
+  const talk = () => {
+    const v = useVoiceStore.getState()
+    if (v.channel === 'party' && !party.active) party.createParty()
+    if (!v.joined) void v.joinVoice()
+    else v.toggleMic()
+  }
+  const pickChannel = (ch: VoiceChannel) => {
+    if (ch === 'party' && !party.active) party.createParty()
+    useVoiceStore.getState().setChannel(ch)
+  }
   const othersTalking = others.some((m) => voice.speaking[m.id])
   // the games keep their own stats in the top corners (Amazon Run's coins, World Tycoon's player cards): the dock
   // starts at mid height, clear of them
@@ -174,20 +194,33 @@ export default function GameSocialOverlay({ game }: { game: GameDefinition }) {
               <MessageCircle size={18} className="text-white" />
               <Badge count={unreadAll} className="absolute -right-1.5 -top-1.5" />
             </button>
-            {/* voice: one tap talks (starting a party and joining its voice chat if needed), then mutes and unmutes */}
+            {/* in an online match: talk to this game's players, or to your party */}
+            {inGame && (
+              <div className="flex w-10 flex-col gap-0.5 rounded-lg bg-white/[0.06] p-0.5" role="radiogroup" aria-label="Voice channel">
+                {(['game', 'party'] as const).map((ch) => (
+                  <button
+                    key={ch}
+                    type="button"
+                    role="radio"
+                    aria-checked={voice.channel === ch}
+                    onClick={() => pickChannel(ch)}
+                    className={`rounded-md py-0.5 text-[8.5px] font-black uppercase tracking-wide ${voice.channel === ch ? 'bg-white text-slate-900' : 'text-white/60'}`}
+                  >
+                    {ch === 'game' ? 'Game' : 'Party'}
+                  </button>
+                ))}
+              </div>
+            )}
+            {/* mic: one tap talks on the chosen channel (starting a party if needed), then mutes and unmutes */}
             <button
               type="button"
-              onClick={() => {
-                if (!party.active) party.createParty()
-                if (!voice.joined) void useVoiceStore.getState().joinVoice()
-                else voice.toggleMic()
-              }}
-              aria-label={!voice.joined ? 'Talk: join voice chat' : voice.micMuted ? 'Unmute microphone' : 'Mute microphone'}
+              onClick={talk}
+              aria-label={!voice.joined ? `Talk: join ${voice.channel === 'game' ? 'game' : 'party'} voice` : voice.micMuted ? 'Unmute microphone' : 'Mute microphone'}
               className={`flex h-9 w-9 items-center justify-center rounded-full text-white active:scale-90 ${!voice.joined ? 'bg-white/15' : voice.micMuted ? 'bg-rose-500' : 'bg-emerald-500'}`}
             >
               {voice.joined && voice.micMuted ? <MicOff size={17} /> : <Mic size={17} />}
             </button>
-            {/* speaker: hear the party, or silence everyone's voices */}
+            {/* speaker: hear the others on the channel, or silence them (separate from your mic) */}
             {voice.joined && (
               <button
                 type="button"
@@ -228,6 +261,30 @@ export default function GameSocialOverlay({ game }: { game: GameDefinition }) {
                 <X size={17} />
               </button>
             </div>
+
+            {inGame && (
+              <div className="mx-4 mb-2 flex items-center gap-2 rounded-2xl bg-white/[0.05] px-3 py-2 ring-1 ring-white/10">
+                <span className="min-w-0 flex-1 text-[12px] font-bold leading-tight text-white">
+                  Voice: {voice.channel === 'game' ? `this game (${roster.netIds.length} player${roster.netIds.length === 1 ? '' : 's'})` : 'your party'}
+                  <span className="block text-[10.5px] font-semibold text-slate-400">{voice.joined ? (voice.micMuted ? 'Mic muted' : 'Mic on') + (voice.deafened ? ' · speaker off' : ' · speaker on') : 'Tap the mic to talk'}</span>
+                </span>
+                <div className="flex gap-1 rounded-full bg-black/30 p-0.5">
+                  {(['game', 'party'] as const).map((ch) => (
+                    <button key={ch} type="button" onClick={() => pickChannel(ch)} className={`rounded-full px-3 py-1.5 text-[11px] font-extrabold ${voice.channel === ch ? 'bg-brand text-white' : 'text-slate-300'}`}>
+                      {ch === 'game' ? 'Game' : 'Party'}
+                    </button>
+                  ))}
+                </div>
+                <button type="button" onClick={talk} aria-label="Microphone" className={`flex h-9 w-9 items-center justify-center rounded-full text-white ${!voice.joined ? 'bg-white/15' : voice.micMuted ? 'bg-rose-500' : 'bg-emerald-500'}`}>
+                  {voice.joined && voice.micMuted ? <MicOff size={16} /> : <Mic size={16} />}
+                </button>
+                {voice.joined && (
+                  <button type="button" onClick={() => voice.toggleDeafen()} aria-label="Speaker" className={`flex h-9 w-9 items-center justify-center rounded-full text-white ${voice.deafened ? 'bg-rose-500' : 'bg-white/15'}`}>
+                    {voice.deafened ? <VolumeX size={16} /> : <Volume2 size={16} />}
+                  </button>
+                )}
+              </div>
+            )}
 
             {tab === 'party' &&
               (party.active ? (

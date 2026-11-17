@@ -1312,10 +1312,12 @@ export default function WildAnimal({
     // a runner leans gently into a lane change on the ground (with the velocity, so it never rocks back the other
     // way as it settles) and holds level in the air: a body banking mid-jump reads as falling over
     const air = pose === 'jump' || pose === 'roll'
-    const leanT = moving && !air ? THREE.MathUtils.clamp(-c.vx * 0.012, -0.07, 0.07) : 0
-    const steerT = moving ? THREE.MathUtils.clamp(c.vx * 0.022, -0.14, 0.14) * (air ? 0.5 : 1) : 0
-    c.lean += (leanT - c.lean) * Math.min(1, dt * 9)
-    c.steer += (steerT - c.steer) * Math.min(1, dt * 7)
+    // in the air the body stays square to the trail and level: any bank or turn mid-jump reads as falling sideways
+    // from the chase camera. On the ground: a gentle lean and a small turn toward the new lane, easing in and out.
+    const leanT = moving && !air ? THREE.MathUtils.clamp(-c.vx * 0.008, -0.045, 0.045) : 0
+    const steerT = moving && !air ? THREE.MathUtils.clamp(c.vx * 0.012, -0.08, 0.08) : 0
+    c.lean += (leanT - c.lean) * Math.min(1, dt * (air ? 14 : 8))
+    c.steer += (steerT - c.steer) * Math.min(1, dt * (air ? 14 : 6))
     g.rotation.set(0, c.steer, c.lean)
     // landing squash (animals with a Land clip absorb it in the clip)
     if (c.prevPose === 'jump' && pose === 'run') c.landT = 0
@@ -1447,9 +1449,12 @@ export default function WildAnimal({
     // tail: a damped spring pushed by the sideways acceleration, plus a swing with the stride
     if (rig.tail.length) {
       const w = 2 * Math.PI * 1.5
-      c.tailV += (-w * w * c.tail - 2 * 0.28 * w * c.tailV - c.ax * 0.025) * dt
-      c.tail = THREE.MathUtils.clamp(c.tail + c.tailV * dt, -0.6, 0.6)
-      const sway = dead ? 0 : (moving ? 0.13 : 0.06) * Math.sin(c.t * (moving ? 7 : 1.6)) + tailExtra
+      // a calm, well-damped spring: a lane change nudges the tail, it doesn't whip it
+      c.tailV += (-w * w * c.tail - 2 * 0.55 * w * c.tailV - c.ax * 0.009) * dt
+      c.tail = THREE.MathUtils.clamp(c.tail + c.tailV * dt, -0.32, 0.32)
+      // the sway: small while running (the clips already swing the tail with the stride), slow at rest; none in the air
+      const air2 = pose === 'jump' || pose === 'roll'
+      const sway = dead ? 0 : (air2 ? 0 : moving ? 0.05 : 0.06) * Math.sin(c.t * (moving ? 7 : 1.6)) + tailExtra
       if (dead) c.tail *= Math.exp(-dt * 3)
       const n = rig.tail.length
       rig.tail.forEach((b, i) => {
@@ -1458,7 +1463,7 @@ export default function WildAnimal({
       })
       // a slimmer tail: the chain's bones run along local X, so narrow the root across Y/Z and the rest inherit it
       if (def.tailThin) rig.tail[0].scale.set(1, def.tailThin, def.tailThin)
-      rig.tail.forEach((b, i) => rotateWorld(b, UP, (c.tail + sway * (0.5 + i / n)) * (1.4 / n) * (0.6 + i / n)))
+      rig.tail.forEach((b, i) => rotateWorld(b, UP, (c.tail + sway * (0.6 + 0.4 * (i / n))) * (0.9 / n) * (0.75 + 0.5 * (i / n))))
     }
     // species reshaping of a shared body (after the mixer, so clips never undo it)
     if (def.shape) {
@@ -1587,11 +1592,17 @@ export default function WildAnimal({
         const w = window as unknown as { __wbRate?: Record<string, unknown> }
         w.__wbRate = { ...(w.__wbRate ?? {}), [animalId]: { old: +Math.max(0.7, (st.speed / 9) * def.runRate).toFixed(2), used: +rate.toFixed(2), locked: rig.vNative ? +(st.speed / (rig.vNative * fit.scale)).toFixed(2) : null } }
       }
-      if (pose === 'jump' && !actions.jump) rate = 0.25
+      if (pose === 'jump' && !actions.jump) rate = 0
       run.timeScale = (pose === 'idle' || pose === 'victory') && !actions.idle ? 0.12 : rate
       if (standOnGallop) {
         run.timeScale = 0
         run.time = rig.standT
+      }
+      if (pose === 'jump' && !actions.jump) {
+        // ease into the balanced frame over the take-off, then hold it
+        const d = run.getClip().duration
+        const diff = ((rig.standT - run.time) % d + d * 1.5) % d - d * 0.5
+        run.time = (run.time + diff * Math.min(1, dt * 14) + d) % d
       }
     }
     if (pose === 'dead' && !actions.dead && run) run.timeScale = 0

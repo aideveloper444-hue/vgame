@@ -3,6 +3,8 @@ import { create, type StoreApi, type UseBoundStore } from 'zustand'
 import { usePlayerStore } from '@/social/stores/usePlayerStore'
 import { makeId } from '@/lib/id'
 import type { BotName, MatchRole, Seat } from './matchStore'
+import { myNetId } from '@/net/identity'
+import { clearGameVoiceRoster, setGameVoiceRoster } from '@/net/gameVoiceRoster'
 
 /*
  * Peer-to-peer game rooms over WebRTC (PeerJS). The public PeerJS broker only introduces peers by id;
@@ -44,7 +46,7 @@ const IDLE: RoomState = {
   searchEndsAt: null,
 }
 
-type ToHost<A> = { t: 'hello'; name: string; avatarEmoji: string; resume?: string } | { t: 'act'; a: A }
+type ToHost<A> = { t: 'hello'; name: string; avatarEmoji: string; resume?: string; netId?: string } | { t: 'act'; a: A }
 
 type ToGuest<E> =
   | { t: 'welcome'; seatId: string; size: number }
@@ -138,6 +140,16 @@ export const QUICK_WAIT_MS = 20000
 export function createPeerRoom<A, E>(config: PeerRoomConfig): PeerRoom<A, E> {
   const { prefix } = config
   const useRoom = create<RoomState>(() => ({ ...IDLE }))
+  // game voice: the other humans seated at this table (by hub id), while this device is in the room
+  useRoom.subscribe((r) => {
+    const key = r.code ? prefix + r.code : null
+    if (!key || r.status === 'idle' || r.status === 'error' || r.status === 'closed') {
+      clearGameVoiceRoster()
+      return
+    }
+    const me = myNetId()
+    setGameVoiceRoster(key, r.seats.filter((x) => x.kind !== 'bot' && x.netId && x.netId !== me).map((x) => x.netId!))
+  })
   const setRoom = (patch: Partial<RoomState>) => useRoom.setState(patch)
 
   let handlers: RoomHandlers<A, E> = {}
@@ -222,7 +234,8 @@ export function createPeerRoom<A, E>(config: PeerRoomConfig): PeerRoom<A, E> {
           setTimeout(() => conn.close(), 400)
           return
         }
-        const seat: Seat = { id: makeId('seat'), name: cleanName(msg.name), avatarEmoji: String(msg.avatarEmoji ?? '🙂').slice(0, 4), kind: 'remote' }
+        const netId = typeof msg.netId === 'string' && /^[A-Za-z0-9_-]{4,40}$/.test(msg.netId) ? msg.netId : undefined
+        const seat: Seat = { id: makeId('seat'), name: cleanName(msg.name), avatarEmoji: String(msg.avatarEmoji ?? '🙂').slice(0, 4), kind: 'remote', netId }
         seatId = seat.id
         guestConns.set(seat.id, conn)
         setRoom({ seats: [...room.seats, seat] })
@@ -257,7 +270,7 @@ export function createPeerRoom<A, E>(config: PeerRoomConfig): PeerRoom<A, E> {
       quick,
       code,
       size,
-      seats: [{ id: 'host', name: cleanName(me.name), avatarEmoji: me.avatarEmoji, kind: 'local' }],
+      seats: [{ id: 'host', name: cleanName(me.name), avatarEmoji: me.avatarEmoji, kind: 'local', netId: myNetId() }],
       mySeatId: 'host',
       error: null,
     })
@@ -413,7 +426,7 @@ export function createPeerRoom<A, E>(config: PeerRoomConfig): PeerRoom<A, E> {
     }
     attachHost(conn)
     const me = profile()
-    conn.send({ t: 'hello', name: me.name, avatarEmoji: me.avatarEmoji } satisfies ToHost<A>)
+    conn.send({ t: 'hello', name: me.name, avatarEmoji: me.avatarEmoji, netId: myNetId() } satisfies ToHost<A>)
     return true
   }
 
@@ -433,7 +446,7 @@ export function createPeerRoom<A, E>(config: PeerRoomConfig): PeerRoom<A, E> {
     setRoom({ status: 'connecting' })
     attachHost(conn)
     const me = profile()
-    conn.send({ t: 'hello', name: me.name, avatarEmoji: me.avatarEmoji, resume: mySeatId } satisfies ToHost<A>)
+    conn.send({ t: 'hello', name: me.name, avatarEmoji: me.avatarEmoji, resume: mySeatId, netId: myNetId() } satisfies ToHost<A>)
     const reply = await waitForReply(6000)
     if (reply?.t !== 'welcome') {
       setRoom({ status: 'closed' })
@@ -495,7 +508,7 @@ export function createPeerRoom<A, E>(config: PeerRoomConfig): PeerRoom<A, E> {
       }
       attachHost(conn)
       const reply = waitForReply(4000)
-      conn.send({ t: 'hello', name: me.name, avatarEmoji: me.avatarEmoji } satisfies ToHost<A>)
+      conn.send({ t: 'hello', name: me.name, avatarEmoji: me.avatarEmoji, netId: myNetId() } satisfies ToHost<A>)
       const msg = await reply
       if (msg?.t === 'welcome') {
         seatedAt = slots[i]

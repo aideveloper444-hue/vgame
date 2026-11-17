@@ -5,6 +5,7 @@ import type { LudoPlayer } from './ludoStore'
 import LudoAvatar from './LudoAvatar'
 import { usePartyStore } from '@/social/stores/usePartyStore'
 import { useVoiceStore } from '@/social/stores/useVoiceStore'
+import { useGameVoiceRoster } from '@/net/gameVoiceRoster'
 import { usePlayerStore } from '@/social/stores/usePlayerStore'
 
 /*
@@ -49,6 +50,8 @@ export function VoiceChip({ onInfo, compact = false }: { onInfo: (text: string) 
   const micMuted = useVoiceStore((s) => s.micMuted)
   const error = useVoiceStore((s) => s.error)
   const deafened = useVoiceStore((s) => s.deafened)
+  const channel = useVoiceStore((s) => s.channel)
+  const inGame = !!useGameVoiceRoster((s) => s.key)
   const live = joined && !micMuted
   useEffect(() => {
     if (error) onInfo(error)
@@ -56,8 +59,11 @@ export function VoiceChip({ onInfo, compact = false }: { onInfo: (text: string) 
 
   function toggle() {
     const v = useVoiceStore.getState()
-    // no party yet: start one, so friends invited to it can talk right away
-    if (!partyActive) {
+    // an online match: talk to the players at this table
+    if (inGame && !v.joined && v.channel !== 'game') v.setChannel('game')
+    // otherwise the party: start one if needed, so friends invited to it can talk right away
+    if (!inGame && v.channel === 'game') v.setChannel('party')
+    if (!inGame && !partyActive) {
       usePartyStore.getState().createParty()
       onInfo('Voice chat is on. Invite friends to your party to talk.')
     }
@@ -79,7 +85,7 @@ export function VoiceChip({ onInfo, compact = false }: { onInfo: (text: string) 
             <span key={i} className={`w-[2.5px] rounded-full bg-sky-300 ${live ? 'ludo-wave' : ''}`} style={{ height: live ? h : 3, animationDelay: `${i * 90}ms`, opacity: live ? 1 : 0.5 }} />
           ))}
         </span>
-        <span className="whitespace-nowrap text-[10px] font-black text-white">{joining ? 'Joining…' : 'Voice Chat'}</span>
+        <span className="whitespace-nowrap text-[10px] font-black text-white">{joining ? 'Joining…' : joined ? (channel === 'game' ? 'Game voice' : 'Party voice') : 'Voice Chat'}</span>
       </span>
       {/* speaker: hear the others, or silence them (a span: a button can't sit inside the chip's button) */}
       {joined && (
