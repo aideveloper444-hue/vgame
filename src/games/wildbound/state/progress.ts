@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { ANIMALS, RETIRED, getAnimal, type AnimalId, type PowerUpKind, powerUp } from '../engine/content'
+import { ANIMALS, ANIMAL_PRICE_INR, RETIRED, getAnimal, type AnimalId, type PowerUpKind, powerUp } from '../engine/content'
 
 /*
  * Wildbound save game on this device: currencies, roster, power-ups, records, missions, achievements,
@@ -213,11 +213,13 @@ export interface SaveState {
   levelUps: number[]
   tutorialDone: boolean
   appliedOrders: string[]
+  /** saves from before the ₹99 animal locks owned every animal (a testing switch): they start again from Sonic once */
+  locksV2: boolean
   settings: Settings
 }
 
-/** for now every animal is unlocked (testing); set to false to bring back the gem / store unlocks */
-export const UNLOCK_ALL = true
+/** true unlocks every animal (testing only). Off: Sonic is free, every other animal is a ₹99 purchase */
+export const UNLOCK_ALL = false
 const ALL_ANIMALS = ANIMALS.map((a) => a.id)
 
 const ZERO: Record<PowerUpKind, number> = { magnet: 0, shield: 0, speed: 0, superjump: 0, megajump: 0, boost: 0 }
@@ -226,7 +228,8 @@ const INITIAL: SaveState = {
   coins: 500,
   gems: 50,
   xp: 0,
-  owned: UNLOCK_ALL ? ALL_ANIMALS : ['sonic', 'raja'],
+  owned: UNLOCK_ALL ? ALL_ANIMALS : ['sonic'],
+  locksV2: true,
   // Sonic is the starting animal; the tiger is free too
   selected: 'sonic',
   inventory: { magnet: 1, shield: 1, speed: 1, superjump: 1, megajump: 1, boost: 1 },
@@ -325,9 +328,8 @@ export const useSave = create<SaveState & Actions>()(
           const s = get()
           if (s.owned.includes(id)) return no('Already yours')
           if (a.free) return no('Already free')
-          if (s.gems < a.gemPrice) return no(`You need ${a.gemPrice} gems`)
-          set({ gems: s.gems - a.gemPrice, owned: [...s.owned, id], selected: id })
-          return ok
+          // animals are never sold for gems or coins: only the one-time store purchase unlocks them
+          return no(`Unlock ${a.name} for ${ANIMAL_PRICE_INR} in the store`)
         },
 
         buyPowerUp: (kind) => {
@@ -544,9 +546,13 @@ export const useSave = create<SaveState & Actions>()(
           ...p,
           inventory: { ...ZERO, megajump: 1, boost: 1, ...((p.inventory ?? current.inventory) as Partial<Record<PowerUpKind, number>>) },
           upgrades: { ...ZERO, ...(p.upgrades ?? current.upgrades) },
-          owned: UNLOCK_ALL ? ALL_ANIMALS : [...new Set<AnimalId>([...(p.owned ?? current.owned), 'raja'])],
-          // a save that had a rested animal selected moves back to Sonic
-          selected: p.selected && !RETIRED.has(p.selected) ? p.selected : 'sonic',
+          // (animals a player already has stay theirs; Sonic is always included)
+          // (a save from before the locks owned everything through the testing switch: it starts from Sonic, and
+          // Restore purchases gives back anything bought on Google Play)
+          owned: UNLOCK_ALL ? ALL_ANIMALS : p.locksV2 ? [...new Set<AnimalId>([...(p.owned ?? current.owned), 'sonic'])] : ['sonic'],
+          locksV2: true,
+          // a save that had a rested or no-longer-owned animal selected moves back to Sonic
+          selected: p.selected && !RETIRED.has(p.selected) && (UNLOCK_ALL || (p.locksV2 && (p.owned ?? []).includes(p.selected)) || p.selected === 'sonic') ? p.selected : 'sonic',
           // newer settings (quality levels, text size, assist, colour-safe markers) and race records
           settings: { ...current.settings, ...(p.settings ?? {}) },
           totals: { ...current.totals, ...(p.totals ?? {}) },

@@ -6,7 +6,7 @@ import { useSave } from '../state/progress'
 import { charProductId, priceOf, purchase, usePrices } from '../state/shop'
 import { headArt } from './art'
 import { AbilityBadge, TraitBadge } from './icons'
-import { Bar, Gem, toast, useNav } from './common'
+import { Bar, toast, useNav } from './common'
 import { showcase } from '../scene/runController'
 import { haptic, sfx } from './sfx'
 import Logo from './Logo'
@@ -59,16 +59,6 @@ export default function PreviewScreen() {
       go('home')
     }, 3600)
   }
-  const unlockGems = () => {
-    const r = useSave.getState().unlockWithGems(id)
-    if (r.ok) {
-      sfx.win()
-      haptic(40)
-      toast(`${a.name} unlocked!`, 'good')
-    } else {
-      toast(r.reason, 'bad')
-    }
-  }
   const buy = async () => {
     try {
       await purchase(charProductId(id))
@@ -117,8 +107,8 @@ export default function PreviewScreen() {
                 ) : own ? (
                   <span className="wb-chip is-on">Owned</span>
                 ) : (
-                  <span className="wb-pill !h-9 px-2 text-[20px]">
-                    <Gem size={24} /> {a.gemPrice}
+                  <span className="wb-pill !h-9 px-3 text-[20px]">
+                    <Lock size={16} strokeWidth={2.4} /> {priceOf(charProductId(id))}
                   </span>
                 )}
               </div>
@@ -163,7 +153,7 @@ export default function PreviewScreen() {
                   <img src={headArt(x.id)} alt={x.name} className="h-full w-full object-cover" />
                   {!mine && (
                     <span className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-0.5 bg-black/70 py-0.5 text-[12px]">
-                      <Lock size={11} strokeWidth={3} /> {x.gemPrice}
+                      <Lock size={11} strokeWidth={3} /> {priceOf(charProductId(x.id))}
                     </span>
                   )}
                   {selected === x.id && <span className="absolute left-0.5 top-0.5 rounded bg-[#3f7a5c] px-1 text-[10px] font-bold">IN USE</span>}
@@ -177,14 +167,9 @@ export default function PreviewScreen() {
                 {selected === id ? 'Selected' : 'Select'}
               </button>
             ) : (
-              <>
-                <button className="wb-btn wb-btn-gold h-[54px] min-w-[220px] px-5 text-[28px]" onClick={unlockGems}>
-                  <Lock size={22} strokeWidth={3} /> Unlock <Gem size={28} /> {a.gemPrice}
-                </button>
-                <button className="wb-btn wb-btn-green h-[44px] min-w-[220px] px-5 text-[22px]" onClick={buy}>
-                  Buy {priceOf(charProductId(id))}
-                </button>
-              </>
+              <button className="wb-btn wb-btn-gold h-[54px] min-w-[220px] px-5 text-[28px]" onClick={buy}>
+                <Lock size={22} strokeWidth={3} /> Unlock {priceOf(charProductId(id))}
+              </button>
             )}
           </div>
         </div>

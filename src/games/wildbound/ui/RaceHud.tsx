@@ -24,15 +24,16 @@ interface Row {
   coins: number
   down: boolean
   left: boolean
+  out: boolean
   me: boolean
 }
 
-function readRows(): { rows: Row[]; length: number; t: number; stumbleLeft: number; closed: boolean; mode: RaceMode; timeLeft: number; limitMs: number } | null {
+function readRows(): { rows: Row[]; length: number; t: number; stumbleLeft: number; closed: boolean; mode: RaceMode; timeLeft: number; limitMs: number; endless: boolean; settled: boolean } | null {
   const race = run.race
   if (!race) return null
-  const rows = race.standings().map((r) => ({ id: r.id, name: r.name, animalId: r.animalId, color: r.color, d: r.d, coins: r.coins, finishMs: r.finishMs, down: race.t < r.stumbleUntil, left: r.left, me: r.id === race.localId }))
+  const rows = race.standings().map((r) => ({ id: r.id, name: r.name, animalId: r.animalId, color: r.color, d: r.d, coins: r.coins, finishMs: r.finishMs, down: race.t < r.stumbleUntil, left: r.left, out: r.out, me: r.id === race.localId }))
   const me = race.local
-  return { rows, length: race.length, t: race.t, stumbleLeft: Math.max(0, me.stumbleUntil - race.t), closed: race.closed, mode: race.mode, timeLeft: race.timeLeft, limitMs: race.limitMs }
+  return { rows, length: race.length, t: race.t, stumbleLeft: Math.max(0, me.stumbleUntil - race.t), closed: race.closed, mode: race.mode, timeLeft: race.timeLeft, limitMs: race.limitMs, endless: race.endless, settled: race.settled(me) }
 }
 
 /** m:ss on the race clock */
@@ -54,8 +55,17 @@ export function RaceHud() {
   const me = s.rows.find((r) => r.me)
   return (
     <>
+      {/* unlimited: no clock and no finish, just how far (or how rich) you are, last one standing wins */}
+      {s.endless && (
+        <div className="pointer-events-none absolute left-1/2 top-[calc(env(safe-area-inset-top)+8px)] -translate-x-1/2 text-center portrait:top-[calc(env(safe-area-inset-top)+58px)]">
+          <div className="wb-hud-box !h-auto flex-col !px-4 !py-1 leading-none">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.3em] text-white/70">Unlimited · last one standing</span>
+            <span className="wb-title text-[30px] tabular-nums wb-yellow">{s.mode === 'coins' ? `${fmt(me?.coins ?? 0)} coins` : `${fmt(me?.d ?? 0)} m`}</span>
+          </div>
+        </div>
+      )}
       {/* a timed race or coin rush: the race clock, big and central */}
-      {s.mode !== 'distance' && (
+      {s.mode !== 'distance' && !s.endless && (
         <div className="pointer-events-none absolute left-1/2 top-[calc(env(safe-area-inset-top)+8px)] -translate-x-1/2 text-center portrait:top-[calc(env(safe-area-inset-top)+58px)]">
           <div className={`wb-hud-box !h-auto flex-col !px-4 !py-1 leading-none ${s.timeLeft < 10000 ? 'ring-2 ring-[#ff6a4a]' : ''}`}>
             <span className="text-[11px] font-semibold uppercase tracking-[0.3em] text-white/70">{s.mode === 'coins' ? 'Coin rush' : 'Timed race'}</span>
@@ -64,7 +74,7 @@ export function RaceHud() {
         </div>
       )}
       {/* progress to the finish line, every runner a dot (distance races) */}
-      <div className="pointer-events-none absolute left-1/2 top-[calc(env(safe-area-inset-top)+8px)] w-[min(46vw,360px)] -translate-x-1/2 portrait:top-[calc(env(safe-area-inset-top)+58px)] portrait:w-[78vw]" style={{ display: s.mode === 'distance' ? undefined : 'none' }}>
+      <div className="pointer-events-none absolute left-1/2 top-[calc(env(safe-area-inset-top)+8px)] w-[min(46vw,360px)] -translate-x-1/2 portrait:top-[calc(env(safe-area-inset-top)+58px)] portrait:w-[78vw]" style={{ display: s.mode === 'distance' && !s.endless ? undefined : 'none' }}>
         <div className="relative h-3 rounded-full bg-black/55 ring-1 ring-white/25">
           <div className="h-full rounded-full" style={{ width: `${Math.min(100, ((me?.d ?? 0) / s.length) * 100)}%`, background: 'linear-gradient(90deg,#a9d4b6,#dcc08a)' }} />
           {s.rows.map((r) => (
@@ -101,6 +111,8 @@ export function RaceHud() {
                   <Flag size={13} className="inline text-[#a9d4b6]" />
                 ) : r.left ? (
                   'left'
+                ) : r.out ? (
+                  'out'
                 ) : r.down ? (
                   '💫'
                 ) : r.me ? (
@@ -138,15 +150,17 @@ export function RaceResults({ online, onAgain, onHome }: { online: boolean; onAg
     if (!s || !race || done.current) return
     const me = s.rows.find((r) => r.me)
     if (!me) return
-    // your place is settled once you cross the line (anyone finishing later ranks behind you) or the race closes
-    if (!s.closed && me.finishMs === null) return
+    // your place is settled once you cross the line (anyone finishing later ranks behind you), the race closes, or
+    // (unlimited) you are out and everyone still running is already ahead
+    if (!s.settled) return
     const place = s.rows.indexOf(me) + 1
     const field = s.rows.length
     done.current = true
     // (a timed race or coin rush pays like a distance race of what a runner covers in that time)
-    const nominal = s.mode === 'distance' ? s.length : Math.round((s.limitMs / 60000) * 700)
+    // (an unlimited race pays like a distance race of what you covered)
+    const nominal = s.endless ? Math.max(200, Math.round(me.d)) : s.mode === 'distance' ? s.length : Math.round((s.limitMs / 60000) * 700)
     const r = raceReward(place, field, nominal)
-    useSave.getState().recordRace({ place, field, length: nominal, timeMs: s.mode === 'distance' ? me.finishMs : null, coins: r.coins, xp: r.xp })
+    useSave.getState().recordRace({ place, field, length: nominal, timeMs: s.mode === 'distance' && !s.endless ? me.finishMs : null, coins: r.coins, xp: r.xp })
     completeGameSession({ gameId: 'wildbound', won: place === 1 && field > 1, coins: 0, xp: 0, playedWithFriend: online })
     setReward({ ...r, place })
     if (place === 1) sfx.win()
@@ -155,15 +169,19 @@ export function RaceResults({ online, onAgain, onHome }: { online: boolean; onAg
 
   if (!s) return null
   const podium = s.rows.slice(0, 3)
-  const waiting = s.mode === 'distance' && !s.closed && s.rows.some((r) => r.finishMs === null && !r.left)
-  const kindText = s.mode === 'distance' ? `${s.length / 1000} km race` : `${Math.round(s.limitMs / 60000)} min ${s.mode === 'coins' ? 'coin rush' : 'timed race'}`
+  const waiting = s.endless ? !s.settled : s.mode === 'distance' && !s.closed && s.rows.some((r) => r.finishMs === null && !r.left)
+  const kindText = s.endless
+    ? `Unlimited ${s.mode === 'coins' ? 'coin rush' : s.mode === 'time' ? 'timed race' : 'race'}`
+    : s.mode === 'distance'
+      ? `${s.length / 1000} km race`
+      : `${Math.round(s.limitMs / 60000)} min ${s.mode === 'coins' ? 'coin rush' : 'timed race'}`
   const label = (p: number) => (p === 1 ? '1st' : p === 2 ? '2nd' : p === 3 ? '3rd' : `${p}th`)
   return (
     <div className="wb-layer wb-dim z-[70] flex items-center justify-center p-4">
       <div className="wb-panel wb-in w-full max-w-[480px] overflow-hidden p-0 text-center">
         <div className="pt-3">
-          <div className="wb-title text-[42px] leading-none wb-yellow wb-stroke">{reward ? (reward.place === 1 ? 'YOU WIN!' : `${label(reward.place)} PLACE`) : 'FINISH!'}</div>
-          <div className="text-[15px] text-white/75">{waiting ? 'Waiting for the others to cross the line…' : `${kindText} · ${s.rows.length} runners`}</div>
+          <div className="wb-title text-[42px] leading-none wb-yellow wb-stroke">{reward ? (reward.place === 1 ? 'YOU WIN!' : `${label(reward.place)} PLACE`) : s.endless ? 'KNOCKED OUT' : 'FINISH!'}</div>
+          <div className="text-[15px] text-white/75">{waiting ? (s.endless ? 'The others are still running…' : 'Waiting for the others to cross the line…') : `${kindText} · ${s.rows.length} runners`}</div>
         </div>
         {/* podium */}
         <div className="mx-auto mt-2 flex h-[150px] max-w-[330px] items-end justify-center gap-2 px-3">

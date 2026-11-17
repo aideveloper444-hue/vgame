@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useLocation } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, GripHorizontal, Headphones, Megaphone, MessageCircle, Mic, MicOff, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, GripHorizontal, Megaphone, MessageCircle, Mic, MicOff, Volume2, VolumeX, X } from 'lucide-react'
 import type { GameDefinition } from '@/games/registry'
 import { usePartyStore } from '@/social/stores/usePartyStore'
 import { useVoiceStore } from '@/social/stores/useVoiceStore'
@@ -14,10 +14,10 @@ const HIDE_KEY = 'mw-dock-hidden'
 
 const DOCK_Y_KEY = 'mw-dock-y'
 
-function readDockY() {
+function readDockY(fallback = 30) {
   try {
     const v = Number(localStorage.getItem(DOCK_Y_KEY))
-    return v >= 12 && v <= 88 ? v : 30
+    return v >= 12 && v <= 88 ? v : fallback
   } catch {
     return 30
   }
@@ -85,7 +85,9 @@ export default function GameSocialOverlay({ game }: { game: GameDefinition }) {
   const unreadParty = useChatStore((s) => s.unread[PARTY_CONVERSATION] ?? 0)
   const others = party.members.filter((m) => !m.isUser)
   const othersTalking = others.some((m) => voice.speaking[m.id])
-  const [dockY, setDockY] = useState(readDockY)
+  // the games keep their own stats in the top corners (Amazon Run's coins, World Tycoon's player cards): the dock
+  // starts at mid height, clear of them
+  const [dockY, setDockY] = useState(() => readDockY(game.id === 'wildbound' || game.id === 'city' ? 52 : 30))
 
   const moveDock = (y: number) => {
     const v = Math.min(88, Math.max(12, y))
@@ -172,21 +174,30 @@ export default function GameSocialOverlay({ game }: { game: GameDefinition }) {
               <MessageCircle size={18} className="text-white" />
               <Badge count={unreadAll} className="absolute -right-1.5 -top-1.5" />
             </button>
-            {party.active &&
-              (voice.joined ? (
-                <button
-                  type="button"
-                  onClick={() => voice.toggleMic()}
-                  aria-label={voice.micMuted ? 'Unmute microphone' : 'Mute microphone'}
-                  className={`flex h-9 w-9 items-center justify-center rounded-full text-white active:scale-90 ${voice.micMuted ? 'bg-rose-500' : 'bg-emerald-500'}`}
-                >
-                  {voice.micMuted ? <MicOff size={17} /> : <Mic size={17} />}
-                </button>
-              ) : (
-                <button type="button" onClick={() => void voice.joinVoice()} aria-label="Join voice chat" className="flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-white active:scale-90">
-                  <Headphones size={17} />
-                </button>
-              ))}
+            {/* voice: one tap talks (starting a party and joining its voice chat if needed), then mutes and unmutes */}
+            <button
+              type="button"
+              onClick={() => {
+                if (!party.active) party.createParty()
+                if (!voice.joined) void useVoiceStore.getState().joinVoice()
+                else voice.toggleMic()
+              }}
+              aria-label={!voice.joined ? 'Talk: join voice chat' : voice.micMuted ? 'Unmute microphone' : 'Mute microphone'}
+              className={`flex h-9 w-9 items-center justify-center rounded-full text-white active:scale-90 ${!voice.joined ? 'bg-white/15' : voice.micMuted ? 'bg-rose-500' : 'bg-emerald-500'}`}
+            >
+              {voice.joined && voice.micMuted ? <MicOff size={17} /> : <Mic size={17} />}
+            </button>
+            {/* speaker: hear the party, or silence everyone's voices */}
+            {voice.joined && (
+              <button
+                type="button"
+                onClick={() => voice.toggleDeafen()}
+                aria-label={voice.deafened ? 'Turn speaker on' : 'Turn speaker off'}
+                className={`flex h-9 w-9 items-center justify-center rounded-full text-white active:scale-90 ${voice.deafened ? 'bg-rose-500' : 'bg-white/15'}`}
+              >
+                {voice.deafened ? <VolumeX size={17} /> : <Volume2 size={17} />}
+              </button>
+            )}
           </div>
         )}
       </div>

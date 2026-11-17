@@ -105,7 +105,7 @@ export default function RaceScreen() {
     <div className="wb-layer">
       <Backdrop dim={0.5} />
       <div className="wb-layer wb-safe flex flex-col gap-2">
-        <Header title="PLAY WITH FRIENDS" />
+        <Header title="RACE" />
         <div className="wb-scroll min-h-0 flex-1 pb-6">
           <div className="mx-auto flex max-w-[26rem] flex-col gap-2.5">
             <div className="wb-panel flex items-center gap-3 p-2.5">
@@ -142,33 +142,43 @@ export default function RaceScreen() {
                 ))}
               </div>
               <div className="mb-1.5 text-[13px] font-semibold text-white/70">
-                {mode === 'distance' ? 'First across the finish line wins.' : mode === 'time' ? 'Whoever runs farthest before the clock runs out wins.' : 'Whoever grabs the most coins before the clock runs out wins.'}
+                {(mode === 'distance' ? length : minutes) === 0
+                  ? mode === 'coins'
+                    ? 'Unlimited: no clock. A crash knocks you out. Most coins when everyone is out wins.'
+                    : 'Unlimited: no finish line, no clock. A crash knocks you out. Last runner standing wins.'
+                  : mode === 'distance'
+                    ? 'First across the finish line wins.'
+                    : mode === 'time'
+                      ? 'Whoever runs farthest before the clock runs out wins.'
+                      : 'Whoever grabs the most coins before the clock runs out wins.'}
               </div>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-4 gap-1.5">
                 {mode === 'distance'
                   ? RACE_LENGTHS.map((l) => (
                       <button
                         key={l}
-                        className={`wb-card h-14 !rounded-xl text-center leading-none ${l === length ? 'ring-2 ring-[#dcc08a] shadow-[0_0_16px_rgba(255,216,74,0.5)]' : 'opacity-80'}`}
+                        className={`wb-card h-14 !rounded-xl text-center leading-none ${l === length ? '' : 'opacity-70'}`}
+                        style={l === length ? { boxShadow: 'inset 0 0 0 2px #dcc08a, 0 0 16px rgba(255,216,74,0.45)', background: 'rgba(220,192,138,0.16)' } : undefined}
                         onClick={() => (sfx.tap(), useRaceUI.setState({ length: l }))}
                       >
-                        <span className="wb-title block text-[26px] wb-yellow">{l / 1000} km</span>
-                        <span className="text-[12px] text-white/70">{races.bestTime[l] ? `best ${fmtTime(races.bestTime[l]!)}` : `${Math.ceil(l / 400)} zones`}</span>
+                        <span className="wb-title block text-[22px] wb-yellow">{l === 0 ? '∞' : `${l / 1000} km`}</span>
+                        <span className="text-[11px] text-white/70">{l === 0 ? 'unlimited' : races.bestTime[l] ? `best ${fmtTime(races.bestTime[l]!)}` : `${Math.ceil(l / 400)} zones`}</span>
                       </button>
                     ))
                   : RACE_MINUTES.map((n) => (
                       <button
                         key={n}
-                        className={`wb-card h-14 !rounded-xl text-center leading-none ${n === minutes ? 'ring-2 ring-[#dcc08a] shadow-[0_0_16px_rgba(255,216,74,0.5)]' : 'opacity-80'}`}
+                        className={`wb-card h-14 !rounded-xl text-center leading-none ${n === minutes ? '' : 'opacity-70'}`}
+                        style={n === minutes ? { boxShadow: 'inset 0 0 0 2px #dcc08a, 0 0 16px rgba(255,216,74,0.45)', background: 'rgba(220,192,138,0.16)' } : undefined}
                         onClick={() => (sfx.tap(), useRaceUI.setState({ minutes: n }))}
                       >
-                        <span className="wb-title block text-[26px] wb-yellow">{n} min</span>
-                        <span className="text-[12px] text-white/70">{mode === 'time' ? `~${Math.round(n * 0.72)} km` : 'most coins'}</span>
+                        <span className="wb-title block text-[22px] wb-yellow">{n === 0 ? '∞' : `${n} min`}</span>
+                        <span className="text-[11px] text-white/70">{n === 0 ? 'unlimited' : mode === 'time' ? `~${Math.round(n * 0.72)} km` : 'most coins'}</span>
                       </button>
                     ))}
               </div>
               <p className="mt-2 text-[13px] leading-snug text-white/70">
-                Everyone runs the same trail. A crash costs you a stumble, not the race. Your power-ups work in races too.
+                Everyone runs the same trail. {(mode === 'distance' ? length : minutes) === 0 ? 'In an unlimited race one crash ends your run.' : 'A crash costs you a stumble, not the race.'} Your power-ups work in races too.
               </p>
               <div className="mt-2 flex items-center justify-around rounded-xl bg-black/30 py-1.5 text-[14px]">
                 <span className="flex items-center gap-1">
@@ -207,7 +217,7 @@ export default function RaceScreen() {
                     ))}
                   </div>
                   <p className="text-[11px] font-semibold leading-snug text-slate-300">
-                    {n} runners, one trail, {mode === 'distance' ? `${length / 1000} km` : `${minutes} min ${mode === 'coins' ? 'coin rush' : 'timed race'}`}. The winner is Alpha of the Pack.
+                    {n} runners, one trail, {(mode === 'distance' ? length : minutes) === 0 ? `unlimited ${mode === 'coins' ? 'coin rush' : mode === 'time' ? 'timed race' : 'race'}` : mode === 'distance' ? `${length / 1000} km` : `${minutes} min ${mode === 'coins' ? 'coin rush' : 'timed race'}`}. The winner is Alpha of the Pack.
                   </p>
                 </div>
               )}

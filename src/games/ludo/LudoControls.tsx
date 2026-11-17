@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { ChevronRight, Coins, Mic, MicOff, Send, Smile, X } from 'lucide-react'
+import { ChevronRight, Coins, Mic, MicOff, Send, Smile, Volume2, VolumeX, X } from 'lucide-react'
 import { COLOR_GLOW, COLOR_HEX } from './ludoBoardLayout'
 import type { LudoPlayer } from './ludoStore'
 import LudoAvatar from './LudoAvatar'
@@ -48,6 +48,7 @@ export function VoiceChip({ onInfo, compact = false }: { onInfo: (text: string) 
   const joining = useVoiceStore((s) => s.joining)
   const micMuted = useVoiceStore((s) => s.micMuted)
   const error = useVoiceStore((s) => s.error)
+  const deafened = useVoiceStore((s) => s.deafened)
   const live = joined && !micMuted
   useEffect(() => {
     if (error) onInfo(error)
@@ -55,9 +56,10 @@ export function VoiceChip({ onInfo, compact = false }: { onInfo: (text: string) 
 
   function toggle() {
     const v = useVoiceStore.getState()
+    // no party yet: start one, so friends invited to it can talk right away
     if (!partyActive) {
-      onInfo('Voice chat talks to your party. Start a party from Home, then come back here.')
-      return
+      usePartyStore.getState().createParty()
+      onInfo('Voice chat is on. Invite friends to your party to talk.')
     }
     if (!v.joined) void v.joinVoice()
     else v.toggleMic()
@@ -79,6 +81,29 @@ export function VoiceChip({ onInfo, compact = false }: { onInfo: (text: string) 
         </span>
         <span className="whitespace-nowrap text-[10px] font-black text-white">{joining ? 'Joining…' : 'Voice Chat'}</span>
       </span>
+      {/* speaker: hear the others, or silence them (a span: a button can't sit inside the chip's button) */}
+      {joined && (
+        <span
+          role="button"
+          tabIndex={0}
+          onClick={(e) => {
+            e.stopPropagation()
+            useVoiceStore.getState().toggleDeafen()
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              e.stopPropagation()
+              useVoiceStore.getState().toggleDeafen()
+            }
+          }}
+          aria-label={deafened ? 'Turn speaker on' : 'Turn speaker off'}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
+          style={{ background: deafened ? 'radial-gradient(circle, #f43f5e, #9f1239)' : 'radial-gradient(circle, #1e3a8a, #0b1236)', boxShadow: '0 0 0 1.5px #3b82f6' }}
+        >
+          {deafened ? <VolumeX size={17} className="text-white" /> : <Volume2 size={17} className="text-white" />}
+        </span>
+      )}
     </button>
   )
 }

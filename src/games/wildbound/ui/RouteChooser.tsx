@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import { BIOME_NAME } from '../engine/content'
-import { ROUTE_BONUS_TEXT, ROUTE_RISK_TEXT, routeForLane, type Fork } from '../engine/run'
+import { ROUTE_BONUS_TEXT, routeForLane, type Fork } from '../engine/run'
 import { run } from '../scene/runController'
 
 /*
- * The junction chooser: while a junction is coming up, one card per route (arrow, world, reward, danger) sits
- * under the top bar, and the route Sonic is lined up for is highlighted. It never pauses the run or takes
+ * The junction chooser: while a junction is coming up, a slim strip under the top bar shows one small chip per
+ * route (arrow, world; the lit one adds its reward, risky ones a warning), and the route Sonic is lined up for is highlighted. It never pauses the run or takes
  * input: the player chooses by changing lane (swipe, arrows, A/D) exactly as in normal running.
  */
 
@@ -34,33 +34,27 @@ export default function RouteChooser() {
   }, [])
   if (!v) return null
   const { fork, here, dist } = v
+  // a slim strip under the top bar: one small chip per path; the path you're lined up for is lit and names its reward
   return (
-    <div className="pointer-events-none absolute inset-x-0 top-[calc(env(safe-area-inset-top)+92px)] z-20 flex flex-col items-center gap-1.5 px-3" aria-live="polite">
-      <div className="rounded-full bg-black/55 px-3 py-0.5 text-[13px] font-bold tracking-wide text-[#ffe08a] shadow">
-        CHOOSE YOUR PATH · {dist} m
-      </div>
-      <div className="flex w-full max-w-[560px] justify-center gap-1.5">
+    <div className="pointer-events-none absolute inset-x-0 top-[calc(env(safe-area-inset-top)+60px)] z-20 flex justify-center px-3 portrait:top-[calc(env(safe-area-inset-top)+96px)]" aria-live="polite">
+      <div className="flex max-w-full items-center gap-1 rounded-full bg-black/45 p-1 pl-2.5 backdrop-blur-md ring-1 ring-white/10">
+        <span className="shrink-0 pr-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/60 tabular-nums">{dist} m</span>
         {fork.routes.map((r, i) => {
           const on = i === here
-          const arrow = r.dir > 0 ? '◀' : r.dir < 0 ? '▶' : '▲'
-          const risk = r.risk === 'risky' ? 'text-[#ff7a5a]' : r.risk === 'safe' ? 'text-[#86e07e]' : 'text-[#a9d8ff]'
+          const arrow = r.dir > 0 ? '‹' : r.dir < 0 ? '›' : '↑'
           return (
-            <div
+            <span
               key={i}
-              className={`min-w-0 flex-1 rounded-xl border-2 px-2 py-1 text-center leading-tight transition-all duration-150 ${on ? 'scale-[1.04] border-[#ffd34a] bg-[#3d2611]/90 shadow-[0_0_14px_rgba(255,200,70,0.7)]' : 'border-white/20 bg-black/45 opacity-80'}`}
+              className={`flex h-7 min-w-0 items-center gap-1 whitespace-nowrap rounded-full px-2.5 text-[12px] font-semibold transition-colors duration-150 ${on ? 'bg-[#e8d3a4] text-[#1b1206]' : 'text-white/75'}`}
             >
-              <div className="text-[18px] font-black text-[#ffe08a]">{arrow}</div>
-              <div className="truncate text-[13px] font-bold text-white">{BIOME_NAME[r.biome]}</div>
-              <div className="truncate text-[12px] font-semibold text-[#ffd34a]">{ROUTE_BONUS_TEXT[r.bonus]}</div>
-              <div className={`text-[11px] font-bold ${risk}`}>
-                {r.risk === 'risky' ? '⚠ ' : ''}
-                {ROUTE_RISK_TEXT[r.risk]}
-              </div>
-            </div>
+              <span className="text-[14px] font-bold leading-none">{arrow}</span>
+              <span className="truncate">{BIOME_NAME[r.biome]}</span>
+              {on && <span className="truncate font-bold">· {ROUTE_BONUS_TEXT[r.bonus]}</span>}
+              {r.risk === 'risky' && <span className={on ? 'text-[#9a2a12]' : 'text-[#ff8a6a]'}>⚠</span>}
+            </span>
           )
         })}
       </div>
-      {fork.routes.length === 2 && here < 0 ? null : null}
     </div>
   )
 }

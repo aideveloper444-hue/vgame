@@ -8,7 +8,7 @@ import assert from 'node:assert/strict'
 import { ANIMALS, ESCAPES, RETIRED, ROSTER, SECTION_MIN_TIER, SECTION_NO_REPEAT, ZONES, tierAt, ZONE_LEN, biomeAt, isObstacle, type AnimalId, type ObstacleKind } from './content'
 import { RUN_START_IN, FLY_H, LANE_W, PACING, RIDE_H, ZIP_HANG, ZIP_TOP, zipAlt, RunSim, laneX, raceStartZone, runDAtTime, runTimeAt, type Item, type Lane, type Section } from './run'
 import { autopilot } from './autopilot'
-import { RaceSession, STUMBLE_MS, pickBotAnimals, type RaceSeat, distanceLimitMs } from './race'
+import { ENDLESS_LIMIT, RaceSession, STUMBLE_MS, pickBotAnimals, type RaceSeat, distanceLimitMs } from './race'
 
 let passed = 0
 const failures: string[] = []
@@ -356,10 +356,10 @@ test('tutorial waits for each move and finishes', () => {
 
 // ---------------------------------------------------------------- roster
 
-test('Sonic and the tiger are free; the others cost gems; rested animals are not offered', () => {
+test('only Sonic is free; every other animal is a real-money unlock (no gem price); rested animals are not offered', () => {
   assert.equal(ANIMALS.length, 15)
-  assert.deepEqual(ANIMALS.filter((a) => a.free).map((a) => a.id), ['sonic', 'raja'])
-  for (const a of ANIMALS.filter((x) => !x.free)) assert.equal(a.gemPrice, 499)
+  assert.deepEqual(ANIMALS.filter((a) => a.free).map((a) => a.id), ['sonic'])
+  for (const a of ANIMALS.filter((x) => !x.free)) assert.equal(a.gemPrice, 0, `${a.id} is not sold for gems`)
   assert.equal(ROSTER.length, 11)
   for (const a of ROSTER) assert.ok(!RETIRED.has(a.id))
 })
@@ -1251,6 +1251,37 @@ test('race types: a timed race and a coin rush end on the clock; a coin rush ran
   assert.equal(rush.standings()[0].id, 'me', 'coins, not distance')
   const dist = new RaceSession(5, 2000, seats, 'me')
   assert.equal(dist.limitMs, distanceLimitMs(2000), 'a distance race still has a clock')
+})
+
+test('unlimited races: no finish or clock, a crash knocks out, places settle once everyone running is ahead, ends when all are out', () => {
+  const seats = [
+    { id: 'me', name: 'Me', avatarEmoji: '', kind: 'local' as const, animalId: 'sonic' as const },
+    { id: 'r1', name: 'Friend', avatarEmoji: '', kind: 'remote' as const, animalId: 'leo' as const },
+  ]
+  const dist = new RaceSession(9, 0, seats, 'me')
+  assert.ok(dist.endless && dist.length === 1e7 && dist.limitMs === Infinity, 'an unlimited distance race has no line and no clock')
+  const timed = new RaceSession(9, 1000, seats, 'me', 'smart', 'time', ENDLESS_LIMIT)
+  assert.ok(timed.endless && timed.limitMs === Infinity, 'an unlimited timed race has no clock')
+  assert.ok(!new RaceSession(9, 1000, seats, 'me', 'smart', 'coins', 60000).endless, 'a 1 min coin rush is not unlimited')
+  // my runner crashes: out, no stumble and no revive
+  const sim = new RunSim({ seed: 9, animalId: 'sonic' })
+  sim.state.alive = false
+  sim.state.crashKind = 'log'
+  dist.runStumble(dist.local, sim)
+  assert.ok(dist.local.out && dist.local.stumbles === 0, 'out, not stumbling')
+  dist.local.d = 300
+  dist.racers[1].d = 250
+  dist.racers[1].seen = 1
+  dist.step(16, null)
+  assert.ok(!dist.settled(dist.local), 'the friend can still pass me: not settled')
+  dist.racers[1].d = 320
+  assert.ok(dist.settled(dist.local), 'the friend is ahead and still running: my place is final')
+  assert.equal(dist.placeOf('me'), 2)
+  assert.ok(!dist.closed, 'still open while the friend runs')
+  dist.apply(['r1', 900, 0, 0, 4, 0, 0, -1, 0, 0, 0, 1])
+  dist.step(16, null)
+  assert.ok(dist.racers[1].out && dist.closed, 'everyone out: the race is over')
+  assert.equal(dist.standings()[0].id, 'r1', 'farthest wins')
 })
 
 console.log(failures.join('\n'))

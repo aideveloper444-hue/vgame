@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { createPeerRoom, type RoomControls } from '@/games/shared/online/peerRoom'
 import { createMatchStore, type BotName } from '@/games/shared/online/matchStore'
 import { ANIMALS } from '../engine/content'
-import { RACE_LENGTHS, RACE_MODES, RaceSession, type NetRacer, type RaceLength, type RaceMode, type RaceSeat } from '../engine/race'
+import { ENDLESS_LIMIT, RACE_LENGTHS, RACE_MODES, RaceSession, type NetRacer, type RaceLength, type RaceMode, type RaceSeat } from '../engine/race'
 import type { BotLevel } from '../engine/autopilot'
 import { run } from '../scene/runController'
 
@@ -61,7 +61,7 @@ export function setRaceNetHandlers(h: { onPick?: (seatId: string, animalId: stri
       else if (a.t === 'me' && Array.isArray(a.r) && a.r[0] === seatId) run.race?.apply(a.r)
     },
     onEvent: (e) => {
-      if (e.t === 'go' && Array.isArray(e.seats)) h.onGo?.(Number(e.seed) | 0, RACE_LENGTHS.includes(e.length as RaceLength) ? e.length : 1000, e.seats, RACE_MODES.includes(e.mode as RaceMode) ? (e.mode as RaceMode) : 'distance', Math.max(0, Math.min(600000, Number(e.limitMs) || 0)))
+      if (e.t === 'go' && Array.isArray(e.seats)) h.onGo?.(Number(e.seed) | 0, RACE_LENGTHS.includes(e.length as RaceLength) ? e.length : 1000, e.seats, RACE_MODES.includes(e.mode as RaceMode) ? (e.mode as RaceMode) : 'distance', Number(e.limitMs) === ENDLESS_LIMIT ? ENDLESS_LIMIT : Math.max(0, Math.min(600000, Number(e.limitMs) || 0)))
     },
   })
 }
@@ -87,10 +87,10 @@ export interface PendingRace {
 }
 
 export const useRaceUI = create<{ length: RaceLength; mode: RaceMode; minutes: number; pending: PendingRace | null }>(() => ({ length: 1000, mode: 'distance', minutes: 2, pending: null }))
-/** the clock limit for the race type picked in the lobby (0 = the distance race's own limit) */
+/** the clock limit for the race type picked in the lobby (0 = the distance race's own limit, -1 = unlimited) */
 export const raceLimitMs = () => {
   const u = useRaceUI.getState()
-  return u.mode === 'distance' ? 0 : u.minutes * 60000
+  return u.mode === 'distance' ? 0 : u.minutes === 0 ? ENDLESS_LIMIT : u.minutes * 60000
 }
 
 export function makeSession(p: PendingRace) {

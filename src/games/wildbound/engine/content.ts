@@ -24,12 +24,16 @@ export interface Trait {
   icon: 'ability' | 'magnet' | 'loyal' | 'shield' | 'coins' | 'gems' | 'xp' | 'speed'
 }
 
+/** the price of unlocking any animal (Sonic the Rottweiler is free) */
+export const ANIMAL_PRICE_INR = '₹99'
+
 export interface AnimalDef {
   id: AnimalId
   name: string
   species: string
   free: boolean
-  /** gems to unlock in the character screen (never coins) */
+  /** unused: animals are never sold for gems or coins. Only Sonic is free; every other animal is unlocked
+   * with a one-time real purchase (ANIMAL_PRICE_INR, Google Play product wb_char_<id>) */
   gemPrice: number
   blurb: string
   ability: Ability
@@ -53,7 +57,7 @@ export const ANIMALS: AnimalDef[] = [
     stats: { speed: 4, stamina: 4, defense: 3 },
   },
   {
-    id: 'leo', name: 'Leo', species: 'Lion', free: false, gemPrice: 499,
+    id: 'leo', name: 'Leo', species: 'Lion', free: false, gemPrice: 0,
     blurb: 'King of the trail. One roar clears the way ahead.',
     ability: { kind: 'roar', name: 'Power Roar', short: 'Knock obstacles', desc: 'Knocks every obstacle within 40 m off the trail', durationMs: 1200, cooldownMs: CD },
     traits: [
@@ -63,7 +67,7 @@ export const ANIMALS: AnimalDef[] = [
     stats: { speed: 3, stamina: 5, defense: 4 },
   },
   {
-    id: 'raja', name: 'Raja', species: 'Tiger', free: true, gemPrice: 0,
+    id: 'raja', name: 'Raja', species: 'Tiger', free: false, gemPrice: 0,
     blurb: 'Raw power on four legs. Clears what others go around.',
     ability: { kind: 'leap', name: 'Super Leap', short: 'Jump higher', desc: 'Huge jumps that clear rocks, ruins and boulders', durationMs: 8000, cooldownMs: CD },
     traits: [
@@ -73,7 +77,7 @@ export const ANIMALS: AnimalDef[] = [
     stats: { speed: 4, stamina: 3, defense: 4 },
   },
   {
-    id: 'shadow', name: 'Shadow', species: 'Panther', free: false, gemPrice: 499,
+    id: 'shadow', name: 'Shadow', species: 'Panther', free: false, gemPrice: 0,
     blurb: 'Silent and unseen. Slips straight through danger.',
     ability: { kind: 'stealth', name: 'Stealth Dash', short: 'Run invisible', desc: 'Turns invisible and passes through every obstacle', durationMs: 4000, cooldownMs: CD },
     traits: [
@@ -83,7 +87,7 @@ export const ANIMALS: AnimalDef[] = [
     stats: { speed: 5, stamina: 3, defense: 2 },
   },
   {
-    id: 'jax', name: 'Jax', species: 'Jaguar', free: false, gemPrice: 499,
+    id: 'jax', name: 'Jax', species: 'Jaguar', free: false, gemPrice: 0,
     blurb: 'Reflexes like lightning. Traps never see him coming.',
     ability: { kind: 'dodge', name: 'Rapid Dodge', short: 'Avoid traps', desc: 'Automatically dodges into the safe lane', durationMs: 6000, cooldownMs: CD },
     traits: [
@@ -93,7 +97,7 @@ export const ANIMALS: AnimalDef[] = [
     stats: { speed: 5, stamina: 3, defense: 3 },
   },
   {
-    id: 'arctic', name: 'Arctic', species: 'Wolf', free: false, gemPrice: 499,
+    id: 'arctic', name: 'Arctic', species: 'Wolf', free: false, gemPrice: 0,
     blurb: 'Born in the snow. Leaves a trail of frost behind.',
     ability: { kind: 'frost', name: 'Frost Sprint', short: 'Freeze obstacles', desc: 'Freezes obstacles ahead so they shatter on contact', durationMs: 6000, cooldownMs: CD },
     traits: [
@@ -103,7 +107,7 @@ export const ANIMALS: AnimalDef[] = [
     stats: { speed: 4, stamina: 4, defense: 3 },
   },
   {
-    id: 'bruno', name: 'Bruno', species: 'Gorilla', free: false, gemPrice: 499,
+    id: 'bruno', name: 'Bruno', species: 'Gorilla', free: false, gemPrice: 0,
     blurb: 'Raw strength. Barriers are just suggestions.',
     ability: { kind: 'smash', name: 'Obstacle Smash', short: 'Break barriers', desc: 'Smashes through barriers, logs, roots and ruins', durationMs: 6000, cooldownMs: CD },
     traits: [
@@ -113,7 +117,7 @@ export const ANIMALS: AnimalDef[] = [
     stats: { speed: 3, stamina: 4, defense: 5 },
   },
   {
-    id: 'titan', name: 'Titan', species: 'Elephant', free: false, gemPrice: 499,
+    id: 'titan', name: 'Titan', species: 'Elephant', free: false, gemPrice: 0,
     blurb: 'Unstoppable once he gets going.',
     ability: { kind: 'charge', name: 'Heavy Charge', short: 'Push obstacles', desc: 'Charges forward pushing obstacles aside', durationMs: 5000, cooldownMs: 32000 },
     traits: [
@@ -123,7 +127,7 @@ export const ANIMALS: AnimalDef[] = [
     stats: { speed: 2, stamina: 5, defense: 5 },
   },
   {
-    id: 'koda', name: 'Koda', species: 'Red Panda', free: false, gemPrice: 499,
+    id: 'koda', name: 'Koda', species: 'Red Panda', free: false, gemPrice: 0,
     blurb: 'Small, quick and impossible to catch.',
     ability: { kind: 'roll', name: 'Acrobat Roll', short: 'Roll faster', desc: 'Rolls straight through anything low or in the way', durationMs: 6000, cooldownMs: 28000 },
     traits: [
@@ -133,7 +137,7 @@ export const ANIMALS: AnimalDef[] = [
     stats: { speed: 4, stamina: 4, defense: 2 },
   },
   {
-    id: 'snow', name: 'Snow', species: 'Snow Leopard', free: false, gemPrice: 499,
+    id: 'snow', name: 'Snow', species: 'Snow Leopard', free: false, gemPrice: 0,
     blurb: 'At home on cliffs. Gaps are nothing.',
     ability: { kind: 'cliff', name: 'Cliff Leap', short: 'Longer jump', desc: 'Long leaps that carry over gaps and tall obstacles', durationMs: 8000, cooldownMs: CD },
     traits: [
@@ -143,7 +147,7 @@ export const ANIMALS: AnimalDef[] = [
     stats: { speed: 4, stamina: 3, defense: 3 },
   },
   {
-    id: 'nova', name: 'Nova', species: 'White Tiger', free: false, gemPrice: 499,
+    id: 'nova', name: 'Nova', species: 'White Tiger', free: false, gemPrice: 0,
     blurb: 'A ghost of the snowy forests. Ice follows every stride.',
     ability: { kind: 'frost', name: 'Frost Sprint', short: 'Freeze obstacles', desc: 'Freezes obstacles ahead so they shatter on contact', durationMs: 6000, cooldownMs: CD },
     traits: [
@@ -153,7 +157,7 @@ export const ANIMALS: AnimalDef[] = [
     stats: { speed: 4, stamina: 4, defense: 4 },
   },
   {
-    id: 'blaze', name: 'Blaze', species: 'Cheetah', free: false, gemPrice: 499,
+    id: 'blaze', name: 'Blaze', species: 'Cheetah', free: false, gemPrice: 0,
     blurb: 'The fastest thing on four legs. Blink and she is gone.',
     ability: { kind: 'boost', name: 'Speed Burst', short: 'Run faster', desc: 'Explodes into a flat-out sprint for a few seconds', durationMs: 5000, cooldownMs: CD },
     traits: [
@@ -163,7 +167,7 @@ export const ANIMALS: AnimalDef[] = [
     stats: { speed: 5, stamina: 2, defense: 2 },
   },
   {
-    id: 'zara', name: 'Zara', species: 'Lioness', free: false, gemPrice: 499,
+    id: 'zara', name: 'Zara', species: 'Lioness', free: false, gemPrice: 0,
     blurb: 'The pride\'s true hunter. Patient, then unstoppable.',
     ability: { kind: 'leap', name: 'Pounce', short: 'Jump higher', desc: 'Huge pouncing jumps that clear rocks, ruins and boulders', durationMs: 8000, cooldownMs: CD },
     traits: [
@@ -173,7 +177,7 @@ export const ANIMALS: AnimalDef[] = [
     stats: { speed: 4, stamina: 4, defense: 3 },
   },
   {
-    id: 'ash', name: 'Ash', species: 'Grey Wolf', free: false, gemPrice: 499,
+    id: 'ash', name: 'Ash', species: 'Grey Wolf', free: false, gemPrice: 0,
     blurb: 'Leader of the pack. Reads the trail before it happens.',
     ability: { kind: 'dodge', name: 'Rapid Dodge', short: 'Avoid traps', desc: 'Automatically dodges into the safe lane', durationMs: 6000, cooldownMs: CD },
     traits: [
@@ -184,7 +188,7 @@ export const ANIMALS: AnimalDef[] = [
   },
   // (added last: race packets and saves refer to animals by their place in this list)
   {
-    id: 'stallion', name: 'Midnight', species: 'Friesian Stallion', free: false, gemPrice: 499,
+    id: 'stallion', name: 'Midnight', species: 'Friesian Stallion', free: false, gemPrice: 0,
     blurb: 'A tall black stallion with a mane like a storm. Nothing outruns him.',
     ability: { kind: 'charge', name: 'Thunder Gallop', short: 'Gallop through', desc: 'A flat-out gallop that bursts through logs, roots and barriers', durationMs: 5000, cooldownMs: CD },
     traits: [

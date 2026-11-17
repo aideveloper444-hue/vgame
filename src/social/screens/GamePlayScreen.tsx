@@ -46,8 +46,8 @@ export default function GamePlayScreen() {
           {/* a party call to a room (?room=…) remounts the game so it picks the new room up */}
           <View key={search} />
         </Suspense>
-        {/* the club has its own chat, emotes and invites; the party overlay would sit on its seats */}
-        {game.id !== 'poker' && game.id !== 'wildbound' && <GameSocialOverlay game={game} />}
+        {/* chat, voice and speaker on top of every game */}
+        <GameSocialOverlay game={game} />
       </>
     )
   }

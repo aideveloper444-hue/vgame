@@ -1,4 +1,4 @@
-import { ClipboardList, Gift, MoreHorizontal, PawPrint, Play, Settings, ShoppingCart, Sparkles, Trophy, Users } from 'lucide-react'
+import { ClipboardList, Gift, LogOut, MoreHorizontal, PawPrint, Play, Settings, ShoppingCart, Sparkles, Trophy, Users } from 'lucide-react'
 import { getAnimal } from '../engine/content'
 import { MISSIONS, levelOf, today, useSave } from '../state/progress'
 import { Wallet, fmt, useFestival, useNav } from './common'
@@ -6,7 +6,8 @@ import { sfx } from './sfx'
 import Logo from './Logo'
 
 /** Home: the whole pack galloping behind the logo, PLAY, and the five menu buttons. */
-export default function HomeScreen({ onPlay }: { onPlay: () => void }) {
+/** onExit: back to the VIBO games list (absent in the standalone build, which has nowhere to go back to) */
+export default function HomeScreen({ onPlay, onExit }: { onPlay: () => void; onExit?: () => void }) {
   const go = useNav((s) => s.go)
   const selected = useSave((s) => s.selected)
   const xp = useSave((s) => s.xp)
@@ -32,6 +33,7 @@ export default function HomeScreen({ onPlay }: { onPlay: () => void }) {
     { label: 'Missions', icon: <ClipboardList size={22} strokeWidth={1.6} />, on: () => go('missions'), dot: missionsReady },
     { label: 'Rewards', icon: <Gift size={22} strokeWidth={1.6} />, on: () => go('rewards'), dot: dailyReady ? 1 : 0 },
     { label: 'More', icon: <MoreHorizontal size={24} strokeWidth={1.6} />, on: () => go('more'), dot: 0 },
+    ...(onExit ? [{ label: 'Exit', icon: <LogOut size={22} strokeWidth={1.6} />, on: onExit, dot: 0 }] : []),
   ]
 
   return (
@@ -51,7 +53,7 @@ export default function HomeScreen({ onPlay }: { onPlay: () => void }) {
             </button>
           </div>
           {/* the title: centred on the screen (on wide screens it floats over the top row, clear of the side columns) */}
-          <div className="wb-home-logo pointer-events-none flex min-w-0 flex-1 flex-col items-center portrait:order-3 portrait:basis-full landscape:absolute landscape:inset-x-0 landscape:top-[max(10px,env(safe-area-inset-top))]">
+          <div className="wb-home-logo pointer-events-none flex min-w-0 flex-1 flex-col items-center portrait:order-3 portrait:basis-full landscape:absolute landscape:inset-x-0 landscape:top-[max(10px,env(safe-area-inset-top))] landscape:origin-top landscape:max-[1180px]:scale-[0.72] landscape:max-[940px]:scale-[0.46]">
             <Logo size={0.92} className="mt-3 portrait:scale-[0.8]" />
             <div className="mt-2 text-[13px] font-semibold uppercase tracking-[0.36em] text-[var(--muted)] wb-shadow">
               Run · Explore · Survive
@@ -104,7 +106,7 @@ export default function HomeScreen({ onPlay }: { onPlay: () => void }) {
           )}
         </div>
 
-        <div className="mt-3 grid w-full grid-cols-5 gap-2 self-center sm:max-w-[560px]">
+        <div className={`mt-3 grid w-full gap-2 self-center ${nav.length > 5 ? 'grid-cols-6 sm:max-w-[660px]' : 'grid-cols-5 sm:max-w-[560px]'}`}>
           {nav.map((n) => (
             <button key={n.label} className="wb-nav-btn h-[62px]" onClick={tap(n.on)}>
               {n.icon}

@@ -105,7 +105,7 @@ export function tickRun(dtMs: number) {
       race.runStumble(race.local, sim)
       race.step(dtMs, sim)
     }
-    if (race.local.finishMs !== null || race.closed) setPhase('over')
+    if (race.local.finishMs !== null || race.local.out || race.closed) setPhase('over')
     return
   }
   if (!sim.state.alive) setPhase('over')

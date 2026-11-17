@@ -3,8 +3,9 @@ import { useRef, useState } from 'react'
 import { Check, Lock, RotateCw, ZoomIn, ZoomOut } from 'lucide-react'
 import { ROSTER, getAnimal, type AnimalId } from '../engine/content'
 import { useSave } from '../state/progress'
+import { charProductId, priceOf, purchase, usePrices } from '../state/shop'
 import { AbilityBadge } from './icons'
-import { Backdrop, Gem, Header, toast, useNav } from './common'
+import { Backdrop, Header, toast, useNav } from './common'
 import { haptic, sfx } from './sfx'
 import { Stats } from './PreviewScreen'
 import { AnimalView, FeatureView, RosterCanvas, ZOOM_MAX, ZOOM_MIN, hasFace, newSpin } from '../scene/RosterViews'
@@ -24,7 +25,8 @@ const VIEWS: { label: string; yaw: number }[] = [
 export default function CharacterSelect() {
   const owned = useSave((s) => s.owned)
   const selected = useSave((s) => s.selected)
-  const gems = useSave((s) => s.gems)
+  // (re-render when the store's own localized prices arrive)
+  usePrices((s) => s.loaded)
   const go = useNav((s) => s.go)
   const [focus, setFocus] = useState<AnimalId>(selected)
   const f = getAnimal(focus)
@@ -75,17 +77,17 @@ export default function CharacterSelect() {
       toast(`${f.name} is ready to run!`, 'good')
     }
   }
-  const unlock = (id: AnimalId) => {
+  // every animal but Sonic is a one-time ₹99 purchase (never coins or gems)
+  const unlock = async (id: AnimalId) => {
     const a = getAnimal(id)
-    const r = useSave.getState().unlockWithGems(id)
-    if (r.ok) {
+    try {
+      await purchase(charProductId(id))
       sfx.win()
       haptic(40)
       toast(`${a.name} unlocked!`, 'good')
       setFocus(id)
-    } else {
-      toast(r.reason, 'bad')
-      if (gems < a.gemPrice) go('store', { storeTab: 'coins' })
+    } catch (e) {
+      toast((e as Error).message, 'bad')
     }
   }
 
@@ -96,7 +98,7 @@ export default function CharacterSelect() {
       <RosterCanvas />
       <div className="wb-layer wb-safe flex flex-col gap-2">
         <Header title="" />
-        <div className="flex justify-center landscape:-mt-12 landscape:px-14">
+        <div className="flex justify-center landscape:-mt-12 landscape:px-14 [@media(max-height:560px)]:hidden">
           <div className="wb-sign">
             <span className="wb-title text-[clamp(18px,4vw,30px)] leading-none !tracking-[0.22em]">
               CHARACTER SELECTION
@@ -236,7 +238,7 @@ export default function CharacterSelect() {
                   <div className="line-clamp-2 text-[14px] font-normal text-white/70 wb-shadow">{f.ability.desc}</div>
                 </div>
               </div>
-              <div className="hidden w-[260px] shrink-0 sm:block">
+              <div className="hidden w-[260px] shrink-0 sm:block [@media(max-height:560px)]:!hidden">
                 <Stats id={focus} />
               </div>
               <div className="flex shrink-0 gap-2">
@@ -255,7 +257,7 @@ export default function CharacterSelect() {
                   </button>
                 ) : (
                   <button className="wb-btn wb-btn-gold h-12 px-4 text-[22px]" onClick={() => unlock(focus)}>
-                    <Lock size={16} strokeWidth={2} /> Unlock · <Gem size={20} /> {f.gemPrice}
+                    <Lock size={16} strokeWidth={2} /> Unlock · {priceOf(charProductId(focus))}
                   </button>
                 )}
               </div>
@@ -293,7 +295,7 @@ export default function CharacterSelect() {
                         </span>
                       ) : own ? null : (
                         <span className="wb-chip !h-6 !text-[11px]">
-                          <Lock size={10} strokeWidth={2} /> <Gem size={12} /> {a.gemPrice}
+                          <Lock size={10} strokeWidth={2} /> {priceOf(charProductId(a.id))}
                         </span>
                       )}
                     </div>

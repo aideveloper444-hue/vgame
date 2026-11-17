@@ -1,7 +1,7 @@
 import { Capacitor } from '@capacitor/core'
 import { NativePurchases, PURCHASE_TYPE } from '@capgo/native-purchases'
 import { create } from 'zustand'
-import { ANIMALS, type AnimalId } from '../engine/content'
+import { ANIMALS, ANIMAL_PRICE_INR, type AnimalId } from '../engine/content'
 import { useSave } from './progress'
 
 /*
@@ -9,7 +9,7 @@ import { useSave } from './progress'
  * until then the planned INR price is shown. Every grant is applied once per order id.
  *
  * Product ids to create in Play Console:
- *   wb_char_<animal>   one-time   each paid animal
+ *   wb_char_<animal>   one-time   each animal except Sonic, ₹99 (the only way to unlock one: no coins, no gems)
  *   wb_pack_bigcats    one-time   Leo, Raja, Shadow, Jax
  *   wb_pack_wild       one-time   Arctic, Bruno, Titan, Koda, Snow
  *   wb_gems_50/250/650/1500   consumable gem packs
@@ -23,8 +23,9 @@ export interface Product {
   grant: { animals?: AnimalId[]; gems?: number }
 }
 
-const charProducts: Product[] = ANIMALS.filter((a) => !a.free).map((a) => ({ id: `wb_char_${a.id}`, title: `${a.name} the ${a.species}`, inr: '₹79.99', consumable: false, grant: { animals: [a.id] } }))
+const charProducts: Product[] = ANIMALS.filter((a) => !a.free).map((a) => ({ id: `wb_char_${a.id}`, title: `${a.name} the ${a.species}`, inr: ANIMAL_PRICE_INR, consumable: false, grant: { animals: [a.id] } }))
 
+// (the old animal packs stay listed so a restore still finds them; the store no longer sells them)
 export const PRODUCTS: Product[] = [
   ...charProducts,
   { id: 'wb_pack_bigcats', title: 'Big Cats Pack', inr: '₹159', consumable: false, grant: { animals: ['leo', 'raja', 'shadow', 'jax'] } },

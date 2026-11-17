@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Check, Tag } from 'lucide-react'
-import { POWERUPS, ROSTER, getAnimal } from '../engine/content'
+import { Check } from 'lucide-react'
+import { ANIMAL_PRICE_INR, POWERUPS, ROSTER } from '../engine/content'
 import { COIN_PACKS, UPGRADE_MAX, upgradeCost, useSave } from '../state/progress'
 import { PRODUCTS, charProductId, loadPrices, priceOf, purchase, restorePurchases, storeAvailable, usePrices } from '../state/shop'
-import { cardArt, headArt } from './art'
+import { cardArt } from './art'
 import { GemPackMark, PowerBadge } from './icons'
 import { Backdrop, Coin, Gem, Header, fmt, toast, useNav, type StoreTab } from './common'
 import { haptic, sfx } from './sfx'
@@ -12,7 +12,6 @@ const TABS: { id: StoreTab; label: string }[] = [
   { id: 'characters', label: 'Characters' },
   { id: 'powerups', label: 'Power-Ups' },
   { id: 'coins', label: 'Coins' },
-  { id: 'bundles', label: 'Bundles' },
 ]
 
 async function buy(id: string, done: string) {
@@ -61,10 +60,9 @@ export default function StoreScreen() {
             ))}
           </div>
           <div className="wb-scroll min-h-0 flex-1 p-2">
-            {tab === 'characters' && <Characters run={run} />}
+            {(tab === 'characters' || tab === 'bundles') && <Characters run={run} />}
             {tab === 'powerups' && <PowerUps />}
             {tab === 'coins' && <Coins run={run} />}
-            {tab === 'bundles' && <Bundles run={run} />}
           </div>
           {!storeAvailable() && <div className="px-3 pb-2 text-center text-[13px] text-white/60">Real-money purchases are made in the Android app through Google Play. Gem prices work everywhere.</div>}
         </div>
@@ -101,26 +99,27 @@ function Characters({ run }: { run: (f: () => Promise<void>) => Promise<void> })
                   <button className="wb-btn wb-btn-gold h-9 w-[86%] text-[22px]" onClick={() => run(() => buy(charProductId(a.id), `${a.name} is yours!`))}>
                     Buy
                   </button>
-                  <button
-                    className="mt-1.5 flex items-center gap-1 text-[14px] text-white/85 underline-offset-2 hover:underline"
-                    onClick={() => {
-                      const r = useSave.getState().unlockWithGems(a.id)
-                      if (r.ok) {
-                        sfx.win()
-                        toast(`${a.name} unlocked!`, 'good')
-                      } else toast(r.reason, 'bad')
-                    }}
-                  >
-                    or unlock for <Gem size={16} /> {a.gemPrice}
-                  </button>
                 </>
               )}
             </div>
           )
         })}
       </div>
-      <button className="mx-auto mt-3 flex items-center gap-2 text-[18px] font-bold wb-yellow wb-shadow" onClick={() => (sfx.tap(), useNav.setState({ storeTab: 'bundles' }))}>
-        <Tag size={18} className="text-[#c9574a]" fill="#c9574a" /> Get 50% OFF on Character Packs!
+      <p className="mt-3 text-center text-[15px] text-white/80 wb-shadow">Sonic is free. Every other animal is a one-time {ANIMAL_PRICE_INR} unlock, yours for good.</p>
+      <button
+        className="wb-btn wb-btn-dark mx-auto mt-2 h-10 px-5 text-[18px]"
+        onClick={() =>
+          run(async () => {
+            try {
+              const n = await restorePurchases()
+              toast(n ? `Restored ${n} purchase${n > 1 ? 's' : ''}` : 'Nothing to restore', n ? 'good' : 'info')
+            } catch (e) {
+              toast((e as Error).message, 'bad')
+            }
+          })
+        }
+      >
+        Restore purchases
       </button>
     </>
   )
@@ -235,60 +234,6 @@ function Coins({ run }: { run: (f: () => Promise<void>) => Promise<void> }) {
           ))}
         </div>
       </div>
-    </div>
-  )
-}
-
-function Bundles({ run }: { run: (f: () => Promise<void>) => Promise<void> }) {
-  const owned = useSave((s) => s.owned)
-  const packs = PRODUCTS.filter((p) => p.id.startsWith('wb_pack_'))
-  return (
-    <div className="flex flex-col gap-3">
-      {packs.map((p) => {
-        const animals = p.grant.animals!
-        const all = animals.every((a) => owned.includes(a))
-        const full = animals.length * 79.99
-        return (
-          <div key={p.id} className="wb-card flex items-center gap-3 p-3 portrait:flex-col">
-            <div className="flex -space-x-4">
-              {animals.map((a) => (
-                <img key={a} src={headArt(a)} alt={getAnimal(a).name} className="h-[84px] w-[66px] rounded-lg object-cover ring-2 ring-[#dcc08a]" />
-              ))}
-            </div>
-            <div className="min-w-0 flex-1 portrait:text-center">
-              <div className="wb-title text-[28px] wb-yellow wb-stroke">{p.title}</div>
-              <div className="text-[16px] text-white/90">{animals.map((a) => getAnimal(a).name).join(', ')}</div>
-              <div className="text-[15px]">
-                <s className="text-white/55">₹{full.toFixed(2)}</s> <span className="ml-1 rounded bg-[#c9574a] px-1.5 font-bold">50% OFF</span>
-              </div>
-            </div>
-            {all ? (
-              <span className="wb-btn wb-btn-green h-11 px-5 text-[20px]">
-                <Check size={18} strokeWidth={4} /> Owned
-              </span>
-            ) : (
-              <button className="wb-btn wb-btn-gold h-12 px-6 text-[24px]" onClick={() => run(() => buy(p.id, `${p.title} unlocked!`))}>
-                {priceOf(p.id)}
-              </button>
-            )}
-          </div>
-        )
-      })}
-      <button
-        className="wb-btn wb-btn-dark mx-auto h-10 px-5 text-[18px]"
-        onClick={() =>
-          run(async () => {
-            try {
-              const n = await restorePurchases()
-              toast(n ? `Restored ${n} purchase${n > 1 ? 's' : ''}` : 'Nothing to restore', n ? 'good' : 'info')
-            } catch (e) {
-              toast((e as Error).message, 'bad')
-            }
-          })
-        }
-      >
-        Restore purchases
-      </button>
     </div>
   )
 }

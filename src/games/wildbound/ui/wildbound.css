@@ -38,13 +38,17 @@
   -webkit-tap-highlight-color: transparent;
   touch-action: none;
 }
-.wb-root :where(button) {
-  font-family: inherit;
-  color: inherit;
-  cursor: pointer;
-  border: 0;
-  background: none;
-  padding: 0;
+/* the button reset lives in the base layer: Tailwind utilities on a button (a selected tab's gold fill, its dark
+   text) must win over it. Unlayered, it silently cancelled them, so no selected option ever looked selected. */
+@layer base {
+  .wb-root :where(button) {
+    font-family: inherit;
+    color: inherit;
+    cursor: pointer;
+    border: 0;
+    background: none;
+    padding: 0;
+  }
 }
 .wb-root :where(button):focus-visible {
   outline: 1.5px solid var(--gold);

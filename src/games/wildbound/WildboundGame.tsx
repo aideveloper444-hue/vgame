@@ -118,7 +118,7 @@ export default function WildboundGame() {
         </div>
       )}
 
-      {screen === 'home' && <HomeScreen onPlay={play} />}
+      {screen === 'home' && <HomeScreen onPlay={play} onExit={import.meta.env.VITE_WB_STANDALONE ? undefined : () => navigate('/games')} />}
       {screen === 'select' && <CharacterSelect />}
       {screen === 'preview' && <PreviewScreen />}
       {screen === 'run' && <RunScreen />}
@@ -137,11 +137,6 @@ export default function WildboundGame() {
 
       {!ready && <LoadingScreen progress={progress} />}
 
-      {screen === 'home' && !import.meta.env.VITE_WB_STANDALONE && (
-        <button className="absolute bottom-1 left-1 z-[5] rounded px-2 py-1 text-[11px] text-white/40" onClick={() => navigate('/games')}>
-          Exit
-        </button>
-      )}
     </div>
   )
 }
