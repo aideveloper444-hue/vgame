@@ -1,77 +1,45 @@
 import { useEffect, useRef, useState } from 'react'
-import { useCityStore } from './cityStore'
-import type { CityTile } from './cityBoardData'
+import { useCityStore, type CityLastEvent } from './cityStore'
 
 export interface CashDelta {
   id: number
   amount: number
 }
 
-export interface LandingToast {
-  id: number
-  playerName: string
-  color: string
-  tileName: string
-}
-
-export interface SoldFx {
-  id: number
-  tile: CityTile
-  playerName: string
-  color: string
-}
-
-export type CardKind = 'CHANCE' | 'COMMUNITY' | 'EVENT'
-
-export interface CardReveal {
-  id: number
-  kind: CardKind
-  text: string
-  playerName: string
-  byBot: boolean
-}
-
 export interface TurnBanner {
   id: number
   text: string
   color: string
-  mine: boolean
+}
+
+export interface CardReveal {
+  id: number
+  event: CityLastEvent
+  playerName: string
+  /** Drawn by someone not playing on this device: closes by itself. */
+  byOther: boolean
 }
 
 let seq = 0
 const nextId = () => ++seq
 
-function useExpiring<T extends { id: number }>(ms: number) {
-  const [items, setItems] = useState<T[]>([])
-  const push = (item: T) => {
-    setItems((all) => [...all, item])
-    setTimeout(() => setItems((all) => all.filter((x) => x.id !== item.id)), ms)
-  }
-  return [items, push] as const
-}
-
 /**
- * Watches the store and turns state changes into short-lived presentation events.
- * Read-only: it never calls store actions, so game behaviour is unaffected.
+ * Watches the store and turns state changes into short-lived presentation events (cash pops, turn
+ * banners, card reveals, headline toasts). Read-only: it never calls store actions.
  */
-export function useCityFx() {
+export function useCityFx(isLocal: (id: string) => boolean) {
   const players = useCityStore((s) => s.players)
-  const tiles = useCityStore((s) => s.tiles)
   const phase = useCityStore((s) => s.phase)
   const currentPlayerIndex = useCityStore((s) => s.currentPlayerIndex)
   const lastEvent = useCityStore((s) => s.lastEvent)
 
   const [cashDeltas, setCashDeltas] = useState<Record<string, CashDelta[]>>({})
-  const [landing, pushLanding] = useExpiring<LandingToast>(3200)
-  const [sold, pushSold] = useExpiring<SoldFx>(2200)
-  const [banner, pushBanner] = useExpiring<TurnBanner>(1700)
+  const [banner, setBanner] = useState<TurnBanner | null>(null)
   const [card, setCard] = useState<CardReveal | null>(null)
-  const [lastCard, setLastCard] = useState<CardReveal | null>(null)
+  const [toast, setToast] = useState<{ id: number; text: string } | null>(null)
 
   const prevCash = useRef<Record<string, number>>({})
-  const prevOwners = useRef<Record<number, string | null>>({})
-  const prevPhase = useRef(phase)
-  const prevTurn = useRef<number | null>(null)
+  const prevTurn = useRef<string | null>(null)
 
   useEffect(() => {
     const next: Record<string, number> = {}
@@ -87,67 +55,41 @@ export function useCityFx() {
     prevCash.current = next
   }, [players])
 
+  // card draws open the card; other headline events show as a toast (the Casino shows its own result)
   useEffect(() => {
-    const next: Record<number, string | null> = {}
-    for (const t of tiles) {
-      if (t.type !== 'PROPERTY') continue
-      next[t.id] = t.ownerId
-      const before = prevOwners.current[t.id]
-      if (before === null && t.ownerId) {
-        const owner = players.find((p) => p.id === t.ownerId)
-        if (owner) pushSold({ id: nextId(), tile: t, playerName: owner.name, color: owner.color })
-      }
-    }
-    prevOwners.current = next
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tiles])
-
-  useEffect(() => {
-    const was = prevPhase.current
-    prevPhase.current = phase
-    if (was === 'MOVING' && phase !== 'MOVING') {
-      const p = players[currentPlayerIndex]
-      const tile = p ? tiles[p.position] : null
-      if (p && tile) pushLanding({ id: nextId(), playerName: p.name, color: p.color, tileName: tile.name })
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase])
-
-  useEffect(() => {
-    if (!lastEvent || (lastEvent.type !== 'card' && lastEvent.type !== 'event')) return
+    if (!lastEvent) return
     const p = players[currentPlayerIndex]
-    const icon = useCityStore.getState().eventLog[0]?.icon
-    const kind: CardKind = lastEvent.type === 'event' ? 'EVENT' : (lastEvent.deck ?? (icon === '🤝' ? 'COMMUNITY' : 'CHANCE'))
-    const reveal: CardReveal = { id: nextId(), kind, text: lastEvent.text, playerName: p?.name ?? '', byBot: Boolean(p?.isBot) }
-    setCard(reveal)
-    setLastCard(reveal)
+    if (lastEvent.type === 'card') {
+      setCard({ id: nextId(), event: lastEvent, playerName: p?.name ?? '', byOther: !p || !isLocal(p.id) })
+      return
+    }
+    if (lastEvent.type === 'casino') return
+    const t = { id: nextId(), text: lastEvent.text }
+    setToast(t)
+    const timer = setTimeout(() => setToast((x) => (x?.id === t.id ? null : x)), 2600)
+    return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lastEvent])
+  }, [lastEvent?.seq])
 
   useEffect(() => {
     if (players.length === 0 || phase === 'GAME_OVER') return
-    if (prevTurn.current === currentPlayerIndex) return
-    prevTurn.current = currentPlayerIndex
     const p = players[currentPlayerIndex]
-    if (!p) return
-    pushBanner({ id: nextId(), text: p.isBot ? `${p.name}'s turn` : 'Your turn!', color: p.color, mine: !p.isBot })
+    if (!p || prevTurn.current === p.id) return
+    prevTurn.current = p.id
+    const localCount = players.filter((x) => isLocal(x.id)).length
+    const b = { id: nextId(), text: isLocal(p.id) && localCount === 1 ? 'Your turn!' : `${p.name}'s turn`, color: p.color }
+    setBanner(b)
+    const t = setTimeout(() => setBanner((x) => (x?.id === b.id ? null : x)), 1600)
+    return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPlayerIndex, players.length])
 
-  // bots don't need to dismiss their cards
+  // other players' cards close by themselves
   useEffect(() => {
-    if (!card?.byBot) return
-    const t = setTimeout(() => setCard((c) => (c?.id === card.id ? null : c)), 2600)
+    if (!card?.byOther) return
+    const t = setTimeout(() => setCard((c) => (c?.id === card.id ? null : c)), 2800)
     return () => clearTimeout(t)
   }, [card])
 
-  return {
-    cashDeltas,
-    landing: landing[landing.length - 1] ?? null,
-    sold: sold[sold.length - 1] ?? null,
-    banner: banner[banner.length - 1] ?? null,
-    card,
-    lastCard,
-    dismissCard: () => setCard(null),
-  }
+  return { cashDeltas, banner, card, toast, dismissCard: () => setCard(null) }
 }

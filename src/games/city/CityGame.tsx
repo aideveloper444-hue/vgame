@@ -1,37 +1,37 @@
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { WifiOff } from 'lucide-react'
-import { useCityStore, netWorthOf, canBuildOn, type CityPhase, type CityPlayer, type TradeOffer } from './cityStore'
-import type { PropertyTile } from './cityBoardData'
-import CityScene3D, { type HudInsets } from './CityScene3D'
-import LudoBackdrop from '@/games/ludo/LudoBackdrop'
-import CityTopHUD from './CityTopHUD'
-import { CITY_CHAT } from './CityChatPanel'
+import { useCityStore, canBuildOn, ownedBy, type CityPlayer, type TradeOffer } from './cityStore'
+import { isProperty, type PropertyTile } from './cityBoardData'
 import CityMenu from './CityMenu'
-import { CardRevealModal } from './CityEventCard'
-import { AuctionPanel, BuildPanel, BuyPanel, EventsPanel, ItemsPanel, TileInfoPanel, TradeComposer, TradeInboxPanel } from './CityModals'
-import { LandingToastView, SoldView, TurnBannerView } from './CityFxOverlay'
 import { useCityBotAutomation } from './useCityBotAutomation'
 import { useCityFx } from './useCityFx'
-import AlphaStage, { type DiceAction } from './alpha/AlphaStage'
-import { ALL_ALPHA_ART } from './alpha/alphaArt'
-import { useCityMatch } from './cityMatch'
+import { useCityMatch, useTycoonVariant } from './cityMatch'
 import { broadcastCityChat, leaveCityRoom, sendCityAction, setCityNetHandlers, useCityRoom } from './cityNet'
+import { money } from './cityFormat'
+import TycoonStage, { ALL_TYCOON_ART, BOARD_IMG, TYCOON_CHAT, type HubState } from './tycoon/TycoonStage'
+import {
+  AuctionPanel,
+  BankPanel,
+  BuyPanel,
+  CardModal,
+  CasinoPanel,
+  CasinoResultView,
+  HeadlineToast,
+  InfoPanel,
+  ItemsPanel,
+  MyCardsPanel,
+  SettingsPanel,
+  TileInfoPanel,
+  TradeComposer,
+  TradeInboxPanel,
+  TurnBannerView,
+} from './tycoon/TycoonPanels'
 import GameResultScreen from '@/games/shared/GameResultScreen'
 import { GAME_REGISTRY } from '@/games/registry'
 import { usePlayerStore } from '@/social/stores/usePlayerStore'
 import { useChatStore } from '@/social/stores/useChatStore'
 
 const game = GAME_REGISTRY.city
-
-function useViewport() {
-  const [vp, setVp] = useState(() => ({ w: window.innerWidth, h: window.innerHeight }))
-  useEffect(() => {
-    const onResize = () => setVp({ w: window.innerWidth, h: window.innerHeight })
-    window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
-  }, [])
-  return vp
-}
 
 function useLockBodyScroll() {
   useEffect(() => {
@@ -42,33 +42,13 @@ function useLockBodyScroll() {
   }, [])
 }
 
-function statusFor(player: CityPlayer, isActive: boolean, phase: CityPhase, controlledHere: boolean): string | null {
-  if (player.bankrupt) return 'Bankrupt'
-  if (player.inJail) return 'In jail'
-  if (!isActive) return null
-  switch (phase) {
-    case 'ROLLING':
-      return controlledHere ? 'Your turn' : 'Rolling…'
-    case 'MOVING':
-      return 'Moving…'
-    case 'AWAITING_BUY_DECISION':
-      return 'Deciding…'
-    case 'AUCTION':
-      return 'Auction'
-    case 'POST_MOVE_ACTIONS':
-      return controlledHere ? 'Your move' : 'Playing…'
-    default:
-      return null
-  }
-}
-
-/** Resolves once every ALPHAZOX image is decoded, so the board doesn't pop in piece by piece. */
+/** Resolves once the board art is decoded, so the board doesn't pop in piece by piece. */
 function useArtReady() {
   const [ready, setReady] = useState(false)
   useEffect(() => {
     let alive = true
     Promise.all(
-      ALL_ALPHA_ART.map((src) => {
+      ALL_TYCOON_ART.map((src) => {
         const img = new Image()
         img.src = src
         return img.decode().catch(() => undefined)
@@ -81,7 +61,7 @@ function useArtReady() {
   return ready
 }
 
-/** Monopoly entry point: the mode menu until a match begins, then the match itself. */
+/** World Tycoon entry point: the mode menu until a match begins, then the match itself. */
 export default function CityGame() {
   const screen = useCityMatch((s) => s.screen)
   const matchId = useCityMatch((s) => s.matchId)
@@ -99,23 +79,19 @@ export default function CityGame() {
   return <CityMatchView key={matchId} />
 }
 
-const MENU_INSETS: HudInsets = { top: 90, bottom: 60, side: 160 }
-
 function CityMenuScreen() {
   useLockBodyScroll()
-  const { w, h } = useViewport()
   useEffect(() => {
     useCityStore.getState().resetGame()
   }, [])
   return (
     <div className="fixed inset-0 z-50 overflow-hidden bg-[#03040c] text-white">
-      <LudoBackdrop />
-      {/* the city world idles behind the menu, blurred, while the characters load */}
-      <Suspense fallback={null}>
-        <CityScene3D className="absolute inset-0 h-full w-full" insets={MENU_INSETS} />
-      </Suspense>
-      <div className="absolute inset-0 bg-[#05060f]/55 backdrop-blur-[3px]" />
-      <CityTopHUD activePlayers={0} totalPlayers={0} round={0} maxRounds={0} compact={w < 1000 || w / h < 1.15} menu />
+      <div className="absolute inset-0 scale-110 bg-cover bg-center blur-[6px] brightness-[0.45]" style={{ backgroundImage: `url(${BOARD_IMG})` }} />
+      <div className="absolute inset-x-0 top-0 z-10 flex justify-center pt-4">
+        <p className="tycoon-title text-[44px] leading-none" style={{ fontFamily: 'Bangers, Oswald, sans-serif' }}>
+          WORLD TYCOON
+        </p>
+      </div>
       <div className="absolute inset-0 z-20 overflow-y-auto px-3 pb-8 pt-20">
         <CityMenu />
       </div>
@@ -123,17 +99,24 @@ function CityMenuScreen() {
   )
 }
 
+type Sheet = 'cards' | 'bank' | 'info' | 'items' | 'settings' | 'trade' | null
+
 function CityMatchView() {
   const tiles = useCityStore((s) => s.tiles)
   const players = useCityStore((s) => s.players)
   const currentPlayerIndex = useCityStore((s) => s.currentPlayerIndex)
   const phase = useCityStore((s) => s.phase)
-  const pendingMovePath = useCityStore((s) => s.pendingMovePath)
   const auction = useCityStore((s) => s.auction)
   const pendingTrades = useCityStore((s) => s.pendingTrades)
-  const activeEvents = useCityStore((s) => s.activeEvents)
   const finalRanking = useCityStore((s) => s.finalRanking)
   const config = useCityStore((s) => s.config)
+  const dice = useCityStore((s) => s.dice)
+  const extraTurn = useCityStore((s) => s.extraTurn)
+  const roundNumber = useCityStore((s) => s.roundNumber)
+  const clubPot = useCityStore((s) => s.clubPot)
+  const casinoTray = useCityStore((s) => s.casinoTray)
+  const casinoResult = useCityStore((s) => s.casinoResult)
+  const eventLog = useCityStore((s) => s.eventLog)
   const startGame = useCityStore((s) => s.startGame)
   const resetGame = useCityStore((s) => s.resetGame)
   const profileCoins = usePlayerStore((s) => s.profile.coins)
@@ -146,30 +129,24 @@ function CityMatchView() {
   const roomStatus = useCityRoom((s) => s.status)
   const authoritative = role !== 'guest'
 
-  const [showTrade, setShowTrade] = useState(false)
-  const [showBuild, setShowBuild] = useState(false)
-  const [showEvents, setShowEvents] = useState(false)
-  const [showItems, setShowItems] = useState(false)
+  const [sheet, setSheet] = useState<Sheet>(null)
   const [mapView, setMapView] = useState(false)
   const [infoTileId, setInfoTileId] = useState<number | null>(null)
-  const [rollKey, setRollKey] = useState(0)
+  const [seenCasino, setSeenCasino] = useState<number | null>(null)
   const startedAt = useRef(Date.now())
 
-  // bots only think on the device that runs the game
+  const isLocal = useCallback((id: string) => localSeatIds.includes(id), [localSeatIds])
   useCityBotAutomation(authoritative)
-  const fx = useCityFx()
+  const fx = useCityFx(isLocal)
   const artReady = useArtReady()
   useLockBodyScroll()
-  const handleAttack = useCallback(() => {}, [])
-  const handleDefend = useCallback(() => {}, [])
 
   const participants = useMemo(() => seats.map((s) => ({ id: s.id, name: s.name, avatarEmoji: s.avatarEmoji, isBot: s.kind === 'bot' })), [seats])
-  const isLocal = useCallback((id: string) => localSeatIds.includes(id), [localSeatIds])
 
   useEffect(() => {
     startedAt.current = Date.now()
     // guests receive the game from the host instead of starting their own
-    if (authoritative) startGame(participants)
+    if (authoritative) startGame(participants, useTycoonVariant.getState().variant)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -179,13 +156,18 @@ function CityMatchView() {
     return {
       roll: () => (authoritative ? st().rollAndMove() : sendCityAction({ t: 'roll' })),
       buy: (buy: boolean) => (authoritative ? st().resolveBuyDecision(buy) : sendCityAction({ t: 'buy', buy })),
-      auction: (playerId: string, action: 'BID' | 'PASS') => (authoritative ? st().submitAuctionAction(playerId, action) : sendCityAction({ t: 'auction', action })),
+      bid: (playerId: string, action: 'BID' | 'PASS', raise?: number) => (authoritative ? st().submitAuctionAction(playerId, action, raise) : sendCityAction({ t: 'auction', action, raise })),
+      casino: (bet: boolean) => (authoritative ? st().casinoDecision(bet) : sendCityAction({ t: 'casino', bet })),
       upgrade: (tileId: number) => (authoritative ? st().upgradeProperty(tileId) : sendCityAction({ t: 'upgrade', tileId })),
+      sell: (tileId: number) => (authoritative ? st().sellBuilding(tileId) : sendCityAction({ t: 'sell', tileId })),
+      mortgage: (tileId: number) => (authoritative ? st().mortgageProperty(tileId) : sendCityAction({ t: 'mortgage', tileId })),
       redeem: (tileId: number) => (authoritative ? st().redeemProperty(tileId) : sendCityAction({ t: 'redeem', tileId })),
+      payFine: () => (authoritative ? st().payJailFine() : sendCityAction({ t: 'payFine' })),
+      freePass: () => (authoritative ? st().useFreePass() : sendCityAction({ t: 'freePass' })),
       trade: (offer: Omit<TradeOffer, 'id' | 'status'>) =>
         authoritative
           ? st().proposeTrade(offer)
-          : sendCityAction({ t: 'trade', toPlayerId: offer.toPlayerId, offerIds: offer.offer.propertyIds, requestIds: offer.request.propertyIds }),
+          : sendCityAction({ t: 'trade', toPlayerId: offer.toPlayerId, offerIds: offer.offer.propertyIds, requestIds: offer.request.propertyIds, offerCash: offer.offer.cash, requestCash: offer.request.cash }),
       reply: (tradeId: string, accept: boolean) => (authoritative ? st().respondToTrade(tradeId, accept) : sendCityAction({ t: 'tradeReply', tradeId, accept })),
       end: () => (authoritative ? st().endTurn() : sendCityAction({ t: 'end' })),
     }
@@ -193,7 +175,7 @@ function CityMatchView() {
 
   /* ---------------- chat: local party chat, relayed through the host in online matches */
   const postChat = useCallback((playerId: string, name: string, text: string) => {
-    useChatStore.getState().appendLocal(CITY_CHAT, { senderId: playerId, senderName: name, text })
+    useChatStore.getState().appendLocal(TYCOON_CHAT, { senderId: playerId, senderName: name, text })
   }, [])
 
   useEffect(() => {
@@ -206,19 +188,15 @@ function CityMatchView() {
     })
   }, [role, postChat])
 
-  // build/trade are only allowed after your move; drop the panels once that window closes
-  const current = players[currentPlayerIndex]
-  const actionWindowOpen = phase === 'POST_MOVE_ACTIONS' && current !== undefined && isLocal(current.id)
-  useEffect(() => {
-    if (actionWindowOpen) return
-    setShowTrade(false)
-    setShowBuild(false)
-  }, [actionWindowOpen])
+  const current = players[currentPlayerIndex] as CityPlayer | undefined
+  const myTurn = current !== undefined && isLocal(current.id)
+  const canManage = myTurn && (phase === 'ROLLING' || phase === 'POST_MOVE_ACTIONS')
 
+  // managing property is only allowed on your own turn; drop those sheets once the window closes
   useEffect(() => {
-    if (!pendingMovePath) return
-    setRollKey((k) => k + 1)
-  }, [pendingMovePath])
+    if (canManage) return
+    setSheet((s) => (s === 'trade' ? null : s))
+  }, [canManage])
 
   function leaveToMenu() {
     leaveCityRoom()
@@ -233,11 +211,11 @@ function CityMatchView() {
     }
     resetGame()
     startedAt.current = Date.now()
-    startGame(participants)
+    startGame(participants, useTycoonVariant.getState().variant)
   }
 
   // "you" is whoever this device is playing right now: the current player on their turn, else the first local seat
-  const you = current && isLocal(current.id) ? current : players.find((p) => isLocal(p.id))
+  const you = current && myTurn ? current : players.find((p) => isLocal(p.id))
 
   if (phase === 'GAME_OVER' && finalRanking) {
     const winnerId = finalRanking[0].playerId
@@ -249,13 +227,13 @@ function CityMatchView() {
         <GameResultScreen
           game={game}
           won={won}
-          title={won ? (localSeatIds.length > 1 ? `🏆 ${winner.name} Wins!` : '🏆 You Win!') : `😈 ${winner.name} Wins`}
+          title={won ? (localSeatIds.length > 1 ? `🏆 ${winner.name} Wins!` : '🏆 You Win!') : `${winner.name} Wins`}
           subtitle={you && localSeatIds.length === 1 ? `You finished #${yourRank} of ${players.length}` : undefined}
           coins={won ? 350 : 90}
           xp={won ? 220 : 50}
           stats={finalRanking.slice(0, 4).map((r, i) => {
             const p = players.find((x) => x.id === r.playerId)!
-            return { label: `#${i + 1} ${p.name}`, value: `₹${r.netWorth}` }
+            return { label: `#${i + 1} ${p.name}`, value: p.bankrupt ? 'Bankrupt' : money(r.netWorth) }
           })}
           onRematch={handleRematch}
         />
@@ -263,89 +241,100 @@ function CityMatchView() {
     )
   }
 
-  // Loading / waiting UI – moved after all hooks to preserve hook order
-  const loading = players.length === 0 || tiles.length === 0 || !current || !artReady
-  if (loading) {
+  if (players.length === 0 || tiles.length === 0 || !current || !artReady) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#03040c] text-sm font-bold text-slate-300">
-        <LudoBackdrop />
-        <span className="relative">{authoritative ? 'Setting up the board…' : 'Waiting for the host…'}</span>
+        <span>{authoritative ? 'Setting up the board…' : 'Waiting for the host…'}</span>
       </div>
-    );
+    )
   }
 
   const currentTile = tiles[current.position]
-  const myTurn = isLocal(current.id)
   const localTrade = pendingTrades.find((t) => t.status === 'PENDING' && isLocal(t.toPlayerId))
-  const ownedBy = (id: string) => tiles.filter((t): t is PropertyTile => t.type === 'PROPERTY' && t.ownerId === id)
-  const yourOwned = you ? ownedBy(you.id) : []
-  const upgradable = you ? yourOwned.filter((t) => canBuildOn(you, t, tiles)) : []
-  const canAct = myTurn && phase === 'POST_MOVE_ACTIONS'
+  const yourOwned = you ? ownedBy(tiles, you.id) : []
+  const buildable = you && canManage ? yourOwned.filter((t) => canBuildOn(you, t, tiles, config)).length : 0
   const auctionBidder = auction ? players.find((p) => p.id === auction.queue[0]) : undefined
   const auctionYou = auctionBidder && isLocal(auctionBidder.id) ? auctionBidder : you
+  const showCasinoResult = casinoResult && casinoResult.seq !== seenCasino
 
-  const ranked = players.map((p) => ({ player: p, netWorth: netWorthOf(p, tiles) })).sort((a, b) => b.netWorth - a.netWorth)
-  const rankOf = (id: string) => ranked.findIndex((r) => r.player.id === id) + 1
+  /* ---------------- the centre hub: what's happening and the main buttons */
+  const hub: HubState = (() => {
+    const who = myTurn && localSeatIds.length === 1 ? 'Your turn' : `${current.name}'s turn`
+    const title = `Round ${roundNumber} · ${who}`
+    const total = dice ? dice[0] + dice[1] : 0
+    switch (phase) {
+      case 'ROLLING':
+        if (!myTurn) return { title, message: current.inJail ? `${current.name} is in Jail…` : `${current.name} is rolling…`, buttons: [] }
+        if (current.inJail)
+          return {
+            title,
+            message: `In Jail (${config.jailTurns - current.jailTurnsServed} ${config.jailTurns - current.jailTurnsServed === 1 ? 'try' : 'tries'} left): roll a double six, pay the fine or use a Free Pass.`,
+            buttons: [
+              { label: 'Roll', tone: 'gold', onClick: act.roll },
+              { label: `Pay ${money(config.jailFine)}`, tone: 'ghost', onClick: act.payFine, disabled: current.cash < config.jailFine },
+              ...(current.freePasses.length > 0 ? [{ label: 'Free Pass', tone: 'green' as const, onClick: act.freePass }] : []),
+            ],
+          }
+        return { title, message: extraTurn ? 'Double six! Roll again.' : 'Roll the dice and move clockwise.', buttons: [{ label: 'Roll dice', tone: 'gold', onClick: act.roll }] }
+      case 'MOVING':
+        return { title, message: `${current.name} moves ${total} spaces…`, buttons: [] }
+      case 'AWAITING_BUY_DECISION':
+        return { title, message: myTurn ? `Buy ${currentTile.name} or send it to auction.` : `${current.name} is deciding on ${currentTile.name}…`, buttons: [] }
+      case 'AUCTION':
+        return { title, message: `The Bank is auctioning ${auction ? tiles[auction.tileId].name : ''}`, buttons: [] }
+      case 'CASINO':
+        return { title, message: myTurn ? 'Place a bet at the Casino, or walk away.' : `${current.name} is at the Casino…`, buttons: [] }
+      case 'POST_MOVE_ACTIONS': {
+        if (!myTurn) return { title, message: `${current.name} is on ${currentTile.name}`, buttons: [] }
+        const where = current.inJail ? 'You are in Jail. You can still build and trade.' : `On ${currentTile.name}. Build, trade or end your turn.`
+        return { title, message: where, buttons: [{ label: extraTurn && !current.inJail ? 'Roll again' : 'End turn', tone: 'green', onClick: act.end }] }
+      }
+      default:
+        return { title, message: '', buttons: [] }
+    }
+  })()
 
-  const chatSend =
-    role === 'solo'
-      ? undefined
-      : (text: string) => {
-          if (!you) return
-          postChat(you.id, you.name, text)
-          if (role === 'host') broadcastCityChat(you.id, you.name, text)
-          else sendCityAction({ t: 'chat', text })
-        }
-  const diceAction: DiceAction =
-    myTurn && phase === 'ROLLING' ? { kind: 'roll', onClick: act.roll } : canAct ? { kind: 'end', onClick: act.end } : { kind: 'wait' }
+  const chatSend = (text: string) => {
+    if (!you) return
+    postChat(you.id, you.name, text)
+    if (role === 'host') broadcastCityChat(you.id, you.name, text)
+    else if (role === 'guest') sendCityAction({ t: 'chat', text })
+  }
 
   return (
-    <AlphaStage
-      players={players}
-      currentIndex={currentPlayerIndex}
-      rankOf={rankOf}
-      ownedCount={(id) => ownedBy(id).length}
-      statusOf={(p) => statusFor(p, p.id === current.id, phase, isLocal(p.id))}
+    <TycoonStage
+      isLocal={isLocal}
       cashDeltas={fx.cashDeltas}
-      diceAction={diceAction}
-      rollKey={rollKey}
+      hub={hub}
       mapView={mapView}
       onMap={() => setMapView((v) => !v)}
       onTileClick={setInfoTileId}
-      canBuild={canAct && yourOwned.length > 0}
-      buildCount={canAct ? upgradable.length : 0}
-      onBuild={() => setShowBuild(true)}
-      onAttack={handleAttack}
-      onDefend={handleDefend}
-      onItems={() => setShowItems(true)}
-      onSpecial={() => setShowEvents(true)}
-      onBack={leaveToMenu}
-      onSettings={() => setShowEvents(true)}
-      onChat={(text) => {
-        if (!you) return
-        if (chatSend) chatSend(text)
-        else postChat(you.id, you.name, text)
-      }}
+      onAction={(k) => setSheet(k)}
+      badges={{ cards: buildable, bank: yourOwned.filter((t) => t.mortgaged).length, items: you?.freePasses.length ?? 0 }}
+      onBack={() => setSheet('settings')}
+      onSettings={() => setSheet('settings')}
+      onChat={chatSend}
+      onSeatRoll={myTurn && phase === 'ROLLING' ? act.roll : undefined}
       coins={profileCoins}
       gems={profileGems}
-      activePlayers={players.filter((p) => !p.bankrupt).length}
     >
-      {fx.landing && <LandingToastView toast={fx.landing} top={150} />}
-      {fx.sold && <SoldView fx={fx.sold} />}
       {fx.banner && <TurnBannerView banner={fx.banner} />}
+      {fx.toast && <HeadlineToast key={fx.toast.id} text={fx.toast.text} />}
 
-      {phase === 'AWAITING_BUY_DECISION' && myTurn && currentTile.type === 'PROPERTY' && (
-        <BuyPanel tile={currentTile} cash={current.cash} penalty={config.declinePenalty} onBuy={() => act.buy(true)} onSkip={() => act.buy(false)} />
+      {phase === 'AWAITING_BUY_DECISION' && myTurn && isProperty(currentTile) && (
+        <BuyPanel tile={currentTile} tiles={tiles} cash={current.cash} config={config} onBuy={() => act.buy(true)} onAuction={() => act.buy(false)} />
       )}
+      {phase === 'CASINO' && myTurn && <CasinoPanel cash={current.cash} tray={casinoTray} config={config} onBet={() => act.casino(true)} onWalk={() => act.casino(false)} />}
       {phase === 'AUCTION' && auction && (
         <AuctionPanel
           auction={auction}
-          tile={tiles.find((t) => t.id === auction.tileId) as PropertyTile}
+          tile={tiles[auction.tileId] as PropertyTile}
+          tiles={tiles}
           players={players}
           you={auctionYou}
-          bidIncrement={config.bidIncrement}
-          onBid={() => auctionYou && act.auction(auctionYou.id, 'BID')}
-          onPass={() => auctionYou && act.auction(auctionYou.id, 'PASS')}
+          config={config}
+          onBid={(raise) => auctionYou && act.bid(auctionYou.id, 'BID', raise)}
+          onPass={() => auctionYou && act.bid(auctionYou.id, 'PASS')}
         />
       )}
       {localTrade && (
@@ -357,48 +346,68 @@ function CityMatchView() {
           onReject={() => act.reply(localTrade.id, false)}
         />
       )}
-      {showTrade && you && canAct && (
+
+      {sheet === 'cards' && you && (
+        <MyCardsPanel you={you} tiles={tiles} config={config} canManage={canManage && you.id === current.id} onBuild={act.upgrade} onSell={act.sell} onTrade={() => setSheet('trade')} onClose={() => setSheet(null)} />
+      )}
+      {sheet === 'trade' && you && canManage && (
         <TradeComposer
           you={you}
           players={players}
           tiles={tiles}
-          onSend={(to, offerIds, requestIds) =>
-            act.trade({ fromPlayerId: you.id, toPlayerId: to, offer: { cash: 0, propertyIds: offerIds }, request: { cash: 0, propertyIds: requestIds } })
+          onSend={(to, offerIds, requestIds, offerCash, requestCash) =>
+            act.trade({ fromPlayerId: you.id, toPlayerId: to, offer: { cash: offerCash, propertyIds: offerIds }, request: { cash: requestCash, propertyIds: requestIds } })
           }
-          onClose={() => setShowTrade(false)}
+          onClose={() => setSheet(null)}
         />
       )}
-      {showBuild && you && canAct && <BuildPanel owned={yourOwned} tiles={tiles} cash={you.cash} onUpgrade={act.upgrade} onRedeem={act.redeem} onClose={() => setShowBuild(false)} />}
-      {infoTileId !== null && tiles[infoTileId] && (
-        <TileInfoPanel tile={tiles[infoTileId]} tiles={tiles} players={players} config={config} onClose={() => setInfoTileId(null)} />
+      {sheet === 'bank' && (
+        <BankPanel
+          you={you}
+          tiles={tiles}
+          config={config}
+          canManage={canManage && you?.id === current.id}
+          clubPot={clubPot}
+          casinoTray={casinoTray}
+          onMortgage={act.mortgage}
+          onRedeem={act.redeem}
+          onSell={act.sell}
+          onClose={() => setSheet(null)}
+        />
       )}
-      {showEvents && <EventsPanel events={activeEvents} onClose={() => setShowEvents(false)} />}
-      {showItems && (
+      {sheet === 'info' && <InfoPanel log={eventLog} players={players} tiles={tiles} config={config} round={roundNumber} onClose={() => setSheet(null)} />}
+      {sheet === 'items' && (
         <ItemsPanel
-          onClose={() => setShowItems(false)}
-          onUseItem={(it) => {
-            if (you) postChat(you.id, you.name, `Used ${it.name}! ${it.icon}`)
+          you={you}
+          canUseNow={myTurn && phase === 'ROLLING' && current.inJail}
+          onUse={() => {
+            act.freePass()
+            setSheet(null)
           }}
+          onClose={() => setSheet(null)}
         />
       )}
-      {fx.card && <CardRevealModal card={fx.card} onClose={fx.dismissCard} />}
+      {sheet === 'settings' && <SettingsPanel config={config} round={roundNumber} onLeave={leaveToMenu} onClose={() => setSheet(null)} />}
+      {infoTileId !== null && tiles[infoTileId] && (
+        <TileInfoPanel tile={tiles[infoTileId]} tiles={tiles} players={players} config={config} clubPot={clubPot} casinoTray={casinoTray} onClose={() => setInfoTileId(null)} />
+      )}
+
+      {showCasinoResult && <CasinoResultView result={casinoResult} player={players.find((p) => p.id === casinoResult.playerId)} onClose={() => setSeenCasino(casinoResult.seq)} />}
+      {fx.card && <CardModal card={fx.card} onClose={fx.dismissCard} />}
 
       {role === 'guest' && roomStatus === 'closed' && (
         <div className="absolute inset-0 z-[60] flex items-center justify-center bg-black/60 px-6 backdrop-blur-sm">
-          <div className="hud-glass w-full max-w-xs rounded-3xl p-6 text-center">
+          <div className="tycoon-panel w-full max-w-xs rounded-3xl p-6 text-center">
             <WifiOff size={36} className="mx-auto text-rose-300" />
             <p className="mt-3 text-lg font-black text-white">Host left the match</p>
             <p className="mt-1 text-sm font-semibold text-slate-400">The game ended because the host disconnected.</p>
-            <button
-              type="button"
-              onClick={leaveToMenu}
-              className="mt-5 w-full rounded-2xl bg-gradient-to-b from-[#ffe58a] via-[#f5b52a] to-[#c47a0a] py-3 text-sm font-black uppercase tracking-wider text-[#3d2200] active:scale-95"
-            >
+            <button type="button" onClick={leaveToMenu} className="tycoon-btn tycoon-btn-gold mt-5 w-full py-3 text-sm">
               Back to menu
             </button>
           </div>
         </div>
       )}
-    </AlphaStage>
+    </TycoonStage>
   )
 }
+

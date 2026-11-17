@@ -3,7 +3,7 @@ import { config, socialEnabled } from './config'
 import { newId, signRs256, verifyIdToken } from './crypto'
 import { one, run, tx } from './db'
 import { ApiError } from './http'
-import { PLAY_PRODUCTS } from '../../src/games/poker/data/cosmetics'
+import { PLAY_PRODUCTS } from './poker/data/cosmetics'
 import { notify } from './accounts'
 import { log } from './http'
 

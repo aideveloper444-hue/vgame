@@ -48,6 +48,21 @@ const OUTFIT_DYE: Record<LudoColor, string> = {
   PINK: '#cc3c8c',
 }
 
+/**
+ * Shadow style: the stealth leather in a deep shade of the team colour. It used to be one near-black for
+ * every team with only a rim light to tell them apart, which made warriors on the walkway hard to read.
+ */
+const SHADOW_DYE: Record<LudoColor, string> = {
+  RED: '#a01628',
+  GREEN: '#178a3a',
+  YELLOW: '#c48a12',
+  BLUE: '#3a74ff',
+  PURPLE: '#5e2aa8',
+  ORANGE: '#b8541a',
+  CYAN: '#14869a',
+  PINK: '#a8286e',
+}
+
 /** Display height of a character in world units (a board cell is about 0.64). */
 export const CHARACTER_HEIGHT = 1.42
 
@@ -136,8 +151,8 @@ function heroMaterial(color: LudoColor, source: THREE.Material, style: Character
   const std = mat as THREE.MeshStandardMaterial
   if (/Ranger/i.test(source.name)) {
     if (style === 'shadow') {
-      // near-black leather; the team shows only as a strong glowing edge light
-      dye(std, '#2a2a34', COLOR_GLOW[color], 0.75, 2.2)
+      // deep team-dyed leather with a strong glowing edge light in the team colour
+      dye(std, SHADOW_DYE[color], COLOR_GLOW[color], 0.7, 2.4)
       std.roughness = Math.min(std.roughness, 0.55)
     } else {
       // team-dyed leather and cloth

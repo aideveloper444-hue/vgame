@@ -161,7 +161,7 @@ function ConnectCard() {
           </span>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-black text-white">Signed in as {account.name}</p>
-            <p className="truncate text-[11px] font-semibold text-slate-400">{account.email ?? (account.provider === 'google' ? 'Google' : 'Facebook')} · Ludo, City, Poker & Wildbound</p>
+            <p className="truncate text-[11px] font-semibold text-slate-400">{account.email ?? (account.provider === 'google' ? 'Google' : 'Facebook')} · Ludo, City & Amazon Run</p>
           </div>
           <button type="button" onClick={() => void signOut()} aria-label="Sign out" className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-slate-300">
             <LogOut size={15} />

@@ -1,5 +1,10 @@
 import { SocialLogin } from '@capgo/capacitor-social-login'
-import type { ServerConfig } from '../state/profileStore'
+/** The server's public /config: which sign-in providers are switched on. */
+export interface ServerConfig {
+  social: { google: boolean; facebook: boolean; apple: boolean }
+  purchases: boolean
+  products: string[]
+}
 
 /*
  * Google / Apple / Facebook sign-in. The plugin returns the provider's token; the club server verifies it

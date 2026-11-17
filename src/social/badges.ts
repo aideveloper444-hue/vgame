@@ -42,8 +42,7 @@ function tiered(id: string, name: string, icon: string, value: number, steps: [n
 const GAME_BADGES: { game: GameId; name: string; icon: string; noun: string }[] = [
   { game: 'ludo', name: 'Ludo King', icon: '🎲', noun: 'Ludo' },
   { game: 'city', name: 'City Tycoon', icon: '🏙️', noun: 'City' },
-  { game: 'poker', name: 'Card Shark', icon: '🃏', noun: 'Poker' },
-  { game: 'wildbound', name: 'Trail Blazer', icon: '🐾', noun: 'Wildbound' },
+  { game: 'wildbound', name: 'Trail Blazer', icon: '🐾', noun: 'Amazon Run' },
 ]
 
 // 'tycoon' (win a City game) is the City Tycoon badge's bronze tier, so it isn't listed twice

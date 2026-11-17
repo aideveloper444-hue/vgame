@@ -1,14 +1,14 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { api, setTokens, hasSession, ApiError } from '@/games/poker/net/api'
-import { socialToken, type Provider } from '@/games/poker/net/social'
+import { api, setTokens, hasSession, ApiError } from '@/lib/net/api'
+import { socialToken, type Provider } from '@/lib/net/social'
 import { myNetId } from '@/net/identity'
 import { useFriendsStore } from '@/social/stores/useFriendsStore'
 import { usePlayerStore } from '@/social/stores/usePlayerStore'
 
 /*
- * One VIBO account for all four games, opened with Google or Facebook. It shares the game server's session with
- * Royal Poker Club (signing in here signs you in there too), records this device's friend code on the account,
+ * One VIBO account for all the games, opened with Google or Facebook. It signs in to the game server,
+ * records this device's friend code on the account,
  * and, for Facebook, finds your Facebook friends who also play and sends them friend requests in the hub.
  *
  * The buttons only work once the provider ids are set: VITE_GOOGLE_WEB_CLIENT_ID / VITE_FACEBOOK_APP_ID in the

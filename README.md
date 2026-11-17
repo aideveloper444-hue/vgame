@@ -10,7 +10,6 @@ A React + TypeScript + Vite game hub that ships as a web app and as an Android a
 | `city` | City: property trading board game |
 | `wildbound` | Wildbound: Deep Forest Run endless runner (also built as a standalone app) |
 | `amazon` | Amazon Wild Run |
-| `poker` | Royal Poker Club: Texas Hold'em (practice + online via `server/`) |
 | `mystery`, `mysteryWild` | Mystery detective games |
 | `mess`, `messWithFriend` | Party mini-games |
 

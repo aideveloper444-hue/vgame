@@ -28,11 +28,11 @@ import {
   type UserRow,
 } from './accounts'
 import { facebookFriendIds, handleRtdn, playEnabled, verifyPlayPurchase, verifySocial } from './store'
-import { COSMETICS, PLAY_PRODUCTS, VIP_PERKS, VIP_PRICE_INR } from '../../src/games/poker/data/cosmetics'
+import { COSMETICS, PLAY_PRODUCTS, VIP_PERKS, VIP_PRICE_INR } from './poker/data/cosmetics'
 import { hub } from './game/hub'
 import { lobbyTiers, rooms, tables } from './game/lobby'
 import { listing, running } from './game/tournaments'
-import { replayHand, type HandRecord } from '../../src/games/poker/engine/table'
+import { replayHand, type HandRecord } from './poker/engine/table'
 
 const me = (c: Ctx) => c.user!.sub
 const ok = { ok: true }

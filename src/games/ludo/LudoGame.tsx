@@ -18,8 +18,10 @@ import { usePlayerStore } from '@/social/stores/usePlayerStore'
 import LudoDice from './LudoDice'
 import { ludoSfx } from '@/lib/sound'
 import LudoMenu from './LudoMenu'
+import LudoJewelWallpaper from './LudoWallpaper'
 import LudoLoadingScreen from './LudoLoadingScreen'
-import { useLudoMatch } from './ludoMatch'
+import { BOT_NAMES, useLudoMatch } from './ludoMatch'
+import { BOARD_THEMES, useBoardTheme, type BoardThemeId } from './ludoThemes'
 import { broadcastSay, broadcastSpin, leaveRoom, sendToHost, setNetHandlers, useLudoRoom } from './ludoNet'
 
 const BOT_GIRLS = ['Diya', 'Ananya', 'Meera', 'Priya']
@@ -90,6 +92,17 @@ export default function LudoGame() {
     [],
   )
 
+  // dev-only: ?ludodemo=1[&theme=<id>] drops straight into a four-bot match (used for headless screenshots)
+  useEffect(() => {
+    const demo = new URLSearchParams(location.search)
+    if (import.meta.env.DEV && demo.get('ludodemo') === '1' && useLudoMatch.getState().screen === 'menu') {
+      const theme = demo.get('theme') as BoardThemeId | null
+      if (theme && theme in BOARD_THEMES) useBoardTheme.getState().setTheme(theme)
+      const seats = BOT_NAMES.slice(0, 4).map((b, i) => ({ id: `demo${i}`, name: b.name, avatarEmoji: b.avatarEmoji, kind: 'bot' as const }))
+      useLudoMatch.getState().begin('computer', 'solo', seats, [])
+    }
+  }, [])
+
   if (screen === 'menu') return <LudoMenuScreen />
   return <LudoMatchView key={matchId} />
 }
@@ -102,9 +115,10 @@ function LudoMenuScreen() {
   return (
     <div className="fixed inset-0 z-50 overflow-hidden bg-[#07040f]">
       <LudoBackdrop />
-      {/* the real board idles behind the menu, blurred, while the characters load */}
-      <LudoScene3D className="absolute inset-0 h-full w-full" slot={null} showLoader={false} />
-      <div className="absolute inset-0 bg-[#07040f]/50 backdrop-blur-[3px]" />
+      {/* the 3D scene still mounts behind the menu so the characters load before a match */}
+      <LudoScene3D className="absolute inset-0 h-full w-full opacity-0" slot={null} showLoader={false} />
+      {/* the wallpaper: the Royal Jewel board, centred */}
+      <LudoJewelWallpaper />
       <div className="absolute inset-0 z-10 overflow-y-auto px-3 pb-8 pt-[max(0.5rem,env(safe-area-inset-top))]">
         <div className="@container mx-auto max-w-[34rem]">
           <LudoTopBar />
@@ -163,9 +177,12 @@ function LudoMatchView() {
   const columnWidth = Math.min(viewportWidth, viewportHeight * COLUMN_ASPECT)
   const zoom = Math.max(1, Math.min(columnWidth / DESIGN_WIDTH, viewportHeight / DESIGN_HEIGHT))
   // tablets and big screens held sideways: players and controls move to side columns so the board can use the full height
-  const landscape = viewportWidth >= 900 && viewportHeight >= 480 && viewportWidth / viewportHeight >= 1.3
+  // any wide screen (a phone held sideways too): cards at the sides, the board gets the full height between them
+  const landscape = viewportWidth >= 640 && viewportWidth / viewportHeight >= 1.3
   // short landscape screens (7-inch tablets) use the slim player cards
   const sideCompact = viewportHeight < 720
+  // a phone held sideways: too short for the dice and chat under the board, so they move to the side columns
+  const shortLandscape = viewportHeight < 560
   useLockBodyScroll()
 
   // The intro screen paints first; the 3D table mounts a couple of frames later (its setup blocks the
@@ -622,27 +639,39 @@ function LudoMatchView() {
           <div className="mx-auto w-full max-w-[60rem]">
             <LudoTopBar onBack={leaveToMenu} onRestart={authoritative ? handleRematch : undefined} onLeave={leaveToMenu} />
           </div>
-          <div className="mt-2 grid min-h-0 flex-1 grid-cols-[clamp(12rem,19.5vw,21rem)_minmax(0,1fr)_clamp(12rem,19.5vw,21rem)] gap-3 lg:gap-5">
+          <div className={`grid min-h-0 flex-1 grid-cols-[clamp(12rem,19.5vw,21rem)_minmax(0,1fr)_clamp(12rem,19.5vw,21rem)] gap-3 lg:gap-5 ${shortLandscape ? 'mt-1' : 'mt-2'}`}>
             <div className="relative z-20 flex min-h-0 flex-col justify-between gap-3 py-2">
               {manyPlayers ? (
                 <div className="flex flex-col gap-2">{topRow.map((p) => <div key={p.id} className="w-full min-w-0">{cardFor(p, 'below', 'left', sideCompact)}</div>)}</div>
               ) : (
                 card('RED', 'below', 'left', sideCompact)
               )}
-              <div className="flex flex-col gap-2">
-                <VoiceChip onInfo={showToast} />
-                <EmoteBar onEmote={sendEmote} onGift={() => setGiftOpen(true)} />
-              </div>
+              {shortLandscape ? (
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <VoiceChip compact onInfo={showToast} />
+                    <ChatBar onSend={handleQuickChat} />
+                  </div>
+                  <EmoteBar onEmote={sendEmote} onGift={() => setGiftOpen(true)} />
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  <VoiceChip onInfo={showToast} />
+                  <EmoteBar onEmote={sendEmote} onGift={() => setGiftOpen(true)} />
+                </div>
+              )}
               {manyPlayers ? <div /> : card('BLUE', 'above', 'left', sideCompact)}
             </div>
             <div className="flex min-h-0 flex-col">
               {/* the 3D board is framed into this slot by the scene's camera rig */}
-              <div ref={slotRef} className="relative my-2 min-h-0 flex-1">{needSixHint}</div>
-              {phase !== 'gameOver' && <div className="pointer-events-none relative z-20 mb-2 flex justify-center">{cardDice}</div>}
-              <div className="pointer-events-none relative z-20 flex items-center gap-2">
-                <ChatBar onSend={handleQuickChat} />
-                <GiftButton onClick={() => setGiftOpen(true)} />
-              </div>
+              <div ref={slotRef} className={`relative min-h-0 flex-1 ${shortLandscape ? 'my-0' : 'my-2'}`}>{needSixHint}</div>
+              {!shortLandscape && phase !== 'gameOver' && <div className="pointer-events-none relative z-20 mb-2 flex justify-center">{cardDice}</div>}
+              {!shortLandscape && (
+                <div className="pointer-events-none relative z-20 flex items-center gap-2">
+                  <ChatBar onSend={handleQuickChat} />
+                  <GiftButton onClick={() => setGiftOpen(true)} />
+                </div>
+              )}
             </div>
             <div className="relative z-20 flex min-h-0 flex-col items-stretch justify-between gap-3 py-2">
               {manyPlayers ? (
@@ -650,7 +679,7 @@ function LudoMatchView() {
               ) : (
                 card('GREEN', 'below', 'right', sideCompact)
               )}
-              <div />
+              {shortLandscape && phase !== 'gameOver' ? <div className="pointer-events-none relative z-20 flex justify-center">{cardDice}</div> : <div />}
               {manyPlayers ? <div /> : card('YELLOW', 'above', 'right', sideCompact)}
             </div>
           </div>

@@ -284,10 +284,9 @@ const scale = (root: number, steps: number[], octaves = 2) => {
 }
 const MAJOR_PENTA = [0, 2, 4, 7, 9]
 const MINOR_PENTA = [0, 3, 5, 7, 10]
-const DORIAN = [0, 2, 3, 5, 7, 9, 10]
 const MAJOR = [0, 2, 4, 5, 7, 9, 11]
 
-export type MusicTheme = 'app' | 'ludo' | 'city' | 'poker' | 'wildbound'
+export type MusicTheme = 'app' | 'ludo' | 'city' | 'wildbound'
 
 const THEMES: Record<MusicTheme, Theme> = {
   // the app screens: slow and spacious (Cmaj7 – Am7 – Fmaj7 – G6)
@@ -296,8 +295,6 @@ const THEMES: Record<MusicTheme, Theme> = {
   ludo: { bpm: 104, chords: [chord(-24, -20, -17), chord(-29, -25, -22), chord(-27, -24, -20), chord(-31, -27, -24)], scale: scale(0, MAJOR_PENTA), lead: 'marimba', density: 0.42, leadVol: 0.05, padVol: 0.028, bassVol: 0.07, bass: [0, 3, 4], shaker: [2, 6] },
   // City: easy, sunny lo-fi, electric piano on Fmaj7 – Em7 – Dm7 – Cmaj7
   city: { bpm: 84, chords: [chord(-31, -27, -24, -20), chord(-32, -29, -25, -22), chord(-34, -31, -27, -24), chord(-36, -32, -29, -25)], scale: scale(-3, MAJOR, 2), lead: 'epiano', density: 0.3, leadVol: 0.045, padVol: 0.035, bassVol: 0.07, bass: [0, 5], shaker: [1, 3, 5, 7], swing: 0.22 },
-  // Royal Poker Club: smooth late-night lounge, Dm7 – G7 – Cmaj7 – A7
-  poker: { bpm: 92, chords: [chord(-34, -31, -27, -24), chord(-29, -25, -22, -19), chord(-36, -32, -29, -25), chord(-27, -23, -20, -17)], scale: scale(2, DORIAN, 2), lead: 'epiano', density: 0.26, leadVol: 0.04, padVol: 0.03, bassVol: 0.08, bass: [0, 2, 4, 6], shaker: [2, 6], swing: 0.3 },
   // Wildbound: an airy adventure theme that sits under the forest ambience (Am – F – C – G)
   wildbound: { bpm: 96, chords: [chord(-27, -24, -20), chord(-31, -27, -24), chord(-24, -20, -17), chord(-29, -25, -22)], scale: scale(-3, MINOR_PENTA), lead: 'flute', density: 0.24, leadVol: 0.032, padVol: 0.03, bassVol: 0.05, bass: [0, 4], shaker: [] },
 }

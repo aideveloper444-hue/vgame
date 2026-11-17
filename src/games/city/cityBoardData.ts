@@ -1,154 +1,100 @@
-export type PropertyCategory =
-  | 'OFFICE'
-  | 'RESTAURANT'
-  | 'HOTEL'
-  | 'CINEMA'
-  | 'MALL'
-  | 'STORE'
-  | 'FACTORY'
-  /** Utility concerns: Airport + Steamer Company (rulebook §17) */
-  | 'TRAVEL'
-  /** Railway + Transport */
-  | 'TRANSIT'
-  /** Radio Station + Post Office */
-  | 'MEDIA'
+// World Tycoon board data, taken from the rule book (World_Tycoon_Game.pdf): 36 squares, 20 cities in
+// 8 colour groups, 6 companies in 3 partner pairs, Chance and Treasury decks, Casino and Grand Club.
 
-/** A site you can develop, or a concern (company) whose rent depends on owning its partner. */
-export type PropertyKind = 'SITE' | 'CONCERN'
+export type GroupId = 'BLUE' | 'PINK' | 'PURPLE' | 'GREEN' | 'RED' | 'YELLOW' | 'TEAL' | 'ORANGE'
+
+export const GROUP_INFO: Record<GroupId, { name: string; color: string }> = {
+  BLUE: { name: 'Blue', color: '#2f86e0' },
+  PINK: { name: 'Pink', color: '#e84393' },
+  PURPLE: { name: 'Purple', color: '#8e44ad' },
+  GREEN: { name: 'Green', color: '#27ae60' },
+  RED: { name: 'Red', color: '#e74c3c' },
+  YELLOW: { name: 'Yellow', color: '#f1c40f' },
+  TEAL: { name: 'Teal', color: '#16a085' },
+  ORANGE: { name: 'Orange', color: '#e67e22' },
+}
+
+/** A city you can build on, or a company whose rent depends on owning its partner. */
+export type PropertyKind = 'SITE' | 'COMPANY'
 
 export interface PropertyTile {
   id: number
   type: 'PROPERTY'
   kind: PropertyKind
   name: string
-  category: PropertyCategory
+  /** City landmark printed on the deed; "Company" for companies. */
+  landmark: string
+  /** Colour group for cities; null for companies. */
+  group: GroupId | null
+  /** Deed colour (group colour, or the company's own band). */
+  color: string
+  /** Partner company tile id (companies only). */
+  partnerId: number | null
   basePrice: number
-  /** Sites: rent by erection [site only, office, bungalow, godown]. Concerns: [alone, with partner]. */
+  /** Cities: [site only, office, bungalow, godown]. Companies: [alone, with partner]. */
   rentTable: number[]
-  /** Cost of each erection, paid to the Bank. */
+  /** Cost of each erection (cities). */
   upgradeCost: number
   maxLevel: number
   ownerId: string | null
+  /** 0 = site only, 1 = Office, 2 = Bungalow, 3 = Godown (one building at a time). */
   level: number
-  /** Mortgaged to the Bank: rent is shared half and half with the Bank, card shown face down. */
   mortgaged: boolean
 }
 
-export type SimpleTileType = 'PARK' | 'CHANCE' | 'COMMUNITY' | 'GO' | 'JAIL' | 'TAX' | 'EVENT' | 'GO_TO_JAIL' | 'CLUB'
+export type SimpleTileType = 'GO' | 'TREASURY' | 'CHANCE' | 'TAX' | 'JAIL' | 'CASINO' | 'CLUB'
 
 export interface SimpleTile {
   id: number
   type: SimpleTileType
   name: string
-  amount?: number // for TAX
 }
 
 export type CityTile = PropertyTile | SimpleTile
 
-export const CATEGORY_ICON: Record<PropertyCategory, string> = {
-  OFFICE: '🏢',
-  RESTAURANT: '🍔',
-  HOTEL: '🏨',
-  CINEMA: '🎬',
-  MALL: '🛍️',
-  STORE: '🏪',
-  FACTORY: '🏭',
-  TRAVEL: '✈️',
-  TRANSIT: '🚆',
-  MEDIA: '📻',
-}
+export const BOARD_SIZE = 36
+export const START_TILE_ID = 0
+export const JAIL_TILE_ID = 9
+export const CASINO_TILE_ID = 18
+export const CLUB_TILE_ID = 27
+export const LONDON_TILE_ID = 2
 
-/** Board icon for a tile: concerns and special spaces get their own. */
-export const TILE_ICON: Record<string, string> = {
-  Airport: '✈️',
-  'Steamer Co.': '🚢',
-  Railway: '🚆',
-  Transport: '🚚',
-  'Radio Station': '📻',
-  'Post Office': '📮',
-  "Merchant's Club": '🎩',
-  'Milk Bar': '🥛',
-  'Income Tax': '🧾',
-  'Sales Tax': '💰',
-  Chance: '❓',
-  Republic: '🏛️',
-}
-
-/** Development stages a site can be raised through, in order (rulebook §11). */
+/** Building stages, in order; each upgrade replaces the previous building. */
 export const ERECTION_NAMES = ['Site', 'Office', 'Bungalow', 'Godown'] as const
+export const ERECTION_ICON = ['', '🏢', '🏡', '🏭'] as const
 
-/**
- * Rent scaled from the rulebook's property card (Tatanagar, price ₹3,500): site ₹425, office ₹1,100,
- * bungalow ₹2,000, godown ₹3,000, each erection ₹4,000. Every site keeps the same proportions to its
- * printed board price.
- */
-const RENT_RATIOS = [425 / 3500, 1100 / 3500, 2000 / 3500, 3000 / 3500]
-const ERECTION_RATIO = 4000 / 3500
-
-const roundTo = (n: number, step: number) => Math.max(step, Math.round(n / step) * step)
-
-function rentTableFor(basePrice: number): number[] {
-  return RENT_RATIOS.map((r) => roundTo(basePrice * r, 5))
-}
-
-/** Concern rent from the rulebook's Airport card (₹5,000): ₹700 alone, ₹1,500 with the Steamer Company. */
-const CONCERN_RATIOS = [700 / 5000, 1500 / 5000]
-
-/** Rulebook §15: the Bank lends 50% of the purchase price and charges 10% interest on redemption. */
-export function mortgageValue(tile: PropertyTile): number {
-  return Math.round(tile.basePrice * 0.5)
-}
-export function redeemCost(tile: PropertyTile): number {
-  return Math.round(mortgageValue(tile) * 1.1)
-}
-
-/** Colour groups are the card colours on the board (the category tint). */
-export function groupOf(tiles: CityTile[], tile: PropertyTile): PropertyTile[] {
-  return tiles.filter((t): t is PropertyTile => t.type === 'PROPERTY' && t.category === tile.category)
-}
-export function ownsFullGroup(tiles: CityTile[], tile: PropertyTile): boolean {
-  return tile.ownerId !== null && groupOf(tiles, tile).every((t) => t.ownerId === tile.ownerId)
-}
-
-/** Why a site can't take its next erection right now, or null if it can (cash aside). */
-export function buildBlocker(tiles: CityTile[], tile: PropertyTile): string | null {
-  if (tile.kind === 'CONCERN') return 'Concern'
-  if (tile.level >= tile.maxLevel) return 'MAX'
-  if (tile.mortgaged) return 'Mortgaged'
-  if (!ownsFullGroup(tiles, tile)) return 'Need set'
-  const group = groupOf(tiles, tile)
-  if (group.some((t) => t.mortgaged)) return 'Set mortgaged'
-  // an office on every site before a bungalow, a bungalow on every site before a godown
-  if (tile.level > Math.min(...group.map((t) => t.level))) return 'Build evenly'
-  return null
-}
-
-function property(id: number, name: string, category: PropertyCategory, basePrice: number): PropertyTile {
+function city(id: number, name: string, landmark: string, group: GroupId, price: number, rents: [number, number, number, number], build: number): PropertyTile {
   return {
     id,
     type: 'PROPERTY',
     kind: 'SITE',
     name,
-    category,
-    basePrice,
-    rentTable: rentTableFor(basePrice),
-    upgradeCost: roundTo(basePrice * ERECTION_RATIO, 50),
-    maxLevel: ERECTION_NAMES.length - 1,
+    landmark,
+    group,
+    color: GROUP_INFO[group].color,
+    partnerId: null,
+    basePrice: price,
+    rentTable: rents,
+    upgradeCost: build,
+    maxLevel: 3,
     ownerId: null,
     level: 0,
     mortgaged: false,
   }
 }
 
-function concern(id: number, name: string, category: PropertyCategory, basePrice: number): PropertyTile {
+function company(id: number, name: string, color: string, price: number, alone: number, withPartner: number, partnerId: number): PropertyTile {
   return {
     id,
     type: 'PROPERTY',
-    kind: 'CONCERN',
+    kind: 'COMPANY',
     name,
-    category,
-    basePrice,
-    rentTable: CONCERN_RATIOS.map((r) => roundTo(basePrice * r, 10)),
+    landmark: 'Company',
+    group: null,
+    color,
+    partnerId,
+    basePrice: price,
+    rentTable: [alone, withPartner],
     upgradeCost: 0,
     maxLevel: 0,
     ownerId: null,
@@ -157,120 +103,263 @@ function concern(id: number, name: string, category: PropertyCategory, basePrice
   }
 }
 
-function simple(id: number, type: SimpleTileType, name: string, amount?: number): SimpleTile {
-  return { id, type, name, amount }
-}
+const simple = (id: number, type: SimpleTileType, name: string): SimpleTile => ({ id, type, name })
 
-export const TILES_PER_SIDE = 10
-
+/** The 36 squares, clockwise from START (bottom-left corner of the board art). */
 export function buildBoard(): CityTile[] {
-  // 40 spaces: Start bottom-left, then left-to-right along the bottom, up the right side, right-to-left
-  // along the top and down the left side. Prices follow the rulebook (₹1,500 – ₹7,000).
   return [
     simple(0, 'GO', 'Start'),
-    property(1, 'Mumbai', 'STORE', 1500),
-    simple(2, 'COMMUNITY', 'Republic'),
-    property(3, 'Cairo', 'STORE', 1600),
-    simple(4, 'TAX', 'Income Tax'),
-    concern(5, 'Railway', 'TRANSIT', 7000),
-    property(6, 'Bali', 'RESTAURANT', 1700),
+    simple(1, 'TREASURY', 'Treasury'),
+    city(2, 'London', 'Big Ben', 'BLUE', 4500, [550, 1400, 2550, 3850], 3000),
+    city(3, 'Rome', 'Colosseum', 'BLUE', 1500, [175, 450, 850, 1300], 3000),
+    city(4, 'Istanbul', 'Hagia Sophia', 'BLUE', 2500, [300, 800, 1400, 2150], 3000),
+    simple(5, 'TAX', 'Income Tax'),
+    city(6, 'Madrid', 'Royal Palace', 'PINK', 3000, [350, 950, 1700, 2600], 2500),
     simple(7, 'CHANCE', 'Chance'),
-    property(8, 'Miami', 'RESTAURANT', 1700),
-    property(9, 'Bangkok', 'RESTAURANT', 2000),
-
-    simple(10, 'JAIL', 'Jail'),
-    property(11, 'Seoul', 'CINEMA', 2300),
-    concern(12, 'Radio Station', 'MEDIA', 2000),
-    property(13, 'Las Vegas', 'CINEMA', 2300),
-    property(14, 'Tokyo', 'CINEMA', 2500),
-    concern(15, 'Airport', 'TRAVEL', 5000),
-    property(16, 'Shanghai', 'FACTORY', 2500),
-    simple(17, 'COMMUNITY', 'Republic'),
-    property(18, 'Sydney', 'FACTORY', 2700),
-    property(19, 'Chicago', 'FACTORY', 3000),
-
-    simple(20, 'PARK', 'Free Parking'),
-    property(21, 'Singapore', 'OFFICE', 3000),
-    simple(22, 'CHANCE', 'Chance'),
-    property(23, 'Berlin', 'OFFICE', 3500),
-    property(24, 'Hong Kong', 'OFFICE', 3500),
-    concern(25, 'Steamer Co.', 'TRAVEL', 7000),
-    property(26, 'London', 'MALL', 4000),
-    simple(27, 'CLUB', "Merchant's Club"),
-    property(28, 'Paris', 'MALL', 4000),
-    concern(29, 'Post Office', 'MEDIA', 2000),
-
-    simple(30, 'GO_TO_JAIL', 'Go to Jail'),
-    property(31, 'Dubai', 'MALL', 4500),
-    concern(32, 'Transport', 'TRANSIT', 4000),
-    simple(33, 'COMMUNITY', 'Republic'),
-    property(34, 'Los Angeles', 'HOTEL', 4500),
-    simple(35, 'CHANCE', 'Chance'),
-    simple(36, 'CLUB', 'Milk Bar'),
-    property(37, 'New York', 'HOTEL', 5000),
-    simple(38, 'TAX', 'Sales Tax'),
-    simple(39, 'CHANCE', 'Chance'),
+    city(8, 'Amsterdam', 'Canal Ring', 'PINK', 2000, [250, 600, 1150, 1700], 2500),
+    simple(9, 'JAIL', 'Jail'),
+    city(10, 'Vienna', 'Schönbrunn Palace', 'PURPLE', 2300, [275, 700, 1300, 2000], 2500),
+    city(11, 'Zurich', 'Lake Zurich', 'PURPLE', 2700, [325, 850, 1550, 2300], 2500),
+    company(12, 'Cruise Line', '#1f6391', 7000, 800, 1600, 31),
+    city(13, 'Cape Town', 'Table Mountain', 'PURPLE', 1500, [175, 450, 850, 1300], 2500),
+    company(14, 'Postal Service', '#c0790f', 2000, 300, 800, 24),
+    city(15, 'Singapore', 'Marina Bay', 'GREEN', 2500, [300, 800, 1400, 2150], 4000),
+    city(16, 'Sydney', 'Opera House', 'GREEN', 4000, [475, 1250, 2300, 3450], 4000),
+    city(17, 'Dubai', 'Burj Khalifa', 'GREEN', 3500, [425, 1100, 2000, 3000], 4000),
+    simple(18, 'CASINO', 'Casino'),
+    city(19, 'New York', 'Statue of Liberty', 'RED', 5000, [600, 1550, 2850, 4300], 4000),
+    simple(20, 'CHANCE', 'Chance'),
+    city(21, 'Athens', 'Acropolis', 'RED', 2500, [300, 800, 1400, 2150], 4000),
+    city(22, 'Prague', 'Charles Bridge', 'RED', 2000, [250, 600, 1150, 1700], 4000),
+    company(23, 'Transport Co.', '#6d1f2b', 4000, 600, 1200, 33),
+    company(24, 'Radio Station', '#5b2c6f', 2000, 300, 800, 14),
+    city(25, 'Lisbon', 'Belém Tower', 'YELLOW', 1700, [200, 550, 950, 1450], 1500),
+    city(26, 'Nairobi', 'National Park', 'YELLOW', 1500, [175, 450, 850, 1300], 1500),
+    simple(27, 'CLUB', 'Grand Club'),
+    simple(28, 'TREASURY', 'Treasury'),
+    city(29, 'Toronto', 'CN Tower', 'TEAL', 2500, [300, 800, 1400, 2150], 3500),
+    city(30, 'Hong Kong', 'Victoria Harbour', 'TEAL', 4000, [475, 1250, 2300, 3450], 3500),
+    company(31, 'Airport', '#c0392b', 5000, 700, 1500, 12),
+    simple(32, 'TAX', 'Sales Tax'),
+    company(33, 'Railway', '#7b3f00', 7000, 1000, 2000, 23),
+    city(34, 'Berlin', 'Brandenburg Gate', 'ORANGE', 3500, [425, 1100, 2000, 3000], 3000),
+    city(35, 'Budapest', 'Parliament', 'ORANGE', 1600, [200, 500, 900, 1400], 3000),
   ]
 }
 
-export interface EventTemplate {
-  id: string
-  description: string
-  affectsCategory: PropertyCategory | 'ALL'
-  rentMultiplier: number
-  rounds: number
+export const TILE_ICON: Record<string, string> = {
+  Start: '🏁',
+  Treasury: '💰',
+  Chance: '❓',
+  'Income Tax': '🧾',
+  'Sales Tax': '🧾',
+  Jail: '🚔',
+  Casino: '🎰',
+  'Grand Club': '👑',
+  'Cruise Line': '🛳️',
+  'Postal Service': '✉️',
+  'Transport Co.': '🚚',
+  'Radio Station': '📡',
+  Airport: '✈️',
+  Railway: '🚆',
 }
 
-export const EVENT_TEMPLATES: EventTemplate[] = [
-  { id: 'festival', description: 'Festival Weekend: restaurants earn +50% rent', affectsCategory: 'RESTAURANT', rentMultiplier: 1.5, rounds: 3 },
-  { id: 'tourist-rush', description: 'Tourist Rush: hotels earn +50% rent', affectsCategory: 'HOTEL', rentMultiplier: 1.5, rounds: 3 },
-  { id: 'construction', description: 'Construction: factory rent -30%', affectsCategory: 'FACTORY', rentMultiplier: 0.7, rounds: 2 },
-  { id: 'sale-season', description: 'Sale Season: malls & stores earn +40%', affectsCategory: 'MALL', rentMultiplier: 1.4, rounds: 3 },
-  { id: 'boom', description: 'Economic Boom: all rent +25%', affectsCategory: 'ALL', rentMultiplier: 1.25, rounds: 2 },
-]
+/* ------------------------------------------------------------------ rules helpers */
 
-export interface CardEffect {
+export function isProperty(t: CityTile | undefined): t is PropertyTile {
+  return t?.type === 'PROPERTY'
+}
+
+export function mortgageValue(tile: PropertyTile): number {
+  return Math.round(tile.basePrice / 2)
+}
+
+/** Lifting a mortgage costs the mortgage plus 10% interest (none in Kids Mode). */
+export function redeemCost(tile: PropertyTile, interest = 0.1): number {
+  return Math.round(mortgageValue(tile) * (1 + interest))
+}
+
+export function groupOf(tiles: CityTile[], tile: PropertyTile): PropertyTile[] {
+  if (!tile.group) return [tile]
+  return tiles.filter((t): t is PropertyTile => isProperty(t) && t.group === tile.group)
+}
+
+export function ownsFullGroup(tiles: CityTile[], tile: PropertyTile): boolean {
+  return tile.kind === 'SITE' && tile.ownerId !== null && groupOf(tiles, tile).every((t) => t.ownerId === tile.ownerId)
+}
+
+export function ownsPartner(tiles: CityTile[], tile: PropertyTile): boolean {
+  if (tile.partnerId === null || tile.ownerId === null) return false
+  const partner = tiles[tile.partnerId]
+  return isProperty(partner) && partner.ownerId === tile.ownerId
+}
+
+export function groupHasBuildings(tiles: CityTile[], tile: PropertyTile): boolean {
+  return groupOf(tiles, tile).some((t) => t.level > 0)
+}
+
+/** Why a city can't take its next building right now, or null if it can (cash aside). */
+export function buildBlocker(tiles: CityTile[], tile: PropertyTile, evenBuild = true): string | null {
+  if (tile.kind === 'COMPANY') return 'Company'
+  if (tile.level >= tile.maxLevel) return 'Godown built'
+  if (!ownsFullGroup(tiles, tile)) return 'Need full set'
+  if (groupOf(tiles, tile).some((t) => t.mortgaged)) return 'Set mortgaged'
+  if (evenBuild && tile.level > Math.min(...groupOf(tiles, tile).map((t) => t.level))) return 'Build evenly'
+  return null
+}
+
+/** Why a building can't be sold from this city right now, or null if it can. */
+export function sellBlocker(tiles: CityTile[], tile: PropertyTile, evenBuild = true): string | null {
+  if (tile.level === 0) return 'No building'
+  if (evenBuild && tile.level < Math.max(...groupOf(tiles, tile).map((t) => t.level))) return 'Sell evenly'
+  return null
+}
+
+/** Why a deed can't be mortgaged right now, or null if it can. */
+export function mortgageBlocker(tiles: CityTile[], tile: PropertyTile): string | null {
+  if (tile.mortgaged) return 'Mortgaged'
+  if (tile.kind === 'SITE' && groupHasBuildings(tiles, tile)) return 'Sell buildings first'
+  return null
+}
+
+/* ------------------------------------------------------------------ Chance and Treasury */
+
+export type CardAction =
+  | { kind: 'cash'; amount: number } // + from the Bank, - into the Grand Club pot
+  | { kind: 'payBank'; amount: number }
+  | { kind: 'perBuilding'; amount: number } // to the Bank
+  | { kind: 'fromEach'; amount: number }
+  | { kind: 'toEach'; amount: number }
+  | { kind: 'jail' }
+  | { kind: 'freePass' }
+  | { kind: 'moveTo'; tileId: number }
+  | { kind: 'back'; steps: number }
+
+export type Deck = 'CHANCE' | 'TREASURY'
+
+export interface CardDef {
   id: string
+  deck: Deck
   text: string
-  cashDelta?: number
-  moveTo?: number
-  sendToJail?: boolean
+  action: CardAction
 }
 
-export const JAIL_TILE_ID = 10
+const card = (deck: Deck, n: number, text: string, action: CardAction): CardDef => ({ id: `${deck === 'CHANCE' ? 'c' : 't'}${n}`, deck, text, action })
 
-export const CHANCE_CARDS: CardEffect[] = [
-  { id: 'c1', text: 'Your shares pay a dividend. Collect ₹1,500', cashDelta: 1500 },
-  { id: 'c2', text: 'Traffic fine. Pay ₹300', cashDelta: -300 },
-  { id: 'c3', text: 'Advance to Start', moveTo: 0 },
-  { id: 'c4', text: 'You won a business award. Collect ₹2,000', cashDelta: 2000 },
-  { id: 'c5', text: 'Caught evading tax — go to Jail!', moveTo: JAIL_TILE_ID, sendToJail: true },
-  { id: 'c6', text: 'Repairs on your premises. Pay ₹1,000', cashDelta: -1000 },
-  { id: 'c7', text: 'Lottery win! Collect ₹2,500', cashDelta: 2500 },
-  { id: 'c8', text: 'Take a flight — advance to the Airport', moveTo: 15 },
-  { id: 'c9', text: 'Business trip — advance to New York', moveTo: 37 },
+export const CHANCE_CARDS: CardDef[] = [
+  card('CHANCE', 1, 'Collect $800 lottery prize.', { kind: 'cash', amount: 800 }),
+  card('CHANCE', 2, 'Go to Jail. Do not pass START.', { kind: 'jail' }),
+  card('CHANCE', 3, 'Advance to START. Collect $1000.', { kind: 'moveTo', tileId: START_TILE_ID }),
+  card('CHANCE', 4, 'Earthquake repairs: pay $1000 to the Bank for each building you own.', { kind: 'perBuilding', amount: 1000 }),
+  card('CHANCE', 5, 'Pay $200 hospital bill.', { kind: 'cash', amount: -200 }),
+  card('CHANCE', 6, 'Collect $2000 from the Bank for an accident claim.', { kind: 'cash', amount: 2000 }),
+  card('CHANCE', 7, 'Your grandfather leaves you $2500.', { kind: 'cash', amount: 2500 }),
+  card('CHANCE', 8, 'Pay $2200 fine for disturbing the neighbourhood.', { kind: 'cash', amount: -2200 }),
+  card('CHANCE', 9, 'Collect $1000 first prize at the Business Awards.', { kind: 'cash', amount: 1000 }),
+  card('CHANCE', 10, 'Collect $1500 for winning the football match.', { kind: 'cash', amount: 1500 }),
+  card('CHANCE', 11, 'Advance to the Casino. You may place a bet.', { kind: 'moveTo', tileId: CASINO_TILE_ID }),
+  card('CHANCE', 12, 'Advance to London. If you pass START, collect $1000.', { kind: 'moveTo', tileId: LONDON_TILE_ID }),
+  card('CHANCE', 13, 'Your app goes viral! Collect $2000.', { kind: 'cash', amount: 2000 }),
+  card('CHANCE', 14, 'Get Out of Jail Free. Keep this card until needed.', { kind: 'freePass' }),
+  card('CHANCE', 15, 'It is your birthday! Collect $200 from every player.', { kind: 'fromEach', amount: 200 }),
+  card('CHANCE', 16, 'Go back 3 spaces.', { kind: 'back', steps: 3 }),
 ]
 
-export const COMMUNITY_CARDS: CardEffect[] = [
-  { id: 'r1', text: 'Republic Day bonus from the Bank. Collect ₹2,000', cashDelta: 2000 },
-  { id: 'r2', text: 'Income tax refund. Collect ₹1,000', cashDelta: 1000 },
-  { id: 'r3', text: 'Hospital bill. Pay ₹1,000', cashDelta: -1000 },
-  { id: 'r4', text: 'School fees. Pay ₹1,500', cashDelta: -1500 },
-  { id: 'r5', text: 'Bank error in your favour. Collect ₹2,500', cashDelta: 2500 },
-  { id: 'r6', text: 'Insurance premium. Pay ₹500', cashDelta: -500 },
-  { id: 'r7', text: 'Go to Jail!', moveTo: JAIL_TILE_ID, sendToJail: true },
-  { id: 'r8', text: 'Take the train — advance to the Railway', moveTo: 5 },
+export const TREASURY_CARDS: CardDef[] = [
+  card('TREASURY', 1, 'Income tax penalty: pay $750.', { kind: 'cash', amount: -750 }),
+  card('TREASURY', 2, 'Sales tax refund: collect $650.', { kind: 'cash', amount: 650 }),
+  card('TREASURY', 3, 'Pay $800 insurance premium.', { kind: 'cash', amount: -800 }),
+  card('TREASURY', 4, 'Pay $250 for false evidence in court.', { kind: 'cash', amount: -250 }),
+  card('TREASURY', 5, 'Collect $1000 for railway damage claim.', { kind: 'cash', amount: 1000 }),
+  card('TREASURY', 6, 'Collect $750 interest on savings.', { kind: 'cash', amount: 750 }),
+  card('TREASURY', 7, 'Pay $500 for city festival decorations.', { kind: 'cash', amount: -500 }),
+  card('TREASURY', 8, 'Pay $100 to each player for a party.', { kind: 'toEach', amount: 100 }),
+  card('TREASURY', 9, 'Bank error in your favour. Collect $2000.', { kind: 'cash', amount: 2000 }),
+  card('TREASURY', 10, 'Get Out of Jail Free. Keep this card until needed.', { kind: 'freePass' }),
+  card('TREASURY', 11, 'Pay $500 school fees.', { kind: 'cash', amount: -500 }),
+  card('TREASURY', 12, 'Collect $1500 from selling shares.', { kind: 'cash', amount: 1500 }),
+  card('TREASURY', 13, 'Collect $500 consultancy fee.', { kind: 'cash', amount: 500 }),
+  card('TREASURY', 14, 'Advance to the Grand Club and collect the pot.', { kind: 'moveTo', tileId: CLUB_TILE_ID }),
+  card('TREASURY', 15, 'Pay $400 car repair.', { kind: 'cash', amount: -400 }),
+  card('TREASURY', 16, 'Your holiday fund matures: collect $300.', { kind: 'cash', amount: 300 }),
 ]
 
-export const CATEGORY_TINT: Record<PropertyCategory, string> = {
-  OFFICE: '#0ea5e9',
-  RESTAURANT: '#f97316',
-  HOTEL: '#8b5cf6',
-  CINEMA: '#ec4899',
-  MALL: '#ef4444',
-  STORE: '#22c55e',
-  FACTORY: '#eab308',
-  TRAVEL: '#06b6d4',
-  TRANSIT: '#64748b',
-  MEDIA: '#a3e635',
+export const ALL_CARDS: Record<string, CardDef> = Object.fromEntries([...CHANCE_CARDS, ...TREASURY_CARDS].map((c) => [c.id, c]))
+
+/* ------------------------------------------------------------------ variants */
+
+export type VariantId = 'CLASSIC' | 'FAST' | 'CASINO_NIGHT' | 'KIDS'
+
+export interface CityConfig {
+  variant: VariantId
+  startingCash: number
+  goBonus: number
+  /** Every site in a group needs an Office before any gets a Bungalow, and so on. */
+  evenBuild: boolean
+  /** Multiplier on the printed cost of each erection. */
+  buildCostFactor: number
+  /** Interest charged on lifting a mortgage. */
+  mortgageInterest: number
+  casinoEnabled: boolean
+  casinoBet: number
+  /** Extra paid on a roll of 5 (besides the bet back). */
+  casinoFivePays: number
+  casinoJackpotStart: number
+  /** Bank's bonus on top of the tray on a jackpot. */
+  casinoJackpotBonus: number
+  jailFine: number
+  jailTurns: number
+  taxPerSite: number
+  taxCap: number
+  clubEmptyGift: number
+  auctionOpening: number
+  /** Double sixes in a row that send you to Jail. */
+  doublesToJail: number
+  /** Digital safety net: after this many rounds the richest player wins. */
+  maxRounds: number
+}
+
+const CLASSIC: CityConfig = {
+  variant: 'CLASSIC',
+  startingCash: 25000,
+  goBonus: 1000,
+  evenBuild: true,
+  buildCostFactor: 1,
+  mortgageInterest: 0.1,
+  casinoEnabled: true,
+  casinoBet: 1000,
+  casinoFivePays: 0,
+  casinoJackpotStart: 2000,
+  casinoJackpotBonus: 1000,
+  jailFine: 500,
+  jailTurns: 3,
+  taxPerSite: 50,
+  taxCap: 500,
+  clubEmptyGift: 500,
+  auctionOpening: 100,
+  doublesToJail: 3,
+  maxRounds: 100,
+}
+
+export const VARIANTS: Record<VariantId, { name: string; blurb: string; config: CityConfig }> = {
+  CLASSIC: { name: 'Classic', blurb: '$25,000 each, START pays $1000. Last player in business wins.', config: CLASSIC },
+  FAST: {
+    name: 'Fast Game',
+    blurb: 'About 45 minutes: $15,000 each, START pays $2000, build without the even-build rule.',
+    config: { ...CLASSIC, variant: 'FAST', startingCash: 15000, goBonus: 2000, evenBuild: false, maxRounds: 50 },
+  },
+  CASINO_NIGHT: {
+    name: 'Casino Night',
+    blurb: 'The Casino bet is $2000, and a roll of 5 also pays $1000.',
+    config: { ...CLASSIC, variant: 'CASINO_NIGHT', casinoBet: 2000, casinoFivePays: 1000 },
+  },
+  KIDS: {
+    name: 'Kids Mode',
+    blurb: 'No Casino bets, no mortgage interest, and buildings cost half.',
+    config: { ...CLASSIC, variant: 'KIDS', casinoEnabled: false, mortgageInterest: 0, buildCostFactor: 0.5 },
+  },
+}
+
+export function buildCost(tile: PropertyTile, config: CityConfig): number {
+  return Math.round(tile.upgradeCost * config.buildCostFactor)
 }

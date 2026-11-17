@@ -10,7 +10,7 @@ The authoritative game server for Royal Poker Club. It runs every online table, 
 | `/health` | Liveness check |
 | everything else | The web app from `dist/`, when present |
 
-Rules come from `src/games/poker/engine` (the same engine the app uses for practice), so the client and server can't disagree on poker.
+Rules come from `server/src/poker/engine` (the same engine the app uses for practice), so the client and server can't disagree on poker.
 
 ## Run it locally
 

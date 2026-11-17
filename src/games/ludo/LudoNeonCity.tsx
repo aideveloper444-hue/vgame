@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react'
+import { useLayoutEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { mergeBufferGeometries } from 'three-stdlib'
@@ -430,17 +430,31 @@ function Traffic() {
     if (!m) return
     lanes.forEach((l, i) => {
       const a = l.phase + s.clock.elapsedTime * l.speed
-      dummy.position.set(Math.sin(a) * l.radius, l.y, -Math.cos(a) * l.radius)
+      const z = -Math.cos(a) * l.radius
+      dummy.position.set(Math.sin(a) * l.radius, l.y, z)
       dummy.rotation.set(0, -a + (l.speed > 0 ? 0 : Math.PI), 0)
+      // the camera is orthographic, so a car passing between it and the board would cover the board as a
+      // big bright slab: cars only show while they fly through the skyline behind the board
+      dummy.scale.setScalar(z < -16 ? 1 : 0)
       dummy.updateMatrix()
       m.setMatrixAt(i, dummy.matrix)
     })
     m.instanceMatrix.needsUpdate = true
   })
+  const colorsSet = useRef(false)
+  useLayoutEffect(() => {
+    const m = ref.current
+    if (!m || colorsSet.current) return
+    // headlight white, cyan and magenta hover cars
+    const tints = [new THREE.Color(2.4, 2.2, 2.0), new THREE.Color(0.5, 1.9, 2.6), new THREE.Color(2.4, 0.6, 2.0)]
+    for (let i = 0; i < CARS; i++) m.setColorAt(i, tints[i % tints.length])
+    if (m.instanceColor) m.instanceColor.needsUpdate = true
+    colorsSet.current = true
+  }, [])
   return (
     <instancedMesh ref={ref} args={[undefined, undefined, CARS]} frustumCulled={false}>
-      <boxGeometry args={[1.6, 0.35, 0.7]} />
-      <meshBasicMaterial color={new THREE.Color(2.2, 1.6, 2.6)} toneMapped={false} />
+      <boxGeometry args={[1.1, 0.22, 0.45]} />
+      <meshBasicMaterial color="#ffffff" toneMapped={false} />
     </instancedMesh>
   )
 }
@@ -450,7 +464,8 @@ export default function LudoNeonCity() {
   // the distant skyline, where that close row would loom as a wall
   const closeRow = useThree((st) => st.size.height > st.size.width * 1.2)
   return (
-    <group>
+    // named so the board's glass can leave the skyline out of its reflection
+    <group name="ludo-backdrop">
       <fog attach="fog" args={['#2a1350', 60, 210]} />
       <Sky />
       <CityFloor />

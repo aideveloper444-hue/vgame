@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto'
-import { fieldPlayer } from '../../../src/games/poker/data/regulars'
-import { BLIND_LEVELS, TOURNAMENTS, TURN_MS, nextStart, payouts, tournament, type TournamentDef } from '../../../src/games/poker/data/tables'
+import { fieldPlayer } from '../poker/data/regulars'
+import { BLIND_LEVELS, TOURNAMENTS, TURN_MS, nextStart, payouts, tournament, type TournamentDef } from '../poker/data/tables'
 import { config } from '../config'
 import { all, one, run } from '../db'
 import { grant, notify, profileOf, unlock, updateProfile, userById } from '../accounts'

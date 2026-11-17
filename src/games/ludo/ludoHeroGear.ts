@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { RoundedBoxGeometry } from 'three-stdlib'
-import type { LudoColor } from './ludoBoardLayout'
+import { COLOR_GLOW, type LudoColor } from './ludoBoardLayout'
 
 /*
  * Hero gear for the Ludo pieces, as in the lounge poster: red is a caped warrior with a headband, green
@@ -43,6 +43,27 @@ const GEAR: Record<LudoColor, TeamGear> = {
   ORANGE: { cape: '#b84a05', capeLining: '#4a1d02', metal: '#7a3a0c', metalRough: 0.3, metalness: 0.7, trim: '#ffd27a' },
   CYAN: { cape: '#04707f', capeLining: '#022e35', metal: '#0d3f48', metalRough: 0.3, metalness: 0.7, trim: '#8ff6ff', goggles: '#ffd24a' },
   PINK: { cape: '#a0125f', capeLining: '#430628', metal: '#5a0c37', metalRough: 0.3, metalness: 0.7, trim: '#ffc2e2' },
+}
+
+/**
+ * Knight and Vanguard team paint: a saturated automotive-style enamel, far enough apart in hue that red and
+ * yellow (and orange, pink, purple) can't be confused at board distance. The glow on their trim is the
+ * team's own light colour (COLOR_GLOW), never a shared gold.
+ */
+const ENAMEL: Record<LudoColor, string> = {
+  RED: '#d40f2c',
+  GREEN: '#10a84c',
+  YELLOW: '#ffc414',
+  BLUE: '#1d5cff',
+  PURPLE: '#7a3cff',
+  ORANGE: '#ff6510',
+  CYAN: '#0fc3dc',
+  PINK: '#ff2d9a',
+}
+
+/** Glossy team enamel over metal: a clear-coated paint layer with a faint metallic flake. */
+function enamel(color: LudoColor, extra: Partial<THREE.MeshPhysicalMaterialParameters> = {}) {
+  return std(ENAMEL[color], 0.24, 0.45, { clearcoat: 1, clearcoatRoughness: 0.05, ...extra })
 }
 
 const matCache = new Map<string, THREE.Material>()
@@ -289,25 +310,28 @@ function starShape(outer: number, inner: number): THREE.Shape {
   return s
 }
 
-/** Round team shield: metal face, gold rim and boss, and a glowing star. Built facing +Z, centred on 0. */
+/**
+ * Round team shield: a team-enamel face, polished steel rim, boss and studs, and a star that glows in the
+ * team's light colour. (A gold rim and star on every team made red and yellow shields look alike.)
+ * Built facing +Z, centred on 0.
+ */
 function makeShield(color: LudoColor): THREE.Group {
-  const g = GEAR[color]
   const group = new THREE.Group()
   const R = 0.135
-  const face = new THREE.Mesh(new THREE.CylinderGeometry(R, R, 0.022, 40), std(g.metal, g.metalRough, g.metalness))
+  const polished = std('#dfe3ea', 0.18, 0.95)
+  const face = new THREE.Mesh(new THREE.CylinderGeometry(R, R, 0.022, 40), enamel(color))
   face.rotation.x = Math.PI / 2
-  const rim = new THREE.Mesh(new THREE.TorusGeometry(R, 0.014, 10, 48), std(g.trim, 0.2, 1))
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(R, 0.014, 10, 48), polished)
   rim.position.z = 0.006
-  const boss = new THREE.Mesh(new THREE.SphereGeometry(0.035, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), std(g.trim, 0.2, 1))
+  const boss = new THREE.Mesh(new THREE.SphereGeometry(0.035, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), polished)
   boss.rotation.x = Math.PI / 2
   boss.position.z = 0.011
-  const star = new THREE.Mesh(new THREE.ShapeGeometry(starShape(0.085, 0.036)), glowMat(`star-${color}`, g.trim))
+  const star = new THREE.Mesh(new THREE.ShapeGeometry(starShape(0.085, 0.036)), glowMat(`star-${color}`, COLOR_GLOW[color], 1.9))
   star.position.z = 0.0125
   // a ring of studs inside the rim
-  const studMat = std(g.trim, 0.25, 1)
   for (let i = 0; i < 10; i++) {
     const a = (i / 10) * Math.PI * 2
-    const stud = new THREE.Mesh(new THREE.SphereGeometry(0.009, 8, 6), studMat)
+    const stud = new THREE.Mesh(new THREE.SphereGeometry(0.009, 8, 6), polished)
     stud.position.set(Math.cos(a) * (R - 0.022), Math.sin(a) * (R - 0.022), 0.012)
     group.add(stud)
   }
@@ -434,8 +458,9 @@ const darkSteel = () => std('#4b515c', 0.35, 0.85)
  * Parent the helm to the head bone, the breastplate to the chest, each pauldron to its upper arm.
  */
 export function makeKnightKit(color: LudoColor, lm: HeroLandmarks) {
-  const glow = GEAR[color].trim
-  const team = std(GEAR[color].cape ?? GEAR[color].metal, 0.6, 0.05, { sheen: 1, sheenColor: new THREE.Color(glow) })
+  const glow = COLOR_GLOW[color]
+  const team = std(ENAMEL[color], 0.55, 0.05, { sheen: 1, sheenColor: new THREE.Color(glow) })
+  const paint = enamel(color)
   const cx = lm.head.x
   const cy = lm.head.y + 0.1
   const cz = lm.head.z + 0.01
@@ -445,7 +470,7 @@ export function makeKnightKit(color: LudoColor, lm: HeroLandmarks) {
   const R = 0.128
   const barrel = new THREE.Mesh(new THREE.CylinderGeometry(R, R * 1.04, 0.2, 32), steel())
   barrel.position.set(cx, cy - 0.02, cz)
-  const dome = new THREE.Mesh(new THREE.SphereGeometry(R, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2), steel())
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(R, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2), paint)
   dome.position.set(cx, cy + 0.08, cz)
   const slit = new THREE.Mesh(new RoundedBoxGeometry(0.17, 0.02, 0.03, 2, 0.008), mat(`slit-${color}`, () => new THREE.MeshBasicMaterial({ color: new THREE.Color(glow).multiplyScalar(0.6) })))
   slit.position.set(cx, cy + 0.015, cz + R - 0.006)
@@ -478,7 +503,7 @@ export function makeKnightKit(color: LudoColor, lm: HeroLandmarks) {
   const breastplate = new THREE.Group()
   const w = Math.abs(lm.shoulderL.x - lm.shoulderR.x) * 0.82
   const frontZ = lm.chest.z + 0.1
-  const plate = new THREE.Mesh(new RoundedBoxGeometry(w, 0.27, 0.07, 4, 0.03), steel())
+  const plate = new THREE.Mesh(new RoundedBoxGeometry(w, 0.27, 0.07, 4, 0.03), paint)
   plate.position.set(lm.chest.x, lm.chest.y - 0.05, frontZ)
   const medial = new THREE.Mesh(new RoundedBoxGeometry(0.02, 0.25, 0.02, 2, 0.008), steel())
   medial.position.set(lm.chest.x, lm.chest.y - 0.05, frontZ + 0.037)
@@ -491,7 +516,7 @@ export function makeKnightKit(color: LudoColor, lm: HeroLandmarks) {
   const pauldron = (at: THREE.Vector3, side: number) => {
     const g = new THREE.Group()
     for (let i = 0; i < 3; i++) {
-      const lame = new THREE.Mesh(new THREE.SphereGeometry(0.085 - i * 0.008, 24, 12, 0, Math.PI * 2, 0, Math.PI * 0.5), i ? darkSteel() : steel())
+      const lame = new THREE.Mesh(new THREE.SphereGeometry(0.085 - i * 0.008, 24, 12, 0, Math.PI * 2, 0, Math.PI * 0.5), i ? steel() : paint)
       lame.scale.set(1.15, 0.7, 1.15)
       lame.position.set(side * i * 0.012, -i * 0.028, 0)
       g.add(lame)
@@ -519,7 +544,7 @@ export function makeKnightGuard(color: LudoColor, from: THREE.Vector3, to: THREE
   const dir = to.clone().sub(from)
   const len = dir.length() * 0.75
   const guard = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.95, radius * 1.12, len, 18, 1, true), std('#c6cbd5', 0.26, 0.9, { side: THREE.DoubleSide }))
-  const band = new THREE.Mesh(new THREE.TorusGeometry(radius * 1.13, radius * 0.14, 8, 24), glowMat(`kguard-${color}`, GEAR[color].trim, 1.6))
+  const band = new THREE.Mesh(new THREE.TorusGeometry(radius * 1.13, radius * 0.14, 8, 24), glowMat(`kguard-${color}`, COLOR_GLOW[color], 1.6))
   band.rotation.x = Math.PI / 2
   band.position.y = -len / 2
   group.add(guard, band)
@@ -535,8 +560,8 @@ export function makeKnightGuard(color: LudoColor, from: THREE.Vector3, to: THREE
  * a team chest rig with a light strip, and compact shoulder plates, worn over a dark undersuit.
  */
 export function makeVanguardKit(color: LudoColor, lm: HeroLandmarks) {
-  const glow = GEAR[color].trim
-  const shell = std(GEAR[color].cape ?? GEAR[color].metal, 0.28, 0.55, { clearcoat: 1, clearcoatRoughness: 0.08 })
+  const glow = COLOR_GLOW[color]
+  const shell = enamel(color)
   const dark = std('#1d2029', 0.45, 0.4)
   const cx = lm.head.x
   const cy = lm.head.y + 0.1
@@ -596,8 +621,8 @@ export function makeVanguardGuard(color: LudoColor, from: THREE.Vector3, to: THR
   const group = new THREE.Group()
   const dir = to.clone().sub(from)
   const len = dir.length() * 0.7
-  const guard = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.95, radius * 1.1, len, 18, 1, true), std(GEAR[color].cape ?? GEAR[color].metal, 0.28, 0.55, { side: THREE.DoubleSide, clearcoat: 1, clearcoatRoughness: 0.08 }))
-  const seam = new THREE.Mesh(new THREE.TorusGeometry(radius * 1.1, radius * 0.08, 6, 24), glowMat(`vseam-${color}`, GEAR[color].trim, 2))
+  const guard = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.95, radius * 1.1, len, 18, 1, true), enamel(color, { side: THREE.DoubleSide }))
+  const seam = new THREE.Mesh(new THREE.TorusGeometry(radius * 1.1, radius * 0.08, 6, 24), glowMat(`vseam-${color}`, COLOR_GLOW[color], 2))
   seam.rotation.x = Math.PI / 2
   seam.position.y = len * 0.2
   group.add(guard, seam)

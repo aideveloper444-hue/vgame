@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build the full VIBO Android app (com.Vibo.myvibo: Ludo, City, Poker, Wildbound and the hub) on this Mac.
+# Build the full VIBO Android app (com.Vibo.myvibo: Ludo, City, Wildbound and the hub) on this Mac.
 #   tools/build-vibo-apk.sh            -> debug APK (installable by side-loading)
 #   tools/build-vibo-apk.sh release    -> release APK (needs the upload keystore, see android/app/build.gradle)
 #   tools/build-vibo-apk.sh aab        -> signed App Bundle for Google Play Console (dist-apk/VIBO-release.aab)

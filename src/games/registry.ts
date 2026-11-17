@@ -1,7 +1,7 @@
 import type { LucideIcon } from 'lucide-react'
-import { Dices, Building2, Spade, Trees } from 'lucide-react'
+import { Dices, Building2, Trees } from 'lucide-react'
 
-export type GameId = 'ludo' | 'city' | 'poker' | 'wildbound'
+export type GameId = 'ludo' | 'city' | 'wildbound'
 
 export interface GameDefinition {
   id: GameId
@@ -46,9 +46,9 @@ export const GAME_REGISTRY: Record<GameId, GameDefinition> = {
   },
   city: {
     id: 'city',
-    name: 'City',
-    tagline: 'Build your empire',
-    description: 'Buy properties, build your empire and outplay your friends in this original city economy game.',
+    name: 'World Tycoon',
+    tagline: 'Buy · Build · Bank the world',
+    description: 'Fly around the world, buy famous cities, build Offices, Bungalows and Godowns, win the Grand Club pot and gamble for the Casino jackpot.',
     playersLabel: '2–4 Players',
     minPlayers: 2,
     maxPlayers: 4,
@@ -58,43 +58,20 @@ export const GAME_REGISTRY: Record<GameId, GameDefinition> = {
     icon: Building2,
     route: 'city',
     howToPlay: [
-      'Everyone starts with ₹25,000. Highest opening roll starts. Roll a 6 to roll again — three 6s in a row sends you to Jail.',
-      'Buy cities and concerns (Airport, Steamer, Railway, Transport, Radio, Post Office), or pay ₹250 and the Bank auctions them.',
-      'Own both concerns of a pair for higher rent. Taxes cost ₹50 per property; Merchant\'s Club and Milk Bar bills go to the other players.',
-      'Own a whole colour set to double its rent, then build an office, bungalow and godown evenly.',
-      'Short of cash? Erections sell back at half price and sites mortgage for 50% (10% interest to redeem).',
-      'Jail: roll a 6 or pay the fine within 3 turns. Last player standing wins.',
+      'Everyone starts with $25,000. Roll two dice and move clockwise; passing START pays $1000. Double six rolls again, three in a row is Jail.',
+      'Buy unowned cities and companies at the printed price, or the Bank auctions them from $100. Owners collect the rent on the deed.',
+      'Own a whole colour to double its site rent, then build an Office, Bungalow and Godown evenly. Companies earn more with their partner.',
+      'Taxes and fines fill the Grand Club pot: land on the Grand Club to win it. At the Casino, bet $1000 and roll a 6 for the jackpot.',
+      'Short of cash? Sell buildings for half and mortgage deeds for half the price (10% to lift). Last tycoon in business wins.',
     ],
-    rewardsBlurb: 'Coins scale with your final net worth.',
-    singlePlayerCapable: true,
-  },
-  poker: {
-    id: 'poker',
-    name: 'Royal Poker Club',
-    tagline: 'Play · Win · Enjoy',
-    description: 'Texas Hold’em with free points: practice, classic and VIP tables, free tournaments, and private rooms with your friends. 18+.',
-    playersLabel: '2–6 Players',
-    minPlayers: 2,
-    maxPlayers: 6,
-    difficulty: 'Medium',
-    accentVar: '--color-poker-accent',
-    accentHex: '#e9b33a',
-    icon: Spade,
-    route: 'poker',
-    howToPlay: [
-      'Make the best five-card hand from your two cards and the five on the table.',
-      'Fold, check, call, bet or raise when it is your turn; you have 15 seconds.',
-      'Win points at Classic and VIP tables, or play free tournaments for point prizes.',
-      'Points are free: they can never be bought, sent to others or cashed out.',
-    ],
-    rewardsBlurb: 'Daily bonuses, missions and tournament prizes, all in free points.',
+    rewardsBlurb: 'Coins and XP for every game, more for the winner.',
     singlePlayerCapable: true,
   },
   wildbound: {
     id: 'wildbound',
-    name: 'Wildbound',
+    name: 'Amazon Run',
     tagline: 'Run · Explore · Survive',
-    description: 'Deep Forest Run: race Sonic the Rottweiler and nine wild animals through dense forest, waterfall gorges, hilly trails, river crossings and ancient ruins.',
+    description: 'Into the wild: race Sonic the Rottweiler and nine wild animals through dense forest, waterfall gorges, hilly trails, river crossings and ancient ruins.',
     playersLabel: '1 Player',
     minPlayers: 1,
     maxPlayers: 1,

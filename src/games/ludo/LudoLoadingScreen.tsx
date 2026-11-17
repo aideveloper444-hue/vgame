@@ -4,6 +4,7 @@ import { COLOR_GLOW, COLOR_HEX } from './ludoBoardLayout'
 import { seatColors } from './ludoBoards'
 import LudoAvatar from './LudoAvatar'
 import type { Seat } from '@/games/shared/online/matchStore'
+import LudoJewelWallpaper from './LudoWallpaper'
 
 const TIPS = [
   'Roll a 6 to bring a character out of base.',
@@ -26,12 +27,13 @@ export default function LudoLoadingScreen({ seats, ready }: { seats: Seat[]; rea
 
   return (
     <div
-      className={`absolute inset-0 z-[60] flex flex-col items-center justify-center overflow-hidden bg-[#07040f]/80 px-6 backdrop-blur-md transition-opacity duration-500 ${
+      className={`absolute inset-0 z-[60] flex flex-col items-center justify-center overflow-hidden bg-[#07040f] px-6 transition-opacity duration-500 ${
         ready ? 'pointer-events-none opacity-0' : 'opacity-100'
       }`}
       aria-busy={!ready}
       aria-live="polite"
     >
+      <LudoJewelWallpaper dim={0.62} />
       <div className="ludo-load-glow pointer-events-none absolute left-1/2 top-1/2 h-[34rem] w-[34rem] -translate-x-1/2 -translate-y-1/2 rounded-full" />
 
       <div className="relative flex items-center gap-2.5">

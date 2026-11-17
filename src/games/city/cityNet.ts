@@ -6,11 +6,15 @@ import { CITY_BOT_NAMES, useCityMatch } from './cityMatch'
 export type CityAction =
   | { t: 'roll' }
   | { t: 'buy'; buy: boolean }
-  | { t: 'auction'; action: 'BID' | 'PASS' }
+  | { t: 'auction'; action: 'BID' | 'PASS'; raise?: number }
+  | { t: 'casino'; bet: boolean }
   | { t: 'upgrade'; tileId: number }
+  | { t: 'sell'; tileId: number }
+  | { t: 'mortgage'; tileId: number }
   | { t: 'redeem'; tileId: number }
   | { t: 'payFine' }
-  | { t: 'trade'; toPlayerId: string; offerIds: number[]; requestIds: number[] }
+  | { t: 'freePass' }
+  | { t: 'trade'; toPlayerId: string; offerIds: number[]; requestIds: number[]; offerCash?: number; requestCash?: number }
   | { t: 'tradeReply'; tradeId: string; accept: boolean }
   | { t: 'end' }
   | { t: 'chat'; text: string }
@@ -23,10 +27,10 @@ const SNAPSHOT_KEYS = [
   'players',
   'currentPlayerIndex',
   'roundNumber',
-  'diceValue',
+  'dice',
+  'rollSeq',
   'phase',
   'pendingMovePath',
-  'activeEvents',
   'pendingTrades',
   'auction',
   'lastEvent',
@@ -35,10 +39,14 @@ const SNAPSHOT_KEYS = [
   'config',
   'doublesStreak',
   'extraTurn',
+  'decks',
+  'clubPot',
+  'casinoTray',
+  'casinoResult',
 ] as const
 
 const room = createPeerRoom<CityAction, CityEvent>({
-  prefix: 'vgame-city-v3-',
+  prefix: 'vgame-tycoon-v1-',
   botNames: CITY_BOT_NAMES,
   snapshot: () => {
     const st = useCityStore.getState() as unknown as Record<string, unknown>
@@ -91,24 +99,36 @@ export function setCityNetHandlers(h: { onChat: (playerId: string, name: string,
           if (theirTurn && st.phase === 'AWAITING_BUY_DECISION') st.resolveBuyDecision(Boolean(a.buy))
           break
         case 'auction':
-          if (st.phase === 'AUCTION' && st.auction?.queue[0] === seatId) st.submitAuctionAction(seatId, a.action === 'BID' ? 'BID' : 'PASS')
+          if (st.phase === 'AUCTION' && st.auction?.queue[0] === seatId) st.submitAuctionAction(seatId, a.action === 'BID' ? 'BID' : 'PASS', Number(a.raise) || 100)
+          break
+        case 'casino':
+          if (theirTurn && st.phase === 'CASINO') st.casinoDecision(Boolean(a.bet))
           break
         case 'upgrade':
-          if (theirTurn && st.phase === 'POST_MOVE_ACTIONS') st.upgradeProperty(Number(a.tileId))
+          if (theirTurn) st.upgradeProperty(Number(a.tileId))
+          break
+        case 'sell':
+          if (theirTurn) st.sellBuilding(Number(a.tileId))
+          break
+        case 'mortgage':
+          if (theirTurn) st.mortgageProperty(Number(a.tileId))
           break
         case 'redeem':
-          if (theirTurn && st.phase === 'POST_MOVE_ACTIONS') st.redeemProperty(Number(a.tileId))
+          if (theirTurn) st.redeemProperty(Number(a.tileId))
           break
         case 'payFine':
           if (theirTurn && st.phase === 'ROLLING') st.payJailFine()
           break
+        case 'freePass':
+          if (theirTurn && st.phase === 'ROLLING') st.useFreePass()
+          break
         case 'trade':
-          if (theirTurn && st.phase === 'POST_MOVE_ACTIONS')
+          if (theirTurn && (st.phase === 'POST_MOVE_ACTIONS' || st.phase === 'ROLLING'))
             st.proposeTrade({
               fromPlayerId: seatId,
               toPlayerId: String(a.toPlayerId),
-              offer: { cash: 0, propertyIds: (a.offerIds ?? []).map(Number) },
-              request: { cash: 0, propertyIds: (a.requestIds ?? []).map(Number) },
+              offer: { cash: Math.max(0, Number(a.offerCash) || 0), propertyIds: (a.offerIds ?? []).map(Number) },
+              request: { cash: Math.max(0, Number(a.requestCash) || 0), propertyIds: (a.requestIds ?? []).map(Number) },
             })
           break
         case 'tradeReply': {

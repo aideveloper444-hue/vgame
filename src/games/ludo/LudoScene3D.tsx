@@ -15,8 +15,10 @@ import { useLudoStore, type LudoToken } from './ludoStore'
 import { create } from 'zustand'
 import { ludoSfx } from '@/lib/sound'
 import { BOARD_THEMES, useBoardTheme, type BoardThemeId } from './ludoThemes'
+import { PHOTO_HALF, photoBoardTexture, type BoardImageCalibration } from './ludoImageBoard'
 import LudoPortraitStudio from './LudoPortraitStudio'
 import LudoNeonCity from './LudoNeonCity'
+import LudoGlass from './LudoGlass'
 import { ALL_COLORS, COLOR_DEEP, COLOR_GLOW, type ClassicColor, type LudoColor } from './ludoBoardLayout'
 
 /**
@@ -118,6 +120,12 @@ function useBoard(): LudoBoard {
   return getBoard(useLudoStore((s) => s.arms))
 }
 
+/** The board photo to show instead of the 3D board, when the theme has one and the board is classic. */
+function usePhotoBoard(): BoardImageCalibration | null {
+  const image = BOARD_THEMES[useBoardTheme((s) => s.themeId)].image
+  return useBoard().kind === 'classic' && image ? image : null
+}
+
 function hdr(hex: string, intensity: number): THREE.Color {
   return new THREE.Color(hex).multiplyScalar(intensity)
 }
@@ -132,6 +140,9 @@ function fitPoints(board: LudoBoard): THREE.Vector3[] {
   return out
 }
 
+/** Camera elevation: straight down at the board (a hair under 90 so lookAt keeps the screen's up axis). */
+const BOARD_VIEW_DEG = 89.5
+
 /** How far the orthographic camera sits from the board centre (only its direction matters for the picture). */
 const CAM_RANGE = 60
 
@@ -145,7 +156,17 @@ const CAM_RANGE = 60
  */
 function CameraRig({ slot }: { slot: BoardSlot | null }) {
   const board = useBoard()
-  const FIT_CORNERS = useMemo(() => fitPoints(board), [board])
+  const photo = usePhotoBoard()
+  const FIT_CORNERS = useMemo(() => {
+    if (!photo) return fitPoints(board)
+    // a board photo: fit its four corners exactly (no slab under it), plus warrior heads along the far edge
+    const h = PHOTO_HALF
+    const top = CHARACTER_HEIGHT * board.pieceScale + 0.2
+    return [
+      new THREE.Vector3(-h, TILE_TOP, -h), new THREE.Vector3(h, TILE_TOP, -h), new THREE.Vector3(h, TILE_TOP, h), new THREE.Vector3(-h, TILE_TOP, h),
+      new THREE.Vector3(-h * 0.8, top, -h * 0.8), new THREE.Vector3(h * 0.8, top, -h * 0.8),
+    ]
+  }, [board, photo])
   const camRef = useRef<THREE.OrthographicCamera>(null)
   const width = useThree((s) => s.size.width)
   const height = useThree((s) => s.size.height)
@@ -220,7 +241,7 @@ function CameraRig({ slot }: { slot: BoardSlot | null }) {
           const b = bounds()
           // portrait screens are width-bound: let the outer glass frame (~0.24 units past the gold bezel)
           // run off the screen edges, so the playing squares themselves fill the width
-          const bleed = portraitStage ? 0.24 * mid : 0
+          const bleed = portraitStage && !photo ? 0.24 * mid : 0
           const fits = b.minX >= left + padX - bleed && b.maxX <= left + slotW - padX + bleed && b.minY >= top + padTop && b.headY >= top + padTop && b.maxY <= top + slotH - padY
           if (fits) lo = mid
           else hi = mid
@@ -242,14 +263,20 @@ function CameraRig({ slot }: { slot: BoardSlot | null }) {
     // board, take the steepest: the board then looks closest to a true square.
     // (a steeper portrait view was tried to stretch the board toward the name cards, but it flattened the
     // warriors into top-down silhouettes and could not make a width-bound board any bigger)
-    const [lowDeg, highDeg] = portraitStage ? [52, 68] : [40, 60]
+    // straight down (the user asked for the board square to the screen, every corner 90 degrees, on every device)
+    const [lowDeg, highDeg] = [BOARD_VIEW_DEG, BOARD_VIEW_DEG]
     const tries = []
     for (let deg = lowDeg; deg <= highDeg; deg += 2) tries.push(fitAt(deg))
     const maxZoom = Math.max(...tries.map((t) => t.zoom))
     let best = tries.filter((t) => t.zoom >= maxZoom * 0.99).pop()!
     // Portrait: stretch the board's depth as far as the free height allows without shrinking it.
     let stretch = 1
-    if (portraitStage) {
+    if (photo) {
+      // a board photo must look exactly square: undo the tilt's foreshortening of its depth, no more
+      stretch = Math.min(MAX_STRETCH, 1 / Math.sin(THREE.MathUtils.degToRad(best.deg)))
+      stretchPoints(stretch)
+      best = fitAt(best.deg)
+    } else if (portraitStage && BOARD_VIEW_DEG < 85) {
       let lo = 1
       let hi = MAX_STRETCH
       for (let i = 0; i < 10; i++) {
@@ -268,7 +295,7 @@ function CameraRig({ slot }: { slot: BoardSlot | null }) {
     shiftY = best.shiftY
     place(best.zoom)
     fit.current = { elevation, zoom: best.zoom }
-  }, [width, height, left, top, slotW, slotH, portraitStage, FIT_CORNERS, setStretch])
+  }, [width, height, left, top, slotW, slotH, portraitStage, FIT_CORNERS, setStretch, photo])
 
   useFrame(() => {
     // no idle sway: the board stays perfectly square to the screen; only a capture impact shakes it
@@ -520,8 +547,8 @@ function CenterPyramid() {
       {faces.map(({ color, g }) => (
         <mesh key={color} geometry={g} castShadow receiveShadow>
           {neonTheme ? (
-            // smoked black glass: each face only tinted by its team, so the neon base line pops
-            <meshStandardMaterial color="#030305" emissive={COLOR_GLOW[color]} emissiveIntensity={0.1} roughness={0.75} metalness={0} envMapIntensity={0.15} side={THREE.DoubleSide} />
+            // lit team glass: each face glows in its team's colour so the finish reads at a glance
+            <meshPhysicalMaterial color={COLOR_DEEP[color]} emissive={COLOR_GLOW[color]} emissiveIntensity={0.42} roughness={0.22} metalness={0.1} clearcoat={1} clearcoatRoughness={0.05} envMapIntensity={0.6} side={THREE.DoubleSide} />
           ) : (
             <meshPhysicalMaterial color={COLOR_DEEP[color]} emissive={COLOR_GLOW[color]} emissiveIntensity={0.18} roughness={0.28} metalness={0.25} clearcoat={1} clearcoatRoughness={0.08} side={THREE.DoubleSide} />
           )}
@@ -1210,6 +1237,19 @@ function TokenPiece({ color, variant, target, scale, pose, selectable, puddle, r
         <planeGeometry args={[0.44, 0.44]} />
         <meshBasicMaterial map={contactShadowTexture()} color="#000000" transparent opacity={0.45} depthWrite={false} />
       </mesh>
+      {!inYard && (
+        // team identity on the walkway: a neon ring and a soft colour pool under every warrior
+        <>
+          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.006, 0]}>
+            <circleGeometry args={[0.3, 40]} />
+            <meshBasicMaterial map={contactShadowTexture()} color={hdr(glow, 1.4)} transparent opacity={0.55} depthWrite={false} blending={THREE.AdditiveBlending} toneMapped={false} />
+          </mesh>
+          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.012, 0]}>
+            <ringGeometry args={[0.235, 0.27, 48]} />
+            <meshBasicMaterial color={hdr(glow, 2.4)} toneMapped={false} />
+          </mesh>
+        </>
+      )}
       {selectable && !inYard && (
         <mesh ref={pickRingRef} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
           <ringGeometry args={[0.3, 0.36, 48]} />
@@ -1248,6 +1288,7 @@ function PawnLayer({
   onSelectToken: (tokenId: string) => void
 }) {
   const players = useLudoStore((s) => s.players)
+  const photo = usePhotoBoard()
   const phase = useLudoStore((s) => s.phase)
   const currentPlayerIndex = useLudoStore((s) => s.currentPlayerIndex)
   const pendingMove = useLudoStore((s) => s.pendingMove)
@@ -1423,7 +1464,7 @@ function PawnLayer({
     const [x, z] = p.pos
     const k = board.pieceScale
     // finished characters stand small on their team's triangle of the center home
-    if (p.distance >= board.finish && !p.victim) return { pos: [x, TILE_TOP + (board.kind === 'classic' ? pyramidLift(x, z) : 0), z], scale: 0.58 * k }
+    if (p.distance >= board.finish && !p.victim) return { pos: [x, TILE_TOP + (board.kind === 'classic' && !photo ? pyramidLift(x, z) : 0), z], scale: 0.58 * k }
     if (p.distance === -1 && !p.victim) return { pos: [x, YARD_TOP, z], scale: k }
     // a captured character is knocked a step past the attacker before it vanishes home
     if (p.victim) return { pos: [x + mdx * 0.46, TILE_TOP, z + mdz * 0.46], scale: k }
@@ -1985,15 +2026,33 @@ export function BoardNeon() {
 }
 
 
+/**
+ * A board photo exactly as painted: one flat, unlit plane (scene lights and tone mapping leave its colours
+ * untouched) carrying the photo's own frame and corner ornaments, with no 3D frame, glass or emblem.
+ */
+function PhotoBoard({ cal }: { cal: BoardImageCalibration }) {
+  const map = useMemo(() => photoBoardTexture(cal), [cal])
+  return (
+    <mesh position={[0, TILE_TOP, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+      <planeGeometry args={[PHOTO_HALF * 2, PHOTO_HALF * 2]} />
+      <meshBasicMaterial map={map} toneMapped={false} />
+    </mesh>
+  )
+}
+
 /** Table, body, painted surface and center emblem for whichever board this game uses. */
 function BoardBody() {
   const board = useBoard()
+  const photo = usePhotoBoard()
+  if (photo) return <PhotoBoard cal={photo} />
   if (board.kind === 'classic') {
     return (
       <>
         <Table radius={SLAB_HALF} />
         <BoardFrame />
         <BoardSurface />
+        {/* polished glass over the play surface: warriors, neon and lights reflect in it */}
+        <LudoGlass size={CLASSIC_TOTAL} height={TILE_TOP + TILE_RELIEF * 0.12 + 0.003} />
         <CenterPyramid />
         <CenterEmblem radius={CLASSIC_LANE * 0.46} raised={PYRAMID_RISE + 0.045} />
       </>
@@ -2005,7 +2064,21 @@ function BoardBody() {
       <Table radius={g.circumradius + 0.3} />
       <RadialFrame board={board} />
       <RadialSurface board={board} />
+      <LudoGlass size={g.circumradius * 1.7} height={TILE_TOP + TILE_RELIEF * 0.12 + 0.003} strength={0.45} />
       <CenterEmblem radius={Math.min(g.r0 * 0.42, CELL * 0.85)} />
+    </>
+  )
+}
+
+/** Lights, neon, dust and the active-player spotlight over the board; none over a board photo. */
+function BoardEffects() {
+  if (usePhotoBoard()) return null
+  return (
+    <>
+      <BoardLights />
+      <AmbientDust />
+      <BoardNeon />
+      <ActiveSpotlight />
     </>
   )
 }
@@ -2104,10 +2177,7 @@ export default function LudoScene3D({
       <spotLight position={[-8, 6, -4]} angle={0.6} penumbra={1} intensity={0.5} color="#b36bff" />
       <BoardSpin>
         <BoardBody />
-        <BoardLights />
-        <AmbientDust />
-        <BoardNeon />
-        <ActiveSpotlight />
+        <BoardEffects />
         <SceneErrorBoundary label="pawns">
           <Suspense fallback={null}>
             <PawnLayer authoritative={authoritative} localIds={localIds} onSelectToken={select} />

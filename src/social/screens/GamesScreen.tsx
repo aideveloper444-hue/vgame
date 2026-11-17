@@ -19,7 +19,6 @@ const FILTERS: { key: Filter; label: string }[] = [
 const KIND: Record<GameDefinition['id'], string> = {
   ludo: 'Board game',
   city: 'Strategy',
-  poker: 'Card game',
   wildbound: 'Endless runner',
 }
 

@@ -5,8 +5,10 @@ import { ludoRoom } from './ludoNet'
 import { useLudoPortraits } from './ludoPortraits'
 import LudoAvatar from './LudoAvatar'
 import GameModeMenu from '@/games/shared/online/GameModeMenu'
-import { Check } from 'lucide-react'
-import { BOARD_THEMES, CHARACTER_STYLES, STYLE_ORDER, THEME_ORDER, useBoardTheme, useCharacterStyle, type BoardTheme, type CharacterStyleId } from './ludoThemes'
+import { Check, Lock } from 'lucide-react'
+import { useState } from 'react'
+import { BOARD_PRICE_INR, purchaseBoard, restoreBoards } from './ludoShop'
+import { BOARD_THEMES, CHARACTER_STYLES, FREE_THEMES, STYLE_ORDER, THEME_ORDER, useBoardTheme, useCharacterStyle, useOwnedBoards, type BoardTheme, type BoardThemeId, type CharacterStyleId } from './ludoThemes'
 
 const COUNTS = Array.from({ length: MAX_PLAYERS - MIN_PLAYERS + 1 }, (_, i) => i + MIN_PLAYERS)
 const seatColor = (i: number, total: number) => seatColors(total)[i] ?? 'RED'
@@ -144,23 +146,46 @@ function ThemeSwatch({ theme }: { theme: BoardTheme }) {
   )
 }
 
-/** Four board looks to pick from before the match; the choice is remembered on this device. */
+/** The board looks: the free ones first, then the ones to unlock for BOARD_PRICE_INR each. The choice is remembered on this device. */
 function ThemePicker() {
   const themeId = useBoardTheme((st) => st.themeId)
   const setTheme = useBoardTheme((st) => st.setTheme)
+  const owned = useOwnedBoards((st) => st.owned)
+  const [note, setNote] = useState<string | null>(null)
+  const [busy, setBusy] = useState<BoardThemeId | null>(null)
+  const unlocked = (id: BoardThemeId) => FREE_THEMES.includes(id) || owned.includes(id)
+  const pick = async (id: BoardThemeId) => {
+    if (unlocked(id)) {
+      setTheme(id)
+      return
+    }
+    setBusy(id)
+    setNote(null)
+    try {
+      await purchaseBoard(id)
+      setNote(`${BOARD_THEMES[id].name} unlocked`)
+    } catch (e) {
+      setNote((e as Error).message)
+    } finally {
+      setBusy(null)
+    }
+  }
   return (
     <div className="mt-3">
       <p className="mb-1.5 text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">Board theme</p>
-      <div className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${THEME_ORDER.length}, minmax(0, 1fr))` }}>
+      <div className="grid grid-cols-3 gap-1.5">
         {THEME_ORDER.map((id) => {
           const t = BOARD_THEMES[id]
           const on = id === themeId
+          const locked = !unlocked(id)
           return (
             <button
               key={id}
               type="button"
-              onClick={() => setTheme(id)}
+              onClick={() => void pick(id)}
+              disabled={busy !== null}
               aria-pressed={on}
+              aria-label={locked ? `${t.name}: unlock for ${BOARD_PRICE_INR}` : t.name}
               className="group relative flex flex-col items-center rounded-2xl p-1.5 text-center transition-transform active:scale-95"
               style={{
                 background: on ? `linear-gradient(180deg, ${t.inlay[1]}33, rgba(0,0,0,0.25))` : 'rgba(0,0,0,0.25)',
@@ -168,8 +193,15 @@ function ThemePicker() {
               }}
             >
               <span className="block aspect-square w-full overflow-hidden rounded-xl transition-transform duration-300 group-hover:scale-[1.04]">
-                <ThemeSwatch theme={t} />
+                {t.image ? <img src={t.image.url} alt="" className={`h-full w-full object-cover ${locked ? 'opacity-55' : ''}`} loading="lazy" draggable={false} /> : <ThemeSwatch theme={t} />}
               </span>
+              {locked && (
+                <span className="pointer-events-none absolute inset-x-1.5 top-1.5 flex aspect-square items-center justify-center">
+                  <span className="flex items-center gap-1 rounded-full bg-black/75 px-2 py-1 text-[11px] font-black text-amber-200 ring-1 ring-amber-300/60">
+                    <Lock size={11} strokeWidth={3} /> {busy === id ? '…' : BOARD_PRICE_INR}
+                  </span>
+                </span>
+              )}
               <span className="mt-1 line-clamp-1 text-[10.5px] font-black leading-tight text-white">{t.name}</span>
               <span className="line-clamp-1 text-[9px] font-semibold leading-tight text-slate-400">{t.tagline}</span>
               {on && (
@@ -180,6 +212,23 @@ function ThemePicker() {
             </button>
           )
         })}
+      </div>
+      <div className="mt-1.5 flex items-center justify-between gap-2">
+        <p className="min-w-0 text-[10.5px] font-semibold leading-snug text-slate-400">{note ?? `Locked boards unlock for ${BOARD_PRICE_INR} each, yours for good.`}</p>
+        <button
+          type="button"
+          className="shrink-0 text-[10.5px] font-black text-sky-300 underline-offset-2 hover:underline"
+          onClick={async () => {
+            try {
+              const n = await restoreBoards()
+              setNote(n ? `Restored ${n} board${n > 1 ? 's' : ''}` : 'Nothing to restore')
+            } catch (e) {
+              setNote((e as Error).message)
+            }
+          }}
+        >
+          Restore
+        </button>
       </div>
     </div>
   )

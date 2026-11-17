@@ -156,14 +156,6 @@ export function paintBoard(size = 2048, theme: BoardTheme = BOARD_THEMES.obsidia
     glow.stroke()
     glow.restore()
   }
-  const diamond = (g: CanvasRenderingContext2D, s: number, cx: number, cy: number, r: number) => {
-    g.beginPath()
-    g.moveTo(cx * s, (cy - r) * s)
-    g.lineTo((cx + r) * s, cy * s)
-    g.lineTo(cx * s, (cy + r) * s)
-    g.lineTo((cx - r) * s, cy * s)
-    g.closePath()
-  }
 
   /** Fine grain over a stone surface, so flat fills read as a real material. */
   const grain = (x: number, y: number, w: number, h: number, alpha: number) => {
@@ -194,6 +186,18 @@ export function paintBoard(size = 2048, theme: BoardTheme = BOARD_THEMES.obsidia
     roundRect(ctx, px(q.col) + c * 0.45, px(q.row) + c * 0.45, px(q.col + 6) - px(q.col) - c * 0.9, px(q.col + 6) - px(q.col) - c * 0.9, c * 0.3)
     ctx.stroke()
     grain(px(q.col), px(q.row), px(q.col + 6) - px(q.col), px(q.col + 6) - px(q.col), 0.02)
+    if (neon) {
+      // a soft wash of team light over the whole quadrant, so each corner owns its colour
+      const qs = px(q.col + 6) - px(q.col)
+      const qcx = px(q.col) + qs / 2
+      const qcy = px(q.row) + qs / 2
+      const wash = ctx.createRadialGradient(qcx, qcy, qs * 0.2, qcx, qcy, qs * 0.75)
+      wash.addColorStop(0, shade(COLOR_DEEP[color], -0.35))
+      wash.addColorStop(1, shade(COLOR_DEEP[color], -0.82))
+      ctx.fillStyle = wash
+      roundRect(ctx, px(q.col) + c * 0.08, px(q.row) + c * 0.08, qs - c * 0.16, qs - c * 0.16, c * 0.3)
+      ctx.fill()
+    }
     const g = ctx.createLinearGradient(x, y, x + w, y + w)
     g.addColorStop(0, jewel(color, theme.plate[0]))
     g.addColorStop(0.55, jewel(color, theme.plate[1]))
@@ -238,14 +242,21 @@ export function paintBoard(size = 2048, theme: BoardTheme = BOARD_THEMES.obsidia
     }
 
     // recessed black-marble yard where waiting warriors stand
-    const yx = px(q.col + 1.45)
-    const yy = px(q.row + 1.45)
-    const yw = px(q.col + 4.55) - px(q.col + 1.45)
+    const yx = px(q.col + 1.3)
+    const yy = px(q.row + 1.3)
+    const yw = px(q.col + 4.7) - px(q.col + 1.3)
     const yr = c * 0.3
     const yard = ctx.createLinearGradient(yx, yy, yx + yw, yy + yw)
-    yard.addColorStop(0, theme.yard[0])
-    yard.addColorStop(0.6, theme.yard[1])
-    yard.addColorStop(1, theme.yard[2])
+    if (neon) {
+      // smoked team glass: dark enough for the warriors to stand out, but clearly that team's yard
+      yard.addColorStop(0, shade(COLOR_DEEP[color], -0.45))
+      yard.addColorStop(0.6, shade(COLOR_DEEP[color], -0.68))
+      yard.addColorStop(1, shade(COLOR_DEEP[color], -0.82))
+    } else {
+      yard.addColorStop(0, theme.yard[0])
+      yard.addColorStop(0.6, theme.yard[1])
+      yard.addColorStop(1, theme.yard[2])
+    }
     roundRect(ctx, yx, yy, yw, yw, yr)
     ctx.fillStyle = yard
     ctx.fill()
@@ -269,7 +280,7 @@ export function paintBoard(size = 2048, theme: BoardTheme = BOARD_THEMES.obsidia
     ctx.fillRect(yx, yy, yw, yw)
     ctx.restore()
     ctx.lineWidth = c * 0.03
-    ctx.strokeStyle = shade(GOLD, -0.2)
+    ctx.strokeStyle = neon ? shade(COLOR_GLOW[color], -0.35) : shade(GOLD, -0.2)
     roundRect(ctx, yx, yy, yw, yw, yr)
     ctx.stroke()
 
@@ -278,7 +289,7 @@ export function paintBoard(size = 2048, theme: BoardTheme = BOARD_THEMES.obsidia
     for (const [sr, sc] of BASE_SLOT_COORDS[color]) {
       const cx = px(sc + 0.5)
       const cy = px(sr + 0.5)
-      const R = c * 0.6
+      const R = c * 0.56
       const well = ctx.createRadialGradient(cx, cy - R * 0.2, R * 0.1, cx, cy, R)
       well.addColorStop(0, shade(theme.yard[2], -0.55))
       well.addColorStop(0.75, theme.yard[2])
@@ -288,7 +299,7 @@ export function paintBoard(size = 2048, theme: BoardTheme = BOARD_THEMES.obsidia
       ctx.fillStyle = well
       ctx.fill()
       ctx.lineWidth = c * 0.05
-      ctx.strokeStyle = GOLD
+      ctx.strokeStyle = neon ? shade(COLOR_GLOW[color], -0.45) : GOLD
       ctx.stroke()
       ctx.beginPath()
       ctx.arc(cx, cy, R - c * 0.09, 0, Math.PI * 2)
@@ -355,9 +366,9 @@ export function paintBoard(size = 2048, theme: BoardTheme = BOARD_THEMES.obsidia
       const g = ctx.createLinearGradient(x, y, x + w * 0.4, y + h)
       if (team && neon) {
         // lit coloured glass: a runway of team light leading home
-        g.addColorStop(0, jewel(team, -0.25))
-        g.addColorStop(0.5, jewel(team, -0.5))
-        g.addColorStop(1, jewel(team, -0.72))
+        g.addColorStop(0, shade(COLOR_HEX[team], 0.08))
+        g.addColorStop(0.5, shade(COLOR_HEX[team], -0.22))
+        g.addColorStop(1, jewel(team, -0.35))
       } else if (team) {
         // deep jewel glass, lit from the top-left
         g.addColorStop(0, shade(COLOR_HEX[team], -0.05))
@@ -407,15 +418,15 @@ export function paintBoard(size = 2048, theme: BoardTheme = BOARD_THEMES.obsidia
         const gx = (x + w / 2) * b
         const gy = (y + h / 2) * b
         const gg = glow.createRadialGradient(gx, gy, 0, gx, gy, Math.max(w, h) * 0.7 * b)
-        gg.addColorStop(0, shade(COLOR_GLOW[team], -0.45))
-        gg.addColorStop(1, shade(COLOR_GLOW[team], -0.85))
+        gg.addColorStop(0, shade(COLOR_GLOW[team], -0.3))
+        gg.addColorStop(1, shade(COLOR_GLOW[team], -0.7))
         glow.fillStyle = gg
         roundRect(glow, x * b, y * b, w * b, h * b, rr * b)
         glow.fill()
       } else if (neon) {
         // a hairline of light on the top edge of each black stone so the grid reads in the dark
-        ctx.strokeStyle = 'rgba(255,255,255,0.10)'
-        ctx.lineWidth = c * 0.012
+        ctx.strokeStyle = 'rgba(190,205,255,0.22)'
+        ctx.lineWidth = c * 0.016
         roundRect(ctx, x + c * 0.01, y + c * 0.01, w - c * 0.02, h - c * 0.02, rr)
         ctx.stroke()
       }
@@ -464,11 +475,10 @@ export function paintBoard(size = 2048, theme: BoardTheme = BOARD_THEMES.obsidia
         }, '#ffffff', c * 0.03, 0.6)
       } else if (meta.kind === 'ring' && meta.safe && neon) {
         // safe square: a hollow white neon diamond with a dot at its heart
-        tube((g2, s2) => diamond(g2, s2, cx, cy, c * 0.24), '#e8ecff', c * 0.035, 0.7)
-        ctx.beginPath()
-        ctx.arc(cx, cy, c * 0.04, 0, Math.PI * 2)
-        ctx.fillStyle = '#ffffff'
+        star(ctx, cx, cy, c * 0.3, c * 0.13)
+        ctx.fillStyle = 'rgba(255,214,120,0.16)'
         ctx.fill()
+        tube((g2, s2) => star(g2, cx * s2, cy * s2, c * 0.3 * s2, c * 0.13 * s2), '#ffd27a', c * 0.035, 0.8)
       } else if (entry) {
         // start cell: gold arrow along the direction of travel
         const [nr, nc] = entry.next

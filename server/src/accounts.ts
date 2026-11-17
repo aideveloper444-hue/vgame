@@ -3,8 +3,8 @@ import { config } from './config'
 import { checkPassword, hashPassword, newId, newToken, sha256, signAccess } from './crypto'
 import { all, one, run, tx } from './db'
 import { ApiError, bad } from './http'
-import { ACHIEVEMENTS, ADS_PER_DAY, AD_POINTS, DAILY_POINTS, MISSIONS, STARTER_POINTS, levelInfo } from '../../src/games/poker/data/progression'
-import { COSMETICS, DEFAULT_EQUIPPED, cosmetic } from '../../src/games/poker/data/cosmetics'
+import { ACHIEVEMENTS, ADS_PER_DAY, AD_POINTS, DAILY_POINTS, MISSIONS, STARTER_POINTS, levelInfo } from './poker/data/progression'
+import { COSMETICS, DEFAULT_EQUIPPED, cosmetic } from './poker/data/cosmetics'
 
 /*
  * Accounts, sessions, profile and the points ledger.
