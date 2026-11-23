@@ -302,7 +302,7 @@ route('DELETE', '/v1/friends/:id', (c) => {
 
 /* ---------------------------------------------------------------- app-wide social (all games) */
 
-// the friend code this player's device uses in the social hub (Ludo, City, Poker, Wildbound)
+// the friend code this player's device uses in the social hub (Ludo, City, Poker)
 route('POST', '/v1/social/net-id', (c) => {
   const netId = str(c.body, 'netId', { max: 8 }).toUpperCase()
   if (!/^[A-Z0-9]{8}$/.test(netId)) throw new ApiError(400, 'INVALID_INPUT', 'Bad friend code')

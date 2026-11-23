@@ -1,7 +1,7 @@
 import type { LucideIcon } from 'lucide-react'
-import { Dices, Building2, Trees } from 'lucide-react'
+import { Dices, Building2 } from 'lucide-react'
 
-export type GameId = 'ludo' | 'city' | 'wildbound'
+export type GameId = 'ludo' | 'city'
 
 export interface GameDefinition {
   id: GameId
@@ -65,28 +65,6 @@ export const GAME_REGISTRY: Record<GameId, GameDefinition> = {
       'Short of cash? Sell buildings for half and mortgage deeds for half the price (10% to lift). Last tycoon in business wins.',
     ],
     rewardsBlurb: 'Coins and XP for every game, more for the winner.',
-    singlePlayerCapable: true,
-  },
-  wildbound: {
-    id: 'wildbound',
-    name: 'Amazon Run',
-    tagline: 'Run · Explore · Survive',
-    description: 'Into the wild: race Sonic the Rottweiler and nine wild animals through dense forest, waterfall gorges, hilly trails, river crossings and ancient ruins.',
-    playersLabel: '1 Player',
-    minPlayers: 1,
-    maxPlayers: 1,
-    difficulty: 'Medium',
-    accentVar: '--color-wildbound-accent',
-    accentHex: '#f5a623',
-    icon: Trees,
-    route: 'wildbound',
-    howToPlay: [
-      'Swipe left or right to change lane, up to jump, down to slide.',
-      'Tap ROLL to roll under low obstacles, and your ability button for your animal’s special power.',
-      'Collect coins and gems, grab magnets, shields, speed and super jump power-ups.',
-      'A new world every 100 m: forest, waterfall, hills, river and ruins.',
-    ],
-    rewardsBlurb: 'Coins and gems from every run, missions, daily rewards and the weekend Jungle Festival.',
     singlePlayerCapable: true,
   },
 }

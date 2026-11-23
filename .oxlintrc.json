@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["react", "typescript", "oxc"],
-  "ignorePatterns": ["dist/**", "dist-wildbound/**", "android/**", "android-wildbound/**", "server/dist/**", "unreal_assets/**", "removed_backup/**", "node_modules/**"],
+  "ignorePatterns": ["dist/**", "android/**", "server/dist/**", "unreal_assets/**", "removed_backup/**", "node_modules/**"],
   "rules": {
     "react/rules-of-hooks": "error",
     "react/only-export-components": ["warn", { "allowConstantExport": true }]

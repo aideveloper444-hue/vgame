@@ -4,7 +4,6 @@ const PATTERNS: Record<GameDefinition['id'], string> = {
   ludo:
     'radial-gradient(circle at 15% 20%, #ef4444 0%, transparent 40%), radial-gradient(circle at 85% 25%, #3b82f6 0%, transparent 40%), radial-gradient(circle at 20% 85%, #22c55e 0%, transparent 40%), radial-gradient(circle at 85% 85%, #eab308 0%, transparent 40%), #14182a',
   city: 'linear-gradient(160deg, #064e3b 0%, #0f2f2b 45%, #0b0f1a 100%)',
-  wildbound: 'radial-gradient(circle at 50% 30%, #2f6b2a 0%, transparent 60%), linear-gradient(180deg, #13280f 0%, #050a04 100%)',
 }
 
 export default function GameArt({ game, className = '' }: { game: GameDefinition; className?: string }) {

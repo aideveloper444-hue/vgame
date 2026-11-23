@@ -26,9 +26,7 @@ server/data/
 server/dist/
 
 # Build output
-dist-wildbound/
 android/app/build/
-android-wildbound/app/build/
 **/build/intermediates/
 *.apk
 *.aab
@@ -53,10 +51,5 @@ removed_backup/
 test-*.png
 .claude/
 android/build/
-android-wildbound/build/
 android/.gradle/
-android-wildbound/.gradle/
 dist-apk/
-android-wildbound/app/src/main/assets/public
-android-wildbound/app/src/main/assets/capacitor.*.json
-android-wildbound/local.properties

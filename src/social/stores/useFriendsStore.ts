@@ -50,7 +50,7 @@ interface FriendsState {
   setActivity: (friendId: string, activity: string | null, gameId: GameId | null) => void
 }
 
-const GAME_IDS: GameId[] = ['ludo', 'city', 'wildbound']
+const GAME_IDS: GameId[] = ['ludo', 'city']
 
 function applyProfile(f: Friend, p: PeerProfile) {
   f.name = p.name

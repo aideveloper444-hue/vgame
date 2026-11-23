@@ -71,7 +71,6 @@ function emptyStats(): Record<GameId, GameStats> {
   return {
     ludo: { played: 0, wins: 0 },
     city: { played: 0, wins: 0 },
-    wildbound: { played: 0, wins: 0 },
   }
 }
 

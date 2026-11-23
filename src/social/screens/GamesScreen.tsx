@@ -19,7 +19,6 @@ const FILTERS: { key: Filter; label: string }[] = [
 const KIND: Record<GameDefinition['id'], string> = {
   ludo: 'Board game',
   city: 'Strategy',
-  wildbound: 'Endless runner',
 }
 
 function PosterCard({ game, active, onPlay, onInfo, partyCount }: { game: GameDefinition; active: boolean; onPlay: () => void; onInfo: () => void; partyCount: number }) {

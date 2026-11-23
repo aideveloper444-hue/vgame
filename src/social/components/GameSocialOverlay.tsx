@@ -105,9 +105,9 @@ export default function GameSocialOverlay({ game }: { game: GameDefinition }) {
     useVoiceStore.getState().setChannel(ch)
   }
   const othersTalking = others.some((m) => voice.speaking[m.id])
-  // the games keep their own stats in the top corners (Amazon Run's coins, World Tycoon's player cards): the dock
+  // World Tycoon keeps its player cards in the top corners: the dock
   // starts at mid height, clear of them
-  const [dockY, setDockY] = useState(() => readDockY(game.id === 'wildbound' || game.id === 'city' ? 52 : 30))
+  const [dockY, setDockY] = useState(() => readDockY(game.id === 'city' ? 52 : 30))
 
   const moveDock = (y: number) => {
     const v = Math.min(88, Math.max(12, y))

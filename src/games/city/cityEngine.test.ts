@@ -1,6 +1,8 @@
 // Headless World Tycoon checks: rule-book values, Casino / Grand Club / Jail rules, and full bot
 // games that must finish without stalls or broken invariants.
 // Run: npm run test:city
+// (run by Node: only process.exit and process.env are used, declared here so the app's browser tsconfig needs no Node types)
+declare const process: { exit(code?: number): never; env: Record<string, string | undefined> }
 import { useCityStore, botAuctionRaise, botBuyDecision, botCasinoDecision, botRedeemDecision, botTradeAcceptDecision, botTradeProposal, botUpgradeDecision, computeRent } from './cityStore'
 import { buildBoard, isProperty, VARIANTS, type PropertyTile, type VariantId } from './cityBoardData'
 
